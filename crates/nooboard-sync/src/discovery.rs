@@ -1,8 +1,10 @@
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::thread;
 
-use mdns_sd::{Error as MdnsError, ResolvedService, ServiceDaemon, ServiceEvent, ServiceInfo};
+use mdns_sd::{
+    Error as MdnsError, ResolvedService, ScopedIp, ServiceDaemon, ServiceEvent, ServiceInfo,
+};
 use tokio::sync::mpsc;
 
 use crate::SyncError;
@@ -49,7 +51,8 @@ pub fn start_mdns(
     let daemon = ServiceDaemon::new().map_err(|error| SyncError::Mdns(error.to_string()))?;
     let mut properties = HashMap::new();
     properties.insert("device_id".to_string(), config.device_id.clone());
-    let advertised_ip = if config.listen_addr.ip().is_unspecified() {
+    let listen_ip_unspecified = config.listen_addr.ip().is_unspecified();
+    let advertised_ip = if listen_ip_unspecified {
         String::new()
     } else {
         config.listen_addr.ip().to_string()
@@ -63,6 +66,12 @@ pub fn start_mdns(
         Some(properties),
     )
     .map_err(|error: MdnsError| SyncError::Mdns(error.to_string()))?;
+    let service = if listen_ip_unspecified {
+        // When listening on 0.0.0.0, ask mdns-sd to advertise active interface addresses.
+        service.enable_addr_auto()
+    } else {
+        service
+    };
     daemon
         .register(service)
         .map_err(|error| SyncError::Mdns(error.to_string()))?;
@@ -71,10 +80,20 @@ pub fn start_mdns(
         .map_err(|error| SyncError::Mdns(error.to_string()))?;
 
     let local_device_id = config.device_id.clone();
+    let local_loopback_mode = config.listen_addr.ip().is_loopback();
     let browse_thread = thread::spawn(move || {
+        let mut last_targets = HashMap::<String, SocketAddr>::new();
         while let Ok(event) = receiver.recv() {
             if let ServiceEvent::ServiceResolved(info) = event {
-                handle_resolved_peer(&local_device_id, &peer_sender, &info);
+                if let Some((peer_key, peer_addr)) =
+                    resolve_peer_candidate(&local_device_id, local_loopback_mode, &info)
+                {
+                    let changed = last_targets.get(&peer_key).copied() != Some(peer_addr);
+                    if changed {
+                        last_targets.insert(peer_key, peer_addr);
+                        let _ = peer_sender.send(peer_addr);
+                    }
+                }
             }
         }
     });
@@ -85,20 +104,69 @@ pub fn start_mdns(
     })
 }
 
-fn handle_resolved_peer(
+fn resolve_peer_candidate(
     local_device_id: &str,
-    peer_sender: &mpsc::UnboundedSender<SocketAddr>,
+    local_loopback_mode: bool,
     info: &ResolvedService,
-) {
+) -> Option<(String, SocketAddr)> {
     let device_id = info
         .get_property_val_str("device_id")
         .map(ToOwned::to_owned);
     if device_id.as_deref() == Some(local_device_id) {
-        return;
+        return None;
     }
 
-    for address in info.get_addresses() {
-        let addr = SocketAddr::new(address.to_ip_addr(), info.get_port());
-        let _ = peer_sender.send(addr);
+    let best_ip = select_best_ip(info.get_addresses(), local_loopback_mode)?;
+    let peer_key = device_id.unwrap_or_else(|| info.get_fullname().to_string());
+    Some((peer_key, SocketAddr::new(best_ip, info.get_port())))
+}
+
+fn select_best_ip(
+    addresses: &std::collections::HashSet<ScopedIp>,
+    loopback_mode: bool,
+) -> Option<IpAddr> {
+    addresses
+        .iter()
+        .map(ScopedIp::to_ip_addr)
+        .filter(|ip| should_keep_ip(*ip, loopback_mode))
+        .min_by_key(|ip| (ip_rank(*ip, loopback_mode), ip.to_string()))
+}
+
+fn should_keep_ip(ip: IpAddr, loopback_mode: bool) -> bool {
+    if ip.is_unspecified() || ip.is_multicast() {
+        return false;
+    }
+
+    if loopback_mode {
+        return ip.is_loopback();
+    }
+
+    if ip.is_loopback() {
+        return false;
+    }
+
+    if let IpAddr::V6(v6) = ip {
+        if v6.is_unicast_link_local() {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn ip_rank(ip: IpAddr, loopback_mode: bool) -> u8 {
+    if loopback_mode {
+        return match ip {
+            IpAddr::V4(v4) if v4 == Ipv4Addr::LOCALHOST => 0,
+            IpAddr::V4(_) => 1,
+            IpAddr::V6(_) => 2,
+        };
+    }
+
+    match ip {
+        IpAddr::V4(v4) if v4.is_private() => 0,
+        IpAddr::V4(_) => 1,
+        IpAddr::V6(v6) if v6.is_unique_local() => 2,
+        IpAddr::V6(_) => 3,
     }
 }

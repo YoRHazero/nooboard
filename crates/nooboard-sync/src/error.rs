@@ -16,6 +16,12 @@ pub enum SyncError {
     Protocol(String),
     #[error("channel closed")]
     ChannelClosed,
+    #[error("duplicate peer connection: {0}")]
+    DuplicatePeerConnection(String),
+    #[error("connection direction rejected for peer: {0}")]
+    DirectionRejected(String),
+    #[error("self connection rejected")]
+    SelfConnection,
     #[error("storage error: {0}")]
     Storage(String),
     #[error("platform error: {0}")]

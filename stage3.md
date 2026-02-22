@@ -1,139 +1,99 @@
 # nooboard 阶段 3 完成报告（P2P 多节点实时同步，LAN 自动发现）
 
-## 1. 阶段目标达成情况
-阶段 3 已完成“最小可运行闭环”：已具备 P2P 同步基础架构、协议、去重、CLI `sync` 命令接入，并通过编译与单元测试。
+## 1. 阶段目标与当前结论
+阶段 3 已完成可运行实现，并在同机多实例场景完成主链路联调。
 
-当前状态结论：
-1. 代码层面已落地 P2P 架构（无中心 Hub）。
-2. 已明确并实现“无离线补发”语义。
-3. 已实现 mDNS 自动发现基础能力，并保留 `--peer` 手动兜底。
-4. 已实现网络下行事件“先判重，再决定是否 set”的关键顺序。
-5. 多机 LAN 实测与三节点联调尚未在本阶段报告内完成闭环验证。
+当前结论：
+1. 已实现去中心化 P2P 同步（无 Hub）。
+2. 已实现“在线实时同步，无离线补发”语义。
+3. 已实现 mDNS 自动发现与 `--peer` 手动兜底。
+4. 已实现“远端事件先判重，再决定是否 set”的关键顺序。
+5. 已针对联调暴露问题完成二次优化（地址过滤、连接方向规则、重复连接优雅关闭）。
 
-## 2. 实际范围与非目标
+## 2. 已交付能力（代码落地）
 
-### 实际范围
-1. 新增 `nooboard-sync` crate，包含 `protocol/discovery/transport/engine` 四层。
-2. 同步消息使用 WebSocket + JSON（`serde`）。
-3. 使用 `origin_device_id + origin_seq` 持久化去重。
-4. 数据库新增 `sync_seen_events` 去重表。
-5. CLI 新增 `sync` 命令参数：
-   - `--device-id`
-   - `--listen`
-   - `--token`
-   - `--peer`（可多次）
-   - `--no-mdns`
-6. 引擎实现本地上行广播与远端下行处理主链路。
+### 2.1 新增 crate 与模块
+新增 `/Users/zero/study/rust/nooboard/crates/nooboard-sync`，模块如下：
+1. `protocol.rs`：`HelloMessage`、`SyncEvent`、`WireMessage`、JSON 编解码。
+2. `discovery.rs`：mDNS 注册/浏览、peer 发现、地址筛选与优选。
+3. `transport.rs`：WebSocket 入站/出站、鉴权握手、重连、连接去重。
+4. `engine.rs`：本地上行与远端下行业务编排（判重优先）。
 
-### 非目标（本阶段未接入）
-1. 离线补发（replay/watermark）。
-2. 端到端加密。
-3. GUI。
-4. 图片/文件等非文本同步。
-
-## 3. A-H 执行结果（实际）
-
-### 任务 A：新增同步 crate 与依赖
-完成结果：
-1. 新增 crate：`/Users/zero/study/rust/nooboard/crates/nooboard-sync`。
-2. 接入依赖：`tokio`、`tokio-tungstenite`、`futures-util`、`serde`、`serde_json`、`mdns-sd`、`tracing`。
-3. 模块拆分完成：`protocol` / `discovery` / `transport` / `engine`。
-4. `cargo check --workspace` 通过。
-
-### 任务 B：协议与鉴权
-完成结果：
-1. 已定义 `HelloMessage`、`SyncEvent`、`WireMessage`。
-2. WebSocket 首包 `hello` 校验 token，不匹配直接拒绝。
-3. 协议编解码单元测试已补齐并通过（`nooboard-sync`）。
-
-### 任务 C：扩展存储层支持网络去重
-完成结果：
-1. `sql/schema.sql` 新增 `sync_seen_events`。
-2. `nooboard-storage` 新增 repository 接口：
+### 2.2 存储层扩展
+1. `sql/schema.sql` 新增 `sync_seen_events` 表。
+2. `nooboard-storage` 新增：
    - `mark_seen_event(origin_device_id, origin_seq, seen_at) -> bool`
    - `latest_content() -> Option<String>`
-3. 新增测试覆盖：
-   - 去重幂等（同事件第二次返回 `false`）
-   - `latest_content` 返回最新文本
+3. 对应单测已补齐并通过。
 
-### 任务 D：实现 LAN 自动发现
-完成结果：
-1. 已实现 mDNS 注册与浏览：服务类型 `_nooboard._tcp.local.`。
-2. 可将发现到的 peer 地址推送给传输层连接队列。
-3. 已处理 `0.0.0.0` 监听时的广播地址问题（改为自动发布可解析地址）。
+### 2.3 CLI 接入
+`nooboard-cli` 新增命令：
+`sync --device-id --listen --token [--peer ...] [--no-mdns]`
 
-### 任务 E：实现 P2P 传输层
-完成结果：
-1. 已实现 WebSocket 入站监听。
-2. 已实现对手工/发现 peers 的出站连接。
-3. 已实现断线后自动重连（固定退避）。
-4. 当前限制：尚未完成“同 peer 严格仅保留一个活跃连接”的最终策略。
+## 3. 关键技术实现（以最新代码为准）
 
-### 任务 F：同步引擎接入 CLI
-完成结果：
-1. CLI 已新增 `sync` 命令参数骨架并可解析。
-2. 引擎已接入并行主循环：
-   - 本地 watch -> 事件化 -> 广播
-   - 远端收包 -> 判重 -> 条件 `set` -> 入历史
-3. 已支持 `Ctrl+C` 退出。
+### 3.1 鉴权与协议
+1. WebSocket 首包必须是 `hello`，并校验 token。
+2. token 不匹配时拒绝连接。
+3. 协议版本与字段固定，满足阶段 3 MVP。
 
-### 任务 G：回环与重复压制
-完成结果：
-1. 已实现“判重优先、`set` 后置”的远端处理顺序。
-2. 已见事件直接丢弃，不会再次应用。
-3. 已实现短抑制窗口（remote set 后短时抑制同内容本地回传）。
+### 3.2 远端事件处理顺序（强约束）
+在 `engine.rs` 中，远端消息严格按以下顺序：
+1. `mark_seen_event(...)` 持久化判重。
+2. 若已见过则丢弃。
+3. 若首次见到，比较 `latest_content()`：
+   - 相同：跳过 `set`
+   - 不同：执行本地 `set`
+4. `insert_text_event(...)` 入历史。
 
-### 任务 H：测试与联调
-完成结果：
-1. 已完成并通过：
-   - 协议编解码单元测试（`nooboard-sync`）
-   - `mark_seen_event` 幂等测试（`nooboard-storage`）
-2. 未完成：
-   - 三节点集成测试自动化
-   - 同 LAN 多机手工联调记录
+### 3.3 mDNS 地址策略优化（新增）
+针对同机与 LAN 场景，`discovery.rs` 已实现：
+1. 场景判定：`listen` 是否为 loopback。
+2. 同机模式：仅保留 loopback 地址，优先 `127.0.0.1`。
+3. LAN 模式：过滤 `loopback/unspecified/multicast`，并过滤 `fe80::/10`（IPv6 link-local）。
+4. 同一 peer 仅上报“最佳地址”，且地址未变化则不重复上报。
 
-## 4. 阶段 3 文件职责（实际）
+### 3.4 连接风暴与噪声优化（新增）
+针对全连接双向互拨造成的重复连接，`transport.rs` 已实现：
+1. 连接方向规则（按 `device_id` 字典序）：
+   - `local < peer` 才主动出站连接。
+   - 入站只接受 `peer < local`。
+2. 同一 `device_id` 仅保留一个活跃连接（`PeerSlot`）。
+3. 方向拒绝/重复连接/自连场景采用优雅 `Close` 帧，减少 `reset without closing handshake` 噪声。
 
-1. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/src/protocol.rs`  
-   协议结构、版本、JSON 编解码。
+## 4. 本轮验证记录
 
-2. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/src/discovery.rs`  
-   mDNS 广播与发现、peer 地址上报。
+### 4.1 自动化验证
+1. `cargo check --workspace`：通过。
+2. `cargo test -p nooboard-storage`：通过（5 passed）。
+3. `cargo test -p nooboard-sync`：通过（2 passed）。
 
-3. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/src/transport.rs`  
-   WebSocket 入站/出站、hello/token 校验、收发通道与重连。
+### 4.2 手工联调（同机三实例）
+基于 `/Users/zero/study/rust/nooboard/stage3-validation.md` 执行：
+1. Case B（手工 peer）已验证：A `set` 后 B/C `history` 可见同步文本。
+2. Case C（mDNS 自动发现）已验证：日志可见 `connected peer dev-b/dev-c`、`accepted peer ...`，并可传播事件。
+3. 联调中发现的高噪声连接问题已完成代码修复（见 3.3、3.4）。
 
-4. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/src/engine.rs`  
-   同步主流程编排、远端判重顺序、回环抑制。
+说明：cargo 全局缓存目录存在权限告警（`pcap-2.2.0/Cargo.toml permission denied`），不影响构建与测试结果。
 
-5. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/src/repository.rs`  
-   `mark_seen_event` 与 `latest_content` 实现。
+## 5. DoD 对照（阶段 3）
 
-6. `/Users/zero/study/rust/nooboard/sql/schema.sql`  
-   `sync_seen_events` 表结构。
+1. `sync` 命令可在单节点启动并监听端口：通过。  
+2. 同 LAN 两节点可自动发现并连通：部分通过（同机 mDNS 已通过，跨设备 LAN 待补证据）。  
+3. 支持三节点在线同步同一事件：通过（同机三实例验证通过）。  
+4. 无补发语义下，重连后可继续接收新事件：部分通过（代码路径具备，待按文档补完整证据）。  
+5. 同一事件在全连接场景下仅应用一次：部分通过（存储判重+方向规则已实现，待补统计证据）。  
+6. 网络下行事件先判重，再决定是否 `set`：通过。  
+7. `history` 可看到同步后的文本记录：通过（同机联调已验证）。  
+8. `cargo check --workspace` 与 `cargo test -p nooboard-sync`：通过。  
 
-7. `/Users/zero/study/rust/nooboard/crates/nooboard-cli/src/main.rs`  
-   `sync` 命令参数与引擎启动入口。
+## 6. 阶段 3 收尾与遗留
 
-## 5. 实际验证记录
+已完成：
+1. 阶段 3 代码与最小闭环交付。
+2. 同机三实例联调可运行并具备可复现验证文档。
 
-1. `cargo check --workspace`：通过。  
-2. `cargo test -p nooboard-storage`：通过（5 tests passed）。  
-3. `cargo test -p nooboard-sync`：通过（2 tests passed）。  
-4. `cargo run -p nooboard-cli -- sync --help`：参数骨架可用。  
-
-说明：当前运行环境对网络绑定有限制，直接启动 `sync` 实例出现 `Operation not permitted`，因此本报告不包含同机多端口/多机实网联调结论。
-
-## 6. DoD 对照结论
-
-1. `sync` 命令可在单节点启动并监听端口：部分通过（代码就绪，当前环境未完成实网验证）。
-2. 同 LAN 两节点可自动发现并连通：未验证。
-3. 支持三节点在线同步同一事件：未验证。
-4. 无补发语义下，重连后可继续接收新事件：部分通过（代码实现，缺实网验证）。
-5. 同一事件在多节点全连接场景下仅应用一次：部分通过（持久化判重实现，缺三节点验证）。
-6. 网络下行事件先判重，再决定是否 `set`：通过。
-7. `history` 可看到同步后的文本记录：部分通过（代码路径已接入，缺联调验证）。
-8. `cargo check --workspace` 与 `cargo test -p nooboard-sync`：通过。
-
-## 7. 阶段 3 收尾结论
-阶段 3 的“代码落地与最小闭环”已完成；“LAN 多节点联调证据与集成测试补齐”作为下一轮收尾工作继续推进。
+遗留（建议在阶段 4 前补齐）:
+1. 跨设备 LAN（至少两台机器）联调证据。
+2. Case D（离线无补发 + 重连收新事件）与 Case E（重复应用次数统计）的记录化结果。
+3. 将 `stage3-validation.md` 的 DoD 表格填充为最终验收记录。
