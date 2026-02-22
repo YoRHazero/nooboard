@@ -1,0 +1,10 @@
+[package]
+name = "nooboard-platform"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+nooboard-core = { path = "../nooboard-core" }
+tokio = { workspace = true, features = ["sync"] }

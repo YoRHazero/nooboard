@@ -1,0 +1,15 @@
+[package]
+name = "nooboard-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+clap = { workspace = true, features = ["derive"] }
+nooboard-core = { path = "../nooboard-core" }
+nooboard-platform = { path = "../nooboard-platform" }
+nooboard-platform-macos = { path = "../nooboard-platform-macos" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }

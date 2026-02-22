@@ -1,0 +1,13 @@
+[package]
+name = "nooboard-platform-macos"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+nooboard-core = { path = "../nooboard-core" }
+nooboard-platform = { path = "../nooboard-platform" }
+objc2.workspace = true
+objc2-app-kit.workspace = true
+objc2-foundation.workspace = true

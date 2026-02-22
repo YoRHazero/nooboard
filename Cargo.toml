@@ -1,0 +1,24 @@
+[workspace]
+members = [
+  "crates/nooboard-core",
+  "crates/nooboard-platform",
+  "crates/nooboard-platform-macos",
+  "crates/nooboard-cli",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+authors = ["nooboard contributors"]
+
+[workspace.dependencies]
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+objc2 = "0.6"
+objc2-app-kit = "0.3"
+objc2-foundation = "0.3"
