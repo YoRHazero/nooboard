@@ -13,4 +13,6 @@ pub enum StorageError {
     },
     #[error("limit is too large for SQLite: {0}")]
     LimitOutOfRange(usize),
+    #[error("origin_seq is too large for SQLite INTEGER")]
+    SeqOutOfRange,
 }

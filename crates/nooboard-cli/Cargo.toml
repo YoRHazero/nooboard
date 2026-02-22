@@ -11,6 +11,7 @@ nooboard-core = { path = "../nooboard-core" }
 nooboard-platform = { path = "../nooboard-platform" }
 nooboard-platform-macos = { path = "../nooboard-platform-macos" }
 nooboard-storage = { version = "0.1.0", path = "../nooboard-storage" }
+nooboard-sync = { path = "../nooboard-sync" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }

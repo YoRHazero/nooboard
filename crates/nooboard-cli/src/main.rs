@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -7,6 +8,7 @@ use clap::{Parser, Subcommand};
 use nooboard_core::{ClipboardEvent, NooboardError};
 use nooboard_platform::{ClipboardBackend, DEFAULT_WATCH_INTERVAL};
 use nooboard_storage::{ClipboardRepository, SqliteClipboardRepository, default_dev_config_path};
+use nooboard_sync::{SyncConfig, SyncEngine};
 use tokio::sync::mpsc;
 use tracing_subscriber::EnvFilter;
 
@@ -46,6 +48,24 @@ enum Commands {
         #[arg(long, default_value_t = 20)]
         limit: usize,
     },
+    /// Run P2P real-time sync node
+    Sync {
+        /// Unique device identifier for this node
+        #[arg(long)]
+        device_id: String,
+        /// Listen address, e.g. 0.0.0.0:8787
+        #[arg(long)]
+        listen: String,
+        /// Shared token for minimal auth
+        #[arg(long)]
+        token: String,
+        /// Peer address; can be repeated
+        #[arg(long = "peer")]
+        peers: Vec<String>,
+        /// Disable mDNS discovery
+        #[arg(long)]
+        no_mdns: bool,
+    },
 }
 
 #[tokio::main]
@@ -60,19 +80,45 @@ async fn main() {
 
 async fn run() -> Result<(), NooboardError> {
     let cli = Cli::parse();
-    let backend = create_backend()?;
     let config_path = cli.config.as_deref().map(Path::new);
 
     match cli.command {
-        Commands::Get => handle_get(backend.as_ref()),
-        Commands::Set { text } => handle_set(backend.as_ref(), text),
+        Commands::Get => {
+            let backend = create_backend()?;
+            handle_get(backend.as_ref())
+        }
+        Commands::Set { text } => {
+            let backend = create_backend()?;
+            handle_set(backend.as_ref(), text)
+        }
         Commands::Watch { interval_ms } => {
+            let backend = create_backend()?;
             let repository = create_repository(config_path)?;
             handle_watch(backend.as_ref(), &repository, interval_ms).await
         }
         Commands::History { limit } => {
             let repository = create_repository(config_path)?;
             handle_history(&repository, limit)
+        }
+        Commands::Sync {
+            device_id,
+            listen,
+            token,
+            peers,
+            no_mdns,
+        } => {
+            let backend = create_backend()?;
+            let repository = create_repository(config_path)?;
+            handle_sync(
+                backend.as_ref(),
+                &repository,
+                device_id,
+                listen,
+                token,
+                peers,
+                no_mdns,
+            )
+            .await
         }
     }
 }
@@ -118,6 +164,10 @@ fn create_repository(
 
 fn map_storage_error(error: nooboard_storage::StorageError) -> NooboardError {
     NooboardError::storage(error.to_string())
+}
+
+fn map_sync_error(error: nooboard_sync::SyncError) -> NooboardError {
+    NooboardError::platform(error.to_string())
 }
 
 fn handle_get(backend: &dyn ClipboardBackend) -> Result<(), NooboardError> {
@@ -198,4 +248,37 @@ fn handle_history(repository: &dyn ClipboardRepository, limit: usize) -> Result<
     }
 
     Ok(())
+}
+
+async fn handle_sync(
+    backend: &dyn ClipboardBackend,
+    repository: &dyn ClipboardRepository,
+    device_id: String,
+    listen: String,
+    token: String,
+    peers: Vec<String>,
+    no_mdns: bool,
+) -> Result<(), NooboardError> {
+    let listen_addr: SocketAddr = listen.parse().map_err(|error: std::net::AddrParseError| {
+        NooboardError::platform(format!("invalid --listen address `{listen}`: {error}"))
+    })?;
+    let mut peer_addrs = Vec::new();
+    for peer in peers {
+        let addr: SocketAddr = peer.parse().map_err(|error: std::net::AddrParseError| {
+            NooboardError::platform(format!("invalid --peer address `{peer}`: {error}"))
+        })?;
+        peer_addrs.push(addr);
+    }
+
+    let config = SyncConfig {
+        device_id,
+        listen_addr,
+        token,
+        peers: peer_addrs,
+        mdns_enabled: !no_mdns,
+    };
+    SyncEngine::new(backend, repository)
+        .run(config)
+        .await
+        .map_err(map_sync_error)
 }

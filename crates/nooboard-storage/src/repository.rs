@@ -9,6 +9,13 @@ pub trait ClipboardRepository {
     fn init_schema(&self) -> Result<(), StorageError>;
     fn insert_text_event(&self, text: &str, captured_at: i64) -> Result<(), StorageError>;
     fn list_recent(&self, limit: usize) -> Result<Vec<ClipboardRecord>, StorageError>;
+    fn mark_seen_event(
+        &self,
+        origin_device_id: &str,
+        origin_seq: u64,
+        seen_at: i64,
+    ) -> Result<bool, StorageError>;
+    fn latest_content(&self) -> Result<Option<String>, StorageError>;
 }
 
 pub struct SqliteClipboardRepository {
@@ -47,19 +54,7 @@ impl ClipboardRepository for SqliteClipboardRepository {
     }
 
     fn insert_text_event(&self, text: &str, captured_at: i64) -> Result<(), StorageError> {
-        let latest_content = self
-            .conn
-            .query_row(
-                r#"
-                SELECT content
-                FROM clipboard_history
-                ORDER BY id DESC
-                LIMIT 1
-                "#,
-                [],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
+        let latest_content = self.latest_content()?;
         if latest_content.as_deref() == Some(text) {
             return Ok(());
         }
@@ -98,6 +93,39 @@ impl ClipboardRepository for SqliteClipboardRepository {
         })?;
 
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    fn mark_seen_event(
+        &self,
+        origin_device_id: &str,
+        origin_seq: u64,
+        seen_at: i64,
+    ) -> Result<bool, StorageError> {
+        let origin_seq = i64::try_from(origin_seq).map_err(|_| StorageError::SeqOutOfRange)?;
+        let changed = self.conn.execute(
+            r#"
+            INSERT OR IGNORE INTO sync_seen_events (origin_device_id, origin_seq, seen_at)
+            VALUES (?1, ?2, ?3)
+            "#,
+            params![origin_device_id, origin_seq, seen_at],
+        )?;
+        Ok(changed > 0)
+    }
+
+    fn latest_content(&self) -> Result<Option<String>, StorageError> {
+        self.conn
+            .query_row(
+                r#"
+                SELECT content
+                FROM clipboard_history
+                ORDER BY id DESC
+                LIMIT 1
+                "#,
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(Into::into)
     }
 }
 
@@ -145,6 +173,16 @@ mod tests {
             |row| row.get(0),
         )?;
         assert_eq!(exists, 1);
+        let sync_exists: i64 = repository.conn.query_row(
+            r#"
+            SELECT COUNT(1)
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'sync_seen_events'
+            "#,
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(sync_exists, 1);
 
         let _ = fs::remove_file(db_path);
         Ok(())
@@ -192,6 +230,41 @@ mod tests {
         assert_eq!(records[1].captured_at, 300);
         assert_eq!(records[2].content, "dup");
         assert_eq!(records[2].captured_at, 100);
+
+        let _ = fs::remove_file(db_path);
+        Ok(())
+    }
+
+    #[test]
+    fn mark_seen_event_is_idempotent() -> Result<(), StorageError> {
+        let db_path = temp_db_path("seen");
+        let schema_path = workspace_schema_path();
+        let repository = SqliteClipboardRepository::open(&db_path, &schema_path)?;
+
+        repository.init_schema()?;
+        let first = repository.mark_seen_event("dev-a", 1, 10)?;
+        let second = repository.mark_seen_event("dev-a", 1, 20)?;
+        let third = repository.mark_seen_event("dev-a", 2, 30)?;
+
+        assert!(first);
+        assert!(!second);
+        assert!(third);
+
+        let _ = fs::remove_file(db_path);
+        Ok(())
+    }
+
+    #[test]
+    fn latest_content_returns_newest_text() -> Result<(), StorageError> {
+        let db_path = temp_db_path("latest-content");
+        let schema_path = workspace_schema_path();
+        let repository = SqliteClipboardRepository::open(&db_path, &schema_path)?;
+
+        repository.init_schema()?;
+        assert_eq!(repository.latest_content()?, None);
+        repository.insert_text_event("first", 1)?;
+        repository.insert_text_event("second", 2)?;
+        assert_eq!(repository.latest_content()?, Some("second".to_string()));
 
         let _ = fs::remove_file(db_path);
         Ok(())

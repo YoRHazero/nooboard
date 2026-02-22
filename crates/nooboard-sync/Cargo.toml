@@ -1,0 +1,19 @@
+[package]
+name = "nooboard-sync"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+futures-util.workspace = true
+mdns-sd.workspace = true
+nooboard-core = { path = "../nooboard-core" }
+nooboard-platform = { path = "../nooboard-platform" }
+nooboard-storage = { path = "../nooboard-storage" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "sync", "time", "net"] }
+tokio-tungstenite.workspace = true
+tracing.workspace = true
