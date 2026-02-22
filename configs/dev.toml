@@ -1,0 +1,3 @@
+[storage]
+db_path = "/Users/zero/study/rust/nooboard/.dev-data/nooboard.db"
+schema_path = "/Users/zero/study/rust/nooboard/sql/schema.sql"

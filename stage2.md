@@ -1,173 +1,124 @@
-# nooboard 阶段 2 开发计划（SQLite 历史记录，CLI 可运行）
+# nooboard 阶段 2 完成报告（SQLite 历史记录，CLI 可运行）
 
-## 1. 阶段目标
-在阶段 1 基础上增加本地持久化能力：将剪切板变化写入 SQLite，并可通过 CLI 查询历史记录。
+## 1. 阶段目标达成情况
+阶段 2 目标已完成：在阶段 1 剪切板能力基础上接入 SQLite 持久化，`watch` 可入库，`history` 可查询最近记录，CLI 保持可运行。
 
-阶段 2 结束时应满足：
-1. 自动初始化数据库并应用 `sql/schema.sql`。
-2. `watch` 命令在变化时写入数据库。
-3. 新增 `history` 命令查询最近记录。
+## 2. 实际范围与非目标
 
-## 2. 范围与非目标
+### 实际范围
+1. 仅支持 UTF-8 文本历史记录。
+2. 新增 `nooboard-storage` crate，CLI 通过 repository 访问数据库。
+3. 数据库 schema 由 `/Users/zero/study/rust/nooboard/sql/schema.sql` 统一管理。
+4. 配置通过 TOML 管理：
+   - `/Users/zero/study/rust/nooboard/configs/dev.toml`
+   - `/Users/zero/study/rust/nooboard/configs/prod.toml`
+5. 开发环境数据库路径为 `/Users/zero/study/rust/nooboard/.dev-data/nooboard.db`。
+6. 新增本地去重策略：连续重复文本不重复入库。
 
-### 范围
-1. 仅处理文本类型历史（UTF-8）。
-2. 数据库路径（开发环境）固定为：`/Users/zero/study/rust/nooboard/.dev-data/nooboard.db`。
-3. 开发策略采用“重建优先”（可删除重建，不做 migration）。
-4. CLI 增加 `history` 命令，按时间倒序查询。
+### 非目标（本阶段未接入）
+1. 跨设备同步（阶段 3）。
+2. GUI（阶段 4）。
+3. 非文本类型（图片/文件等）。
+4. 数据库 migration 框架。
 
-### 非目标
-1. 不做跨设备同步。
-2. 不做 GUI。
-3. 不做复杂索引优化和大规模性能调优。
-4. 不做历史版本迁移框架。
-
-## 3. 设计原则
-1. CLI 不直接写 SQL，所有数据库读写都走 `nooboard-storage` repository。
-2. 平台剪切板接口与存储层解耦，watch 事件通过应用层串联。
-3. 先保证可运行与可验证，再考虑扩展字段和复杂查询。
-
-## 4. 任务拆解（按执行顺序）
+## 3. A-G 执行结果（实际完成效果）
 
 ### 任务 A：扩展 workspace 与存储 crate
-目标：引入阶段 2 所需工程结构。
-
-操作：
-1. 新增 crate：`nooboard-storage`。
-2. 新增 SQL 文件：`/Users/zero/study/rust/nooboard/sql/schema.sql`。
-3. 在 workspace 注册新成员与依赖（建议 `rusqlite`、`time` 或 `chrono` 二选一，保持最小依赖）。
-4. 新增目录：`/Users/zero/study/rust/nooboard/.dev-data/`（运行时自动创建）。
-
-完成标准：
-1. `cargo check --workspace` 通过。
-2. `nooboard-storage` 可被 `nooboard-cli` 链接。
+完成结果：
+1. workspace 新增成员 `nooboard-storage`。
+2. 新增 SQL 文件 `/Users/zero/study/rust/nooboard/sql/schema.sql`。
+3. `nooboard-storage` 已被 `nooboard-cli` 链接使用。
+4. `cargo check --workspace` 通过。
 
 ### 任务 B：定义存储模型与 repository 接口
-目标：明确存储边界，避免 CLI 直接操作 SQL。
-
-操作：
-1. 在 `nooboard-storage` 定义记录模型（建议 `ClipboardRecord`）：
-   - `id`
-   - `content`
-   - `captured_at`（毫秒时间戳或 RFC3339）
-2. 定义 repository 接口：
+完成结果：
+1. 定义 `ClipboardRecord { id, content, captured_at }`。
+2. 定义 `ClipboardRepository` 接口：
    - `init_schema()`
    - `insert_text_event(text, captured_at)`
    - `list_recent(limit)`
-3. 增加存储层错误类型并映射到 `NooboardError`。
-
-完成标准：
-1. CLI 只调用 repository API，不出现 SQL 字符串。
+3. 增加 `StorageError`，并在 CLI 映射到 `NooboardError::Storage`。
+4. CLI 未出现 SQL 字符串，数据库读写全部在 `nooboard-storage`。
 
 ### 任务 C：数据库初始化与 schema 执行
-目标：启动时可自动完成建库建表。
-
-操作：
-1. 在 `sql/schema.sql` 维护当前阶段唯一建表脚本。
-2. 实现初始化流程：
-   - 确保 `.dev-data` 存在。
-   - 打开/创建 `nooboard.db`。
+完成结果：
+1. 运行时通过配置读取 `db_path` 与 `schema_path`。
+2. 初始化流程：
+   - 自动创建 DB 父目录。
+   - 打开/创建 SQLite 文件。
    - 读取并执行 `schema.sql`。
-3. 落地“重建优先”机制（推荐二选一）：
-   - `--rebuild-db` 显式删除并重建。
-   - 或开发模式默认重建。
-
-完成标准：
-1. 删除数据库后再次运行命令能自动重建并可用。
+3. 删除数据库后，可通过脚本重建并继续使用。
 
 ### 任务 D：watch 入库链路接入
-目标：让监听到的每条剪切板文本变化落盘。
-
-操作：
-1. 在 CLI 的 `watch` 事件消费处调用 `insert_text_event`。
-2. 仅在文本存在时入库；保留现有控制台输出。
-3. 保持 Ctrl+C 优雅退出流程不变。
-
-完成标准：
-1. `watch` 运行期间触发多次剪切板变化后，数据库中可查询到对应记录。
+完成结果：
+1. `watch` 监听事件后调用 `insert_text_event` 入库。
+2. 控制台输出行为保持不变。
+3. `Ctrl+C` 优雅退出流程保持不变。
 
 ### 任务 E：history 命令实现
-目标：提供历史查询入口。
-
-操作：
-1. 在 `nooboard-cli` 新增命令：`history`。
-2. 参数建议：`--limit <n>`（默认 20）。
-3. 输出建议：`时间戳 + 文本`，按时间倒序。
-4. 空结果时输出清晰提示。
-
-完成标准：
-1. `cargo run -p nooboard-cli -- history --limit 20` 可返回最近记录。
+完成结果：
+1. 新增 `history` 命令。
+2. 支持 `--limit <n>`，默认 `20`。
+3. 输出格式为 `[timestamp] text`，按时间倒序。
+4. 空结果提示：`no clipboard history records`。
+5. 新增 CLI 全局参数 `--config <path>`，可切换配置文件。
 
 ### 任务 F：配置与脚本补齐
-目标：提升阶段 2 开发效率。
-
-操作：
-1. 增加脚本：`/Users/zero/study/rust/nooboard/scripts/reset_db.sh`（删除并重建 DB）。
-2. 在 `.gitignore` 确保忽略 `.dev-data/nooboard.db`。
-3. 更新 README 的阶段 2 命令说明（可选但建议）。
-
-完成标准：
-1. 本地可一键重置数据库并再次验证命令。
+完成结果：
+1. 新增 `configs/dev.toml` 与 `configs/prod.toml`。
+2. 新增脚本 `/Users/zero/study/rust/nooboard/scripts/reset_db.sh`，按 `dev.toml` 读取 `db_path` 并重建数据库。
+3. `.gitignore` 已忽略 `.dev-data/`（覆盖 `.dev-data/nooboard.db`）。
 
 ### 任务 G：测试与自检
-目标：保证核心路径稳定。
-
-操作：
-1. 为 `nooboard-storage` 增加最小单元/集成测试：
+完成结果：
+1. `nooboard-storage` 单元测试已覆盖：
    - schema 初始化
-   - 插入记录
-   - recent 查询顺序
-2. 关键命令链路手工验证：
-   - `set` -> `watch` 入库 -> `history` 读出。
+   - recent 倒序查询
+   - 连续重复文本去重
+2. 手工链路验证通过：`set` -> `watch` 入库 -> `history` 查询。
 
-完成标准：
-1. `cargo test -p nooboard-storage` 通过。
-2. 核心手工验证链路通过。
-
-## 5. 文件职责（阶段 2）
+## 4. 阶段 2 文件职责（实际）
 
 1. `/Users/zero/study/rust/nooboard/sql/schema.sql`  
-   当前阶段唯一数据库结构定义。
+   阶段 2 数据库结构定义（`clipboard_history` + 索引）。
 
-2. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/src/lib.rs`  
-   存储层导出入口。
+2. `/Users/zero/study/rust/nooboard/configs/dev.toml`  
+   开发配置（`db_path`、`schema_path`）。
 
-3. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/src/repository.rs`  
-   数据库初始化、插入、查询实现。
+3. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/src/config.rs`  
+   配置解析（TOML -> `AppConfig`）。
 
-4. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/src/model.rs`  
-   数据库存储模型。
+4. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/src/repository.rs`  
+   SQLite 初始化、插入、查询、连续重复去重实现。
 
-5. `/Users/zero/study/rust/nooboard/crates/nooboard-cli/src/main.rs`  
-   `watch` 入库接入、`history` 命令新增与输出。
+5. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/src/model.rs`  
+   存储模型 `ClipboardRecord`。
 
-6. `/Users/zero/study/rust/nooboard/scripts/reset_db.sh`  
+6. `/Users/zero/study/rust/nooboard/crates/nooboard-cli/src/main.rs`  
+   `watch` 入库接入、`history` 命令、`--config` 参数支持。
+
+7. `/Users/zero/study/rust/nooboard/scripts/reset_db.sh`  
    开发环境数据库重建脚本。
 
-## 6. 验收清单（DoD）
+## 5. 实际验证记录
 
-1. 首次运行后自动创建 `.dev-data/nooboard.db` 并完成 schema 初始化。
-2. `cargo run -p nooboard-cli -- watch` 监听变化时可将文本写入 SQLite。
-3. `cargo run -p nooboard-cli -- history --limit 20` 可查询最近记录。
-4. 删除数据库后可按“重建优先”策略恢复并继续使用。
-5. `cargo check --workspace` 通过。
-6. CLI 无直接 SQL 耦合（通过 `nooboard-storage` 调用）。
+1. `cargo check --workspace`：通过。  
+2. `cargo test -p nooboard-storage`：通过（3 个测试通过）。  
+3. `cargo run -p nooboard-cli -- set "stage2-doc-seed"`：成功写入剪切板。  
+4. `cargo run -p nooboard-cli -- watch` + 多次 `set "stage2-dedup-check"`：watch 能收到变化事件。  
+5. `cargo run -p nooboard-cli -- history --limit 20`：可查询最近记录；连续重复内容只保留一条。  
+6. `./scripts/reset_db.sh`：可删除并重建数据库。  
 
-## 7. 风险与缓解
+说明：部分 `cargo run` 过程中出现 cargo 全局缓存清理权限警告（`Permission denied`），不影响构建与命令执行结果。
 
-1. 风险：`watch` 高频变化导致频繁写库。  
-缓解：先保证正确性，后续再做批量写或节流。
+## 6. DoD 对照结论
 
-2. 风险：数据库文件路径/权限导致初始化失败。  
-缓解：启动时显式创建目录并输出可读错误。
+1. 首次运行后自动创建 `.dev-data/nooboard.db` 并初始化 schema：通过。  
+2. `watch` 监听变化可写入 SQLite：通过。  
+3. `history --limit 20` 可查询最近记录：通过。  
+4. 删除数据库后可恢复并继续使用：通过。  
+5. `cargo check --workspace`：通过。  
+6. CLI 无直接 SQL 耦合：通过。  
 
-3. 风险：重复内容记录过多。  
-缓解：阶段 2 先全量记录，去重策略留到后续阶段评估。
-
-## 8. 建议验证命令（阶段 2 完成时）
-
-1. `cargo check --workspace`
-2. `cargo run -p nooboard-cli -- set "stage2-seed"`
-3. `cargo run -p nooboard-cli -- watch`
-4. `cargo run -p nooboard-cli -- history --limit 20`
-5. `cargo test -p nooboard-storage`
+## 7. 阶段 2 收尾结论
+阶段 2 已完成，可进入阶段 3（跨设备同步 MVP，CLI 可运行）。
