@@ -489,6 +489,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "nooboard-app"
+version = "0.1.0"
+dependencies = [
+ "nooboard-core",
+ "nooboard-platform",
+ "nooboard-platform-macos",
+ "nooboard-storage",
+ "nooboard-sync",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "nooboard-cli"
 version = "0.1.0"
 dependencies = [
@@ -509,6 +523,10 @@ version = "0.1.0"
 dependencies = [
  "thiserror",
 ]
+
+[[package]]
+name = "nooboard-gui"
+version = "0.1.0"
 
 [[package]]
 name = "nooboard-platform"

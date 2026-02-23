@@ -9,6 +9,11 @@ pub trait ClipboardRepository {
     fn init_schema(&self) -> Result<(), StorageError>;
     fn insert_text_event(&self, text: &str, captured_at: i64) -> Result<(), StorageError>;
     fn list_recent(&self, limit: usize) -> Result<Vec<ClipboardRecord>, StorageError>;
+    fn search_recent(
+        &self,
+        limit: usize,
+        keyword: &str,
+    ) -> Result<Vec<ClipboardRecord>, StorageError>;
     fn mark_seen_event(
         &self,
         origin_device_id: &str,
@@ -85,6 +90,41 @@ impl ClipboardRepository for SqliteClipboardRepository {
         )?;
 
         let rows = statement.query_map([limit], |row| {
+            Ok(ClipboardRecord {
+                id: row.get(0)?,
+                content: row.get(1)?,
+                captured_at: row.get(2)?,
+            })
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    fn search_recent(
+        &self,
+        limit: usize,
+        keyword: &str,
+    ) -> Result<Vec<ClipboardRecord>, StorageError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        if keyword.is_empty() {
+            return self.list_recent(limit);
+        }
+
+        let limit = i64::try_from(limit).map_err(|_| StorageError::LimitOutOfRange(limit))?;
+        let pattern = format!("%{keyword}%");
+        let mut statement = self.conn.prepare(
+            r#"
+            SELECT id, content, captured_at
+            FROM clipboard_history
+            WHERE content LIKE ?1
+            ORDER BY captured_at DESC, id DESC
+            LIMIT ?2
+            "#,
+        )?;
+
+        let rows = statement.query_map(params![pattern, limit], |row| {
             Ok(ClipboardRecord {
                 id: row.get(0)?,
                 content: row.get(1)?,
@@ -249,6 +289,26 @@ mod tests {
         assert!(first);
         assert!(!second);
         assert!(third);
+
+        let _ = fs::remove_file(db_path);
+        Ok(())
+    }
+
+    #[test]
+    fn search_recent_filters_by_keyword() -> Result<(), StorageError> {
+        let db_path = temp_db_path("search");
+        let schema_path = workspace_schema_path();
+        let repository = SqliteClipboardRepository::open(&db_path, &schema_path)?;
+
+        repository.init_schema()?;
+        repository.insert_text_event("alpha", 100)?;
+        repository.insert_text_event("beta", 200)?;
+        repository.insert_text_event("alphabet", 300)?;
+
+        let records = repository.search_recent(10, "alpha")?;
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].content, "alphabet");
+        assert_eq!(records[1].content, "alpha");
 
         let _ = fs::remove_file(db_path);
         Ok(())

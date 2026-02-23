@@ -8,6 +8,7 @@ use nooboard_core::ClipboardEvent;
 use nooboard_platform::{ClipboardBackend, DEFAULT_WATCH_INTERVAL};
 use nooboard_storage::ClipboardRepository;
 use tokio::sync::mpsc;
+use tokio::sync::watch;
 use tracing::info;
 
 use crate::discovery::{DiscoveryConfig, start_mdns};
@@ -16,6 +17,7 @@ use crate::protocol::SyncEvent;
 use crate::transport::{TransportConfig, start_transport};
 
 const REMOTE_SET_SUPPRESSION_WINDOW: Duration = Duration::from_secs(2);
+type PeerCountObserver = Arc<dyn Fn(usize) + Send + Sync>;
 
 #[derive(Debug, Clone)]
 pub struct SyncConfig {
@@ -40,6 +42,37 @@ impl<'a> SyncEngine<'a> {
     }
 
     pub async fn run(self, config: SyncConfig) -> Result<(), SyncError> {
+        self.run_internal(config, None, None).await
+    }
+
+    pub async fn run_with_shutdown(
+        self,
+        config: SyncConfig,
+        shutdown_signal: watch::Receiver<bool>,
+    ) -> Result<(), SyncError> {
+        self.run_internal(config, Some(shutdown_signal), None).await
+    }
+
+    pub async fn run_with_shutdown_and_peer_observer(
+        self,
+        config: SyncConfig,
+        shutdown_signal: watch::Receiver<bool>,
+        observer: impl Fn(usize) + Send + Sync + 'static,
+    ) -> Result<(), SyncError> {
+        self.run_internal(
+            config,
+            Some(shutdown_signal),
+            Some(Arc::new(observer)),
+        )
+        .await
+    }
+
+    async fn run_internal(
+        self,
+        config: SyncConfig,
+        mut shutdown_signal: Option<watch::Receiver<bool>>,
+        peer_count_observer: Option<PeerCountObserver>,
+    ) -> Result<(), SyncError> {
         let mut transport = start_transport(TransportConfig {
             device_id: config.device_id.clone(),
             token: config.token.clone(),
@@ -73,12 +106,40 @@ impl<'a> SyncEngine<'a> {
         )?;
         let mut next_seq = 1_u64;
         let mut suppressed_content: VecDeque<(String, Instant)> = VecDeque::new();
+        let mut peer_count_poll = tokio::time::interval(Duration::from_millis(500));
+        peer_count_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut last_peer_count = None;
+        notify_peer_count_if_changed(
+            &peer_count_observer,
+            &mut last_peer_count,
+            transport.connected_peer_count(),
+        );
 
         loop {
-            tokio::select! {
-                _ = tokio::signal::ctrl_c() => {
+            if let Some(signal) = shutdown_signal.as_ref() {
+                if *signal.borrow() {
                     shutdown.store(true, Ordering::Relaxed);
                     break;
+                }
+            }
+
+            tokio::select! {
+                _ = tokio::signal::ctrl_c(), if shutdown_signal.is_none() => {
+                    shutdown.store(true, Ordering::Relaxed);
+                    break;
+                }
+                result = wait_shutdown_signal(&mut shutdown_signal), if shutdown_signal.is_some() => {
+                    if result {
+                        shutdown.store(true, Ordering::Relaxed);
+                        break;
+                    }
+                }
+                _ = peer_count_poll.tick() => {
+                    notify_peer_count_if_changed(
+                        &peer_count_observer,
+                        &mut last_peer_count,
+                        transport.connected_peer_count(),
+                    );
                 }
                 maybe_local = watch_receiver.recv() => {
                     if let Some(event) = maybe_local {
@@ -162,5 +223,32 @@ fn prune_suppression(queue: &mut VecDeque<(String, Instant)>) {
         } else {
             break;
         }
+    }
+}
+
+async fn wait_shutdown_signal(signal: &mut Option<watch::Receiver<bool>>) -> bool {
+    if let Some(receiver) = signal.as_mut() {
+        if receiver.changed().await.is_ok() {
+            *receiver.borrow()
+        } else {
+            true
+        }
+    } else {
+        false
+    }
+}
+
+fn notify_peer_count_if_changed(
+    observer: &Option<PeerCountObserver>,
+    last_peer_count: &mut Option<usize>,
+    next_count: usize,
+) {
+    if last_peer_count == &Some(next_count) {
+        return;
+    }
+
+    *last_peer_count = Some(next_count);
+    if let Some(observer) = observer {
+        observer(next_count);
     }
 }

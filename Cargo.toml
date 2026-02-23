@@ -6,6 +6,8 @@ members = [
   "crates/nooboard-cli",
   "crates/nooboard-storage",
   "crates/nooboard-sync",
+  "crates/nooboard-app",
+  "crates/nooboard-gui",
 ]
 resolver = "2"
 

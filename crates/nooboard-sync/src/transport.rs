@@ -25,6 +25,7 @@ pub struct TransportRuntime {
     pub peer_tx: mpsc::UnboundedSender<SocketAddr>,
     incoming_rx: mpsc::UnboundedReceiver<SyncEvent>,
     outbound_tx: broadcast::Sender<SyncEvent>,
+    active_peers: Arc<Mutex<HashSet<String>>>,
 }
 
 struct PeerSlot {
@@ -50,6 +51,13 @@ impl TransportRuntime {
 
     pub async fn recv_event(&mut self) -> Option<SyncEvent> {
         self.incoming_rx.recv().await
+    }
+
+    pub fn connected_peer_count(&self) -> usize {
+        self.active_peers
+            .lock()
+            .map(|active| active.len())
+            .unwrap_or(0)
     }
 }
 
@@ -172,6 +180,7 @@ pub async fn start_transport(config: TransportConfig) -> Result<TransportRuntime
         incoming_rx,
         peer_tx,
         outbound_tx,
+        active_peers,
     })
 }
 

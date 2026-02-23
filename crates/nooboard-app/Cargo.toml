@@ -1,0 +1,16 @@
+[package]
+name = "nooboard-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+nooboard-core = { path = "../nooboard-core" }
+nooboard-platform = { path = "../nooboard-platform" }
+nooboard-platform-macos = { path = "../nooboard-platform-macos" }
+nooboard-storage = { path = "../nooboard-storage" }
+nooboard-sync = { path = "../nooboard-sync" }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+tracing.workspace = true
