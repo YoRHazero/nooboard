@@ -2,8 +2,9 @@ pub mod config;
 pub mod error;
 pub mod model;
 pub mod repository;
+pub mod sql_catalog;
 
-pub use config::{AppConfig, default_dev_config_path};
+pub use config::{AppConfig, LifecycleConfig, StorageConfig, default_dev_config_path};
 pub use error::StorageError;
-pub use model::ClipboardRecord;
-pub use repository::{ClipboardRepository, SqliteClipboardRepository};
+pub use model::{EventState, HistoryRecord};
+pub use repository::SqliteEventRepository;

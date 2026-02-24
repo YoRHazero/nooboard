@@ -1,14 +1,12 @@
-use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand};
 use nooboard_core::{ClipboardEvent, NooboardError};
 use nooboard_platform::{ClipboardBackend, DEFAULT_WATCH_INTERVAL};
-use nooboard_storage::{ClipboardRepository, SqliteClipboardRepository, default_dev_config_path};
-use nooboard_sync::{SyncConfig, SyncEngine};
+use nooboard_storage::{SqliteEventRepository, StorageError, default_dev_config_path};
 use tokio::sync::mpsc;
 use tracing_subscriber::EnvFilter;
 
@@ -16,13 +14,12 @@ use tracing_subscriber::EnvFilter;
 #[command(
     name = "nooboard-cli",
     version,
-    about = "Nooboard stage1 clipboard CLI"
+    about = "Nooboard stage2 clipboard CLI"
 )]
 struct Cli {
-    /// Config file path (defaults to configs/dev.toml)
+    /// Config file path
     #[arg(long, global = true)]
-    config: Option<String>,
-
+    config: Option<PathBuf>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -42,29 +39,14 @@ enum Commands {
         #[arg(long, default_value_t = DEFAULT_WATCH_INTERVAL.as_millis() as u64)]
         interval_ms: u64,
     },
-    /// Show recent clipboard history
+    /// Query persisted clipboard history
     History {
-        /// Maximum number of records to return
+        /// Maximum records to display
         #[arg(long, default_value_t = 20)]
         limit: usize,
-    },
-    /// Run P2P real-time sync node
-    Sync {
-        /// Unique device identifier for this node
+        /// Optional keyword filter
         #[arg(long)]
-        device_id: String,
-        /// Listen address, e.g. 0.0.0.0:8787
-        #[arg(long)]
-        listen: String,
-        /// Shared token for minimal auth
-        #[arg(long)]
-        token: String,
-        /// Peer address; can be repeated
-        #[arg(long = "peer")]
-        peers: Vec<String>,
-        /// Disable mDNS discovery
-        #[arg(long)]
-        no_mdns: bool,
+        keyword: Option<String>,
     },
 }
 
@@ -80,7 +62,7 @@ async fn main() {
 
 async fn run() -> Result<(), NooboardError> {
     let cli = Cli::parse();
-    let config_path = cli.config.as_deref().map(Path::new);
+    let config_path = cli.config.unwrap_or_else(default_dev_config_path);
 
     match cli.command {
         Commands::Get => {
@@ -93,33 +75,9 @@ async fn run() -> Result<(), NooboardError> {
         }
         Commands::Watch { interval_ms } => {
             let backend = create_backend()?;
-            let repository = create_repository(config_path)?;
-            handle_watch(backend.as_ref(), &repository, interval_ms).await
+            handle_watch(backend.as_ref(), interval_ms, &config_path).await
         }
-        Commands::History { limit } => {
-            let repository = create_repository(config_path)?;
-            handle_history(&repository, limit)
-        }
-        Commands::Sync {
-            device_id,
-            listen,
-            token,
-            peers,
-            no_mdns,
-        } => {
-            let backend = create_backend()?;
-            let repository = create_repository(config_path)?;
-            handle_sync(
-                backend.as_ref(),
-                &repository,
-                device_id,
-                listen,
-                token,
-                peers,
-                no_mdns,
-            )
-            .await
-        }
+        Commands::History { limit, keyword } => handle_history(limit, keyword, &config_path),
     }
 }
 
@@ -145,29 +103,15 @@ fn create_backend() -> Result<Box<dyn ClipboardBackend>, NooboardError> {
     }
 }
 
-fn create_repository(
-    config_path: Option<&Path>,
-) -> Result<SqliteClipboardRepository, NooboardError> {
-    let default_config_path;
-    let config_path = match config_path {
-        Some(path) => path,
-        None => {
-            default_config_path = default_dev_config_path();
-            default_config_path.as_path()
-        }
-    };
-    let repository =
-        SqliteClipboardRepository::open_from_config(config_path).map_err(map_storage_error)?;
-    repository.init_schema().map_err(map_storage_error)?;
+fn open_repository(config_path: &Path) -> Result<SqliteEventRepository, NooboardError> {
+    let mut repository =
+        SqliteEventRepository::open_from_config(config_path).map_err(storage_error_to_core)?;
+    repository.init_storage().map_err(storage_error_to_core)?;
     Ok(repository)
 }
 
-fn map_storage_error(error: nooboard_storage::StorageError) -> NooboardError {
+fn storage_error_to_core(error: StorageError) -> NooboardError {
     NooboardError::storage(error.to_string())
-}
-
-fn map_sync_error(error: nooboard_sync::SyncError) -> NooboardError {
-    NooboardError::platform(error.to_string())
 }
 
 fn handle_get(backend: &dyn ClipboardBackend) -> Result<(), NooboardError> {
@@ -185,11 +129,44 @@ fn handle_set(backend: &dyn ClipboardBackend, text: String) -> Result<(), Nooboa
     Ok(())
 }
 
+fn handle_history(
+    limit: usize,
+    keyword: Option<String>,
+    config_path: &Path,
+) -> Result<(), NooboardError> {
+    let repository = open_repository(config_path)?;
+
+    let records = match keyword {
+        Some(ref value) if !value.trim().is_empty() => repository
+            .search_history(limit, value)
+            .map_err(storage_error_to_core)?,
+        _ => repository
+            .list_history(limit)
+            .map_err(storage_error_to_core)?,
+    };
+
+    if records.is_empty() {
+        println!("no history records");
+        return Ok(());
+    }
+
+    for record in records {
+        println!(
+            "[{}] [{}] {}",
+            record.created_at_ms, record.origin_device_id, record.content
+        );
+    }
+
+    Ok(())
+}
+
 async fn handle_watch(
     backend: &dyn ClipboardBackend,
-    repository: &dyn ClipboardRepository,
     interval_ms: u64,
+    config_path: &Path,
 ) -> Result<(), NooboardError> {
+    let mut repository = open_repository(config_path)?;
+
     let (sender, mut receiver) = mpsc::channel::<ClipboardEvent>(64);
     let shutdown = Arc::new(AtomicBool::new(false));
     let interval = Duration::from_millis(interval_ms.max(1));
@@ -201,6 +178,8 @@ async fn handle_watch(
         interval_ms.max(1)
     );
 
+    let mut watch_error: Option<NooboardError> = None;
+
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
@@ -211,13 +190,13 @@ async fn handle_watch(
             maybe_event = receiver.recv() => {
                 match maybe_event {
                     Some(event) => {
-                        let captured_at = i64::try_from(event.timestamp_millis()).map_err(|_| {
-                            NooboardError::storage("clipboard event timestamp overflowed i64")
-                        })?;
-                        repository
-                            .insert_text_event(&event.text, captured_at)
-                            .map_err(map_storage_error)?;
                         println!("[{}] {}", event.timestamp_millis(), event.text);
+
+                        if let Err(error) = persist_event(&mut repository, &event) {
+                            shutdown.store(true, Ordering::Relaxed);
+                            watch_error = Some(error);
+                            break;
+                        }
                     }
                     None => {
                         shutdown.store(true, Ordering::Relaxed);
@@ -231,54 +210,40 @@ async fn handle_watch(
     shutdown.store(true, Ordering::Relaxed);
     let _ = observer.join();
 
-    Ok(())
-}
-
-fn handle_history(repository: &dyn ClipboardRepository, limit: usize) -> Result<(), NooboardError> {
-    let records = repository.list_recent(limit).map_err(map_storage_error)?;
-
-    if records.is_empty() {
-        println!("no clipboard history records");
-        return Ok(());
-    }
-
-    for record in records {
-        let single_line_content = record.content.replace('\n', "\\n");
-        println!("[{}] {}", record.captured_at, single_line_content);
+    if let Some(error) = watch_error {
+        return Err(error);
     }
 
     Ok(())
 }
 
-async fn handle_sync(
-    backend: &dyn ClipboardBackend,
-    repository: &dyn ClipboardRepository,
-    device_id: String,
-    listen: String,
-    token: String,
-    peers: Vec<String>,
-    no_mdns: bool,
+fn persist_event(
+    repository: &mut SqliteEventRepository,
+    event: &ClipboardEvent,
 ) -> Result<(), NooboardError> {
-    let listen_addr: SocketAddr = listen.parse().map_err(|error: std::net::AddrParseError| {
-        NooboardError::platform(format!("invalid --listen address `{listen}`: {error}"))
-    })?;
-    let mut peer_addrs = Vec::new();
-    for peer in peers {
-        let addr: SocketAddr = peer.parse().map_err(|error: std::net::AddrParseError| {
-            NooboardError::platform(format!("invalid --peer address `{peer}`: {error}"))
-        })?;
-        peer_addrs.push(addr);
-    }
+    let created_at_ms = saturating_u128_to_i64(event.timestamp_millis());
+    let applied_at_ms = current_timestamp_ms();
 
-    let config = SyncConfig {
-        device_id,
-        listen_addr,
-        token,
-        peers: peer_addrs,
-        mdns_enabled: !no_mdns,
-    };
-    SyncEngine::new(backend, repository)
-        .run(config)
-        .await
-        .map_err(map_sync_error)
+    repository
+        .append_local_text(&event.text, created_at_ms, applied_at_ms)
+        .map_err(storage_error_to_core)?;
+
+    Ok(())
+}
+
+fn current_timestamp_ms() -> i64 {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+
+    saturating_u128_to_i64(now)
+}
+
+fn saturating_u128_to_i64(value: u128) -> i64 {
+    if value > i64::MAX as u128 {
+        i64::MAX
+    } else {
+        value as i64
+    }
 }

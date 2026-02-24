@@ -1,3 +1,12 @@
 [storage]
-db_path = "/Users/zero/study/rust/nooboard/.dev-data/nooboard.db"
-schema_path = "/Users/zero/study/rust/nooboard/sql/schema.sql"
+db_root = "/Users/zero/study/rust/nooboard/.dev-data"
+schema_version = "v0.1.0"
+retain_old_versions = 0
+schema_sql = "/Users/zero/study/rust/nooboard/sql/bootstrap/schema.sql"
+queries_dir = "/Users/zero/study/rust/nooboard/sql/queries"
+
+[storage.lifecycle]
+history_window_days = 7
+dedup_window_days = 14
+gc_every_inserts = 200
+gc_batch_size = 500
