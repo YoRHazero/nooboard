@@ -1,12 +1,18 @@
+mod config;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand};
+use config::load_sync_config;
 use nooboard_core::{ClipboardEvent, NooboardError};
 use nooboard_platform::{ClipboardBackend, DEFAULT_WATCH_INTERVAL};
 use nooboard_storage::{SqliteEventRepository, StorageError, default_dev_config_path};
+use nooboard_sync::{
+    FileDecisionInput, SyncEngineHandle, SyncEvent, SyncStatus, start_sync_engine,
+};
 use tokio::sync::mpsc;
 use tracing_subscriber::EnvFilter;
 
@@ -14,7 +20,7 @@ use tracing_subscriber::EnvFilter;
 #[command(
     name = "nooboard-cli",
     version,
-    about = "Nooboard stage2 clipboard CLI"
+    about = "Nooboard stage3 clipboard + sync CLI"
 )]
 struct Cli {
     /// Config file path
@@ -48,6 +54,14 @@ enum Commands {
         #[arg(long)]
         keyword: Option<String>,
     },
+    /// Send a file to currently connected peers via sync engine
+    SendFile {
+        /// Path to file
+        path: PathBuf,
+        /// Time to wait before shutdown after dispatch
+        #[arg(long, default_value_t = 1500)]
+        wait_ms: u64,
+    },
 }
 
 #[tokio::main]
@@ -75,9 +89,11 @@ async fn run() -> Result<(), NooboardError> {
         }
         Commands::Watch { interval_ms } => {
             let backend = create_backend()?;
-            handle_watch(backend.as_ref(), interval_ms, &config_path).await
+            let sync_config = load_sync_config(&config_path)?;
+            handle_watch(backend.as_ref(), interval_ms, &config_path, sync_config).await
         }
         Commands::History { limit, keyword } => handle_history(limit, keyword, &config_path),
+        Commands::SendFile { path, wait_ms } => handle_send_file(path, wait_ms, &config_path).await,
     }
 }
 
@@ -164,6 +180,7 @@ async fn handle_watch(
     backend: &dyn ClipboardBackend,
     interval_ms: u64,
     config_path: &Path,
+    sync_config: Option<nooboard_sync::SyncConfig>,
 ) -> Result<(), NooboardError> {
     let mut repository = open_repository(config_path)?;
 
@@ -173,12 +190,23 @@ async fn handle_watch(
 
     let observer = backend.watch_changes(sender, shutdown.clone(), interval)?;
 
+    let mut sync_handle = if let Some(config) = sync_config {
+        let mut handle = start_sync_engine(config)
+            .await
+            .map_err(|error| NooboardError::storage(error.to_string()))?;
+        wait_sync_running(&mut handle.status_rx).await?;
+        Some(handle)
+    } else {
+        None
+    };
+
     println!(
         "watching clipboard changes (interval={}ms). Press Ctrl+C to stop.",
         interval_ms.max(1)
     );
 
     let mut watch_error: Option<NooboardError> = None;
+    let mut suppress_text_once: Option<String> = None;
 
     loop {
         tokio::select! {
@@ -190,6 +218,11 @@ async fn handle_watch(
             maybe_event = receiver.recv() => {
                 match maybe_event {
                     Some(event) => {
+                        if suppress_text_once.as_deref() == Some(event.text.as_str()) {
+                            suppress_text_once = None;
+                            continue;
+                        }
+
                         println!("[{}] {}", event.timestamp_millis(), event.text);
 
                         if let Err(error) = persist_event(&mut repository, &event) {
@@ -197,10 +230,66 @@ async fn handle_watch(
                             watch_error = Some(error);
                             break;
                         }
+
+                        if let Some(handle) = sync_handle.as_ref() {
+                            if let Err(error) = handle.text_tx.send(event.text.clone()).await {
+                                watch_error = Some(NooboardError::channel(format!(
+                                    "failed to send text to sync engine: {error}"
+                                )));
+                                shutdown.store(true, Ordering::Relaxed);
+                                break;
+                            }
+                        }
                     }
                     None => {
                         shutdown.store(true, Ordering::Relaxed);
                         break;
+                    }
+                }
+            }
+            maybe_sync_event = recv_sync_event(&mut sync_handle), if sync_handle.is_some() => {
+                match maybe_sync_event {
+                    Some(SyncEvent::TextReceived(text)) => {
+                        if let Err(error) = backend.write_text(&text) {
+                            watch_error = Some(error);
+                            shutdown.store(true, Ordering::Relaxed);
+                            break;
+                        }
+
+                        suppress_text_once = Some(text.clone());
+                        let event = ClipboardEvent::new(text.clone());
+                        if let Err(error) = persist_event(&mut repository, &event) {
+                            watch_error = Some(error);
+                            shutdown.store(true, Ordering::Relaxed);
+                            break;
+                        }
+
+                        println!("[remote] {text}");
+                    }
+                    Some(SyncEvent::FileDownloaded { path, size }) => {
+                        println!("[file] downloaded {} ({} bytes)", path.display(), size);
+                    }
+                    Some(SyncEvent::FileDecisionRequired { peer_node_id, transfer_id, file_name, file_size, total_chunks }) => {
+                        println!(
+                            "[file] incoming from {}: {} ({} bytes, {} chunks)",
+                            peer_node_id, file_name, file_size, total_chunks
+                        );
+
+                        if let Some(handle) = sync_handle.as_ref() {
+                            let decision_tx = handle.decision_tx.clone();
+                            tokio::spawn(async move {
+                                let (accept, reason) = prompt_file_decision(&peer_node_id, &file_name, file_size).await;
+                                let _ = decision_tx.send(FileDecisionInput {
+                                    peer_node_id,
+                                    transfer_id,
+                                    accept,
+                                    reason,
+                                }).await;
+                            });
+                        }
+                    }
+                    None => {
+                        sync_handle = None;
                     }
                 }
             }
@@ -210,11 +299,127 @@ async fn handle_watch(
     shutdown.store(true, Ordering::Relaxed);
     let _ = observer.join();
 
+    if let Some(handle) = sync_handle {
+        let _ = handle.shutdown_tx.send(());
+    }
+
     if let Some(error) = watch_error {
         return Err(error);
     }
 
     Ok(())
+}
+
+async fn handle_send_file(
+    path: PathBuf,
+    wait_ms: u64,
+    config_path: &Path,
+) -> Result<(), NooboardError> {
+    if !path.exists() {
+        return Err(NooboardError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("file does not exist: {}", path.display()),
+        )));
+    }
+
+    let sync_config = load_sync_config(config_path)?
+        .ok_or_else(|| NooboardError::storage("sync is disabled in config".to_string()))?;
+    let mut handle = start_sync_engine(sync_config)
+        .await
+        .map_err(|error| NooboardError::storage(error.to_string()))?;
+    wait_sync_running(&mut handle.status_rx).await?;
+
+    handle
+        .file_tx
+        .send(path.clone())
+        .await
+        .map_err(|error| NooboardError::channel(format!("failed to queue file: {error}")))?;
+
+    println!("queued file for sync: {}", path.display());
+    tokio::time::sleep(Duration::from_millis(wait_ms.max(1))).await;
+
+    let _ = handle.shutdown_tx.send(());
+    Ok(())
+}
+
+async fn wait_sync_running(
+    status_rx: &mut tokio::sync::watch::Receiver<SyncStatus>,
+) -> Result<(), NooboardError> {
+    if matches!(&*status_rx.borrow(), SyncStatus::Running) {
+        return Ok(());
+    }
+
+    for _ in 0..20 {
+        status_rx
+            .changed()
+            .await
+            .map_err(|error| NooboardError::channel(error.to_string()))?;
+
+        match &*status_rx.borrow() {
+            SyncStatus::Running => return Ok(()),
+            SyncStatus::Error(message) => {
+                return Err(NooboardError::storage(format!(
+                    "sync engine failed: {message}"
+                )));
+            }
+            SyncStatus::Disabled => {
+                return Err(NooboardError::storage(
+                    "sync engine is disabled".to_string(),
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    Err(NooboardError::storage(
+        "sync engine did not reach running status".to_string(),
+    ))
+}
+
+async fn recv_sync_event(sync_handle: &mut Option<SyncEngineHandle>) -> Option<SyncEvent> {
+    match sync_handle {
+        Some(handle) => handle.event_rx.recv().await,
+        None => None,
+    }
+}
+
+async fn prompt_file_decision(
+    peer_node_id: &str,
+    file_name: &str,
+    file_size: u64,
+) -> (bool, Option<String>) {
+    let peer_node_id = peer_node_id.to_string();
+    let file_name = file_name.to_string();
+
+    let decision = tokio::task::spawn_blocking(move || {
+        use std::io::{Write, stdin, stdout};
+
+        println!(
+            "[file] accept transfer from {}: {} ({} bytes)? [y/N]",
+            peer_node_id, file_name, file_size
+        );
+        print!("> ");
+        let _ = stdout().flush();
+
+        let mut input = String::new();
+        if stdin().read_line(&mut input).is_ok() {
+            let normalized = input.trim().to_ascii_lowercase();
+            if normalized == "y" || normalized == "yes" {
+                return (true, None);
+            }
+        }
+
+        (false, Some("rejected by user".to_string()))
+    })
+    .await;
+
+    match decision {
+        Ok(result) => result,
+        Err(error) => (
+            false,
+            Some(format!("failed to read local decision: {error}")),
+        ),
+    }
 }
 
 fn persist_event(

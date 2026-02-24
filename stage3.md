@@ -1,99 +1,223 @@
-# nooboard 阶段 3 完成报告（P2P 多节点实时同步，LAN 自动发现）
+# nooboard Stage3 开发计划（P2P 同步与文件传输）v4.1
 
-## 1. 阶段目标与当前结论
-阶段 3 已完成可运行实现，并在同机多实例场景完成主链路联调。
+## 1. 当前基线与边界
+1. 当前 workspace 基线为 Stage2。
+2. Stage3 目标是在现有基线上增加多设备 P2P 实时同步能力（含文本与文件）。
+3. Stage3 新增同步能力必须与 `nooboard-storage` 协作，但同步 crate 本身不能依赖 `nooboard-storage`。
+4. 协作方式采用 Channel 适配器模式：`nooboard-sync` 通过 `mpsc/watch` 通道与上层交互，由 `nooboard-cli` 负责组装。
 
-当前结论：
-1. 已实现去中心化 P2P 同步（无 Hub）。
-2. 已实现“在线实时同步，无离线补发”语义。
-3. 已实现 mDNS 自动发现与 `--peer` 手动兜底。
-4. 已实现“远端事件先判重，再决定是否 set”的关键顺序。
-5. 已针对联调暴露问题完成二次优化（地址过滤、连接方向规则、重复连接优雅关闭）。
+## 2. Stage3 目标
+1. 剪贴板同步：支持多设备 P2P 实时同步剪贴板文本。
+2. 文件传输：支持多设备 P2P 传输文件（流式分块，不将整文件加载进内存，支持大文件），并支持接收端显式接受/拒绝。
+3. 优先级调度：文件传输过程中，保证文本消息和心跳包优先发送，不阻塞交互。
+4. 网络基础：TCP + TLS（临时内存证书，客户端跳过验证）+ mDNS 自动发现 + 手动 Peer + `Hello -> Challenge -> Auth`。
+5. 持久化标识：`noob_id` 持久化，作为节点唯一标识。
 
-## 2. 已交付能力（代码落地）
+## 3. 架构设计
+### 3.1 Crate 拆分与依赖
+1. 新增 `crates/nooboard-sync`。
+2. 配置解耦：`nooboard-sync` 仅定义配置结构体，文件 IO 由 `nooboard-cli` 处理。
+3. 接口暴露：通过 `SyncEngineHandle` 暴露 Channels。
+4. 约束：`cargo tree -p nooboard-sync` 不得出现 `nooboard-storage`。
 
-### 2.1 新增 crate 与模块
-新增 `/Users/zero/study/rust/nooboard/crates/nooboard-sync`，模块如下：
-1. `protocol.rs`：`HelloMessage`、`SyncEvent`、`WireMessage`、JSON 编解码。
-2. `discovery.rs`：mDNS 注册/浏览、peer 发现、地址筛选与优选。
-3. `transport.rs`：WebSocket 入站/出站、鉴权握手、重连、连接去重。
-4. `engine.rs`：本地上行与远端下行业务编排（判重优先）。
+### 3.2 配置模型
+定义于 `nooboard-sync/src/config.rs`：
 
-### 2.2 存储层扩展
-1. `sql/schema.sql` 新增 `sync_seen_events` 表。
-2. `nooboard-storage` 新增：
-   - `mark_seen_event(origin_device_id, origin_seq, seen_at) -> bool`
-   - `latest_content() -> Option<String>`
-3. 对应单测已补齐并通过。
+```rust
+pub struct SyncConfig {
+    pub enabled: bool,
+    // 基础网络配置：监听地址、token、超时等
 
-### 2.3 CLI 接入
-`nooboard-cli` 新增命令：
-`sync --device-id --listen --token [--peer ...] [--no-mdns]`
+    // 传输限制与安全
+    pub max_packet_size: usize, // 建议 8MB，用于防止 OOM
+    pub file_chunk_size: usize, // 建议 64KB - 256KB
+    pub file_decision_timeout_ms: u64, // 建议 30000
 
-## 3. 关键技术实现（以最新代码为准）
+    // 文件安全沙箱
+    // 所有接收文件必须落在此目录下，也作为 .tmp 接收区
+    pub download_dir: PathBuf,
+    pub max_file_size: u64, // 例如 10GB
 
-### 3.1 鉴权与协议
-1. WebSocket 首包必须是 `hello`，并校验 token。
-2. token 不匹配时拒绝连接。
-3. 协议版本与字段固定，满足阶段 3 MVP。
+    // 由上层读取 noob_id 文件后注入
+    pub noob_id: String,
+}
+```
 
-### 3.2 远端事件处理顺序（强约束）
-在 `engine.rs` 中，远端消息严格按以下顺序：
-1. `mark_seen_event(...)` 持久化判重。
-2. 若已见过则丢弃。
-3. 若首次见到，比较 `latest_content()`：
-   - 相同：跳过 `set`
-   - 不同：执行本地 `set`
-4. `insert_text_event(...)` 入历史。
+补充说明：
+1. `noob_id` 文件路径由上层配置（如 `identity.noob_id_file`）决定，`nooboard-cli` 负责读取或生成 UUID 并注入到 `SyncConfig.noob_id`。
+2. `download_dir` 必须在启动阶段确保存在，并作为接收安全根目录。
 
-### 3.3 mDNS 地址策略优化（新增）
-针对同机与 LAN 场景，`discovery.rs` 已实现：
-1. 场景判定：`listen` 是否为 loopback。
-2. 同机模式：仅保留 loopback 地址，优先 `127.0.0.1`。
-3. LAN 模式：过滤 `loopback/unspecified/multicast`，并过滤 `fe80::/10`（IPv6 link-local）。
-4. 同一 peer 仅上报“最佳地址”，且地址未变化则不重复上报。
+### 3.3 传输与协议（Protocol）
+1. 传输层分帧：`LengthDelimitedCodec`（TCP codec 层称 Frame）。
+2. 应用层消息统一命名为 `Packet`，不再使用 `Frame`。
+3. 序列化：`serde + bincode`。
+4. 风险控制：`bincode` 对 schema 变化敏感，必须在握手阶段严格校验 `protocol_version`。
+5. 协议门禁（更新）：连接处于未认证状态时，只允许 `Packet::Handshake(...)`；收到 `Packet::Ping`、`Packet::Pong`、`Packet::Data(...)` 一律直接拒绝并断开。
 
-### 3.4 连接风暴与噪声优化（新增）
-针对全连接双向互拨造成的重复连接，`transport.rs` 已实现：
-1. 连接方向规则（按 `device_id` 字典序）：
-   - `local < peer` 才主动出站连接。
-   - 入站只接受 `peer < local`。
-2. 同一 `device_id` 仅保留一个活跃连接（`PeerSlot`）。
-3. 方向拒绝/重复连接/自连场景采用优雅 `Close` 帧，减少 `reset without closing handshake` 噪声。
+```rust
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Packet {
+    Handshake(HandshakePacket),
+    Ping { timestamp: u64 },
+    Pong { timestamp: u64 },
+    Data(DataPacket),
+}
 
-## 4. 本轮验证记录
+#[derive(Serialize, Deserialize, Debug)]
+pub enum HandshakePacket {
+    Hello {
+        protocol_version: u16,
+        node_id: String,
+    },
+    Challenge { nonce: String },
+    AuthResponse { hash: String },
+    AuthResult { ok: bool },
+}
 
-### 4.1 自动化验证
-1. `cargo check --workspace`：通过。
-2. `cargo test -p nooboard-storage`：通过（5 passed）。
-3. `cargo test -p nooboard-sync`：通过（2 passed）。
+#[derive(Serialize, Deserialize, Debug)]
+pub enum DataPacket {
+    ClipboardText {
+        id: String,
+        content: String,
+    },
+    FileStart {
+        transfer_id: u32,
+        file_name: String,
+        file_size: u64,
+        total_chunks: u32,
+    },
+    FileDecision {
+        transfer_id: u32,
+        accept: bool,
+        reason: Option<String>,
+    },
+    FileChunk {
+        transfer_id: u32,
+        seq: u32,
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
+    },
+    FileEnd {
+        transfer_id: u32,
+        checksum: String,
+    },
+    FileCancel {
+        transfer_id: u32,
+    },
+}
+```
 
-### 4.2 手工联调（同机三实例）
-基于 `/Users/zero/study/rust/nooboard/stage3-validation.md` 执行：
-1. Case B（手工 peer）已验证：A `set` 后 B/C `history` 可见同步文本。
-2. Case C（mDNS 自动发现）已验证：日志可见 `connected peer dev-b/dev-c`、`accepted peer ...`，并可传播事件。
-3. 联调中发现的高噪声连接问题已完成代码修复（见 3.3、3.4）。
+### 3.4 握手与认证
+1. 连接建立后，客户端先发 `HandshakePacket::Hello { protocol_version, node_id }`。
+2. 服务端首先校验 `protocol_version`，不匹配立即断开，不进入数据层处理。
+3. 服务端生成单次 `nonce` 并发送 `Challenge`。
+4. 服务端将 `nonce` 与当前 socket 绑定并放入 `pending_challenges`，附带超时信息。
+5. 客户端计算 `HMAC(token, nonce)` 并发送 `AuthResponse`。
+6. 服务端验证通过后返回 `AuthResult { ok: true }`，失败返回 `ok: false` 并断开。
+7. 强约束：无论认证成功、失败还是超时，`pending_challenges` 中对应条目都必须被清理，避免内存泄漏。
 
-说明：cargo 全局缓存目录存在权限告警（`pcap-2.2.0/Cargo.toml permission denied`），不影响构建与测试结果。
+### 3.5 连接建立与去重
+1. 支持 mDNS 自动发现与手动 peer（地址:端口）并存。
+2. mDNS 记录携带 `node_id`。
+3. 强约束：连接去重规则固定为 `node_id` 小的节点主动连接 `node_id` 大的节点。
+4. 若 `node_id` 相同，视为冲突，拒绝连接并记录错误。
 
-## 5. DoD 对照（阶段 3）
+### 3.6 调度与流控（Traffic Shaping）
+1. 通道分离：`Control Queue` 产生 `Packet::Handshake`、`Packet::Ping/Pong`；`Data Queue` 产生 `Packet::Data(...)`（文本与文件块）。
+2. 调度规则：每轮循环先消费 `Control Queue`，仅当 `Control Queue` 为空时才消费 `Data Queue`。
+3. 文件块发送须定期 `yield`，避免占满 Data Queue。
 
-1. `sync` 命令可在单节点启动并监听端口：通过。  
-2. 同 LAN 两节点可自动发现并连通：部分通过（同机 mDNS 已通过，跨设备 LAN 待补证据）。  
-3. 支持三节点在线同步同一事件：通过（同机三实例验证通过）。  
-4. 无补发语义下，重连后可继续接收新事件：部分通过（代码路径具备，待按文档补完整证据）。  
-5. 同一事件在全连接场景下仅应用一次：部分通过（存储判重+方向规则已实现，待补统计证据）。  
-6. 网络下行事件先判重，再决定是否 `set`：通过。  
-7. `history` 可看到同步后的文本记录：通过（同机联调已验证）。  
-8. `cargo check --workspace` 与 `cargo test -p nooboard-sync`：通过。  
+### 3.7 接收端状态机
+1. `Packet::Handshake(_)` 交给 `HandshakeStateMachine`。
+2. `Packet::Ping/Pong` 直接处理并更新活跃时间。
+3. `Packet::Data(ClipboardText)` 发送给 CLI。
+4. `Packet::Data(FileStart/FileDecision/FileChunk/FileEnd/FileCancel)` 交给 `FileReceiverStateMachine`。
 
-## 6. 阶段 3 收尾与遗留
+### 3.8 文件传输决策（FileDecision）
+1. 发送端发出 `FileStart` 后进入 `PendingDecision` 状态。
+2. 接收端必须在 `file_decision_timeout_ms` 内回复 `FileDecision`（`accept=true/false`）。
+3. 强约束：发送端仅在收到 `FileDecision { accept: true }` 后才允许发送 `FileChunk`/`FileEnd`。
+4. 若收到 `accept=false` 或超时未决策，发送端必须终止该传输并清理状态；已创建的 `.tmp` 文件必须删除。
+5. 接收端可按策略自动拒绝（如大小超限、路径非法），也可由 CLI 交互后返回决策。
 
-已完成：
-1. 阶段 3 代码与最小闭环交付。
-2. 同机三实例联调可运行并具备可复现验证文档。
+### 3.9 同步语义与保活
+1. 强约束：仅同步在线期间新事件，离线后重连不补发历史数据。
+2. 已连接空闲时发送 `Ping`，收到 `Ping` 必须回 `Pong`。
+3. `pong_timeout_ms` 超时则主动断开并重连。
 
-遗留（建议在阶段 4 前补齐）:
-1. 跨设备 LAN（至少两台机器）联调证据。
-2. Case D（离线无补发 + 重连收新事件）与 Case E（重复应用次数统计）的记录化结果。
-3. 将 `stage3-validation.md` 的 DoD 表格填充为最终验收记录。
+### 3.10 文件安全
+1. `FileStart.file_name` 必须清洗为纯文件名（`Path::file_name()`）。
+2. 拒绝 `..`、`/`、`\` 等路径穿越符号。
+3. 接收文件路径必须在 `download_dir` 下。
+4. 限制 `max_packet_size`、`max_file_size`、`active_downloads`，防止资源耗尽。
+
+### 3.11 接口设计（Channels）
+```rust
+pub struct SyncEngineHandle {
+    pub text_tx: mpsc::Sender<String>,
+    pub file_tx: mpsc::Sender<PathBuf>,
+    pub event_rx: mpsc::Receiver<SyncEvent>,
+    pub status_rx: watch::Receiver<SyncStatus>,
+    pub shutdown_tx: broadcast::Sender<()>,
+}
+
+pub enum SyncEvent {
+    TextReceived(String),
+    FileDownloaded { path: PathBuf, size: u64 },
+}
+```
+
+## 4. 实施步骤
+### Phase 1: 基础设施
+1. 创建 `crates/nooboard-sync`。
+2. 实现 `config.rs`。
+3. 实现 `protocol.rs`（`Packet` 定义 + 握手期门禁）。
+4. 实现 `transport.rs`（TLS + LengthDelimitedCodec）。
+5. 实现 `auth.rs`（HMAC challenge-response + nonce 清理机制）。
+
+### Phase 2: 核心引擎
+1. 实现 `discovery.rs`（mDNS）。
+2. 实现 `connection.rs`：嵌套枚举优先级调度器 + 文件接收状态机（含 `FileDecision` 流程与路径清洗）。
+3. 实现 `engine.rs`（连接去重、生命周期、重连）。
+
+### Phase 3: 集成与验证
+1. 改造 `nooboard-cli`：读取 TOML 配置，管理 `noob_id` 文件读取/生成，确保 `download_dir` 存在（默认 `~/Downloads/nooboard`），桥接 `SyncEngineHandle`。
+2. 实现 CLI 命令与测试。
+3. 联调测试：文本同步、大文件传输、`FileDecision` 接受/拒绝与超时、心跳优先、断网重连与清理。
+
+## 5. 计划内文件清单
+### 5.1 新增
+1. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/Cargo.toml`
+2. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/src/lib.rs`
+3. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/src/config.rs`
+4. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/src/protocol.rs`
+5. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/src/transport.rs`
+6. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/src/auth.rs`
+7. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/src/discovery.rs`
+8. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/src/engine.rs`
+9. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/src/connection/mod.rs`
+10. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/src/connection/actor.rs`
+11. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/src/connection/file_handler.rs`
+12. `/Users/zero/study/rust/nooboard/crates/nooboard-sync/tests/p2p_file_transfer.rs`
+
+### 5.2 修改
+1. `/Users/zero/study/rust/nooboard/Cargo.toml`
+2. `/Users/zero/study/rust/nooboard/crates/nooboard-cli/src/config.rs`
+3. `/Users/zero/study/rust/nooboard/crates/nooboard-cli/src/main.rs`
+4. `/Users/zero/study/rust/nooboard/configs/dev.toml`
+
+## 6. 验收标准（DoD）
+1. 协议命名统一：应用层消息统一使用 `Packet`。
+2. 两台设备可同时进行文本同步和文件传输。
+3. 握手阶段必须严格校验 `protocol_version`，版本不一致立即断开。
+4. 强约束（更新）：未完成握手认证前，只允许 `Packet::Handshake(...)`；收到 `Ping/Pong/Data` 必须直接拒绝并断开。
+5. 强约束：mDNS 去重按 `node_id` 小连大规则执行，且可在自动发现与手动 peer 并存场景下稳定去重。
+6. 强约束：Challenge 必须与 socket 绑定，且在成功/失败/超时三种路径都能释放内存。
+7. 强约束：离线期间不缓存待补发事件，重连后只同步新事件。
+8. 强约束：`FileStart` 后必须收到 `FileDecision { accept: true }` 才允许发送 `FileChunk`/`FileEnd`。
+9. 强约束：`FileDecision { accept: false }` 或决策超时时，传输必须终止并清理状态与 `.tmp` 文件。
+10. 路径安全：发送 `../../` 等恶意文件名时，接收端仍只能落在 `download_dir` 沙箱内。
+11. 非阻塞体验：文件传输期间心跳正常，文本消息低延迟可达。
+12. `noob_id` 可持久化复用，文件缺失时可自动生成并写入。
+13. `nooboard-sync` 不依赖 `nooboard-storage`（依赖图检查通过）。
+14. `cargo check` 与关键测试通过（至少 `nooboard-sync`、`nooboard-cli`）。

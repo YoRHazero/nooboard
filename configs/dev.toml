@@ -10,3 +10,24 @@ history_window_days = 7
 dedup_window_days = 14
 gc_every_inserts = 200
 gc_batch_size = 500
+
+[identity]
+noob_id_file = "/Users/zero/study/rust/nooboard/.dev-data/noob_id"
+
+[sync]
+enabled = true
+mdns_enabled = true
+listen_addr = "0.0.0.0:17890"
+token = "dev-sync-token"
+manual_peers = []
+max_packet_size = 8388608
+file_chunk_size = 65536
+file_decision_timeout_ms = 30000
+transfer_idle_timeout_ms = 15000
+download_dir = "/Users/zero/study/rust/nooboard/.dev-data/downloads"
+max_file_size = 10737418240
+connect_timeout_ms = 5000
+handshake_timeout_ms = 5000
+ping_interval_ms = 5000
+pong_timeout_ms = 15000
+active_downloads = 8
