@@ -45,7 +45,8 @@ impl CandidateRegistry {
         let decision = dedupe_decision(local_node_id, &peer.node_id);
         match decision {
             DedupeDecision::ConnectOut => {
-                self.discovered_targets.insert(peer.node_id.clone(), peer.addr);
+                self.discovered_targets
+                    .insert(peer.node_id.clone(), peer.addr);
             }
             DedupeDecision::WaitInbound => {
                 self.discovered_targets.remove(&peer.node_id);

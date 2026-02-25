@@ -1,12 +1,12 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use tokio::net::TcpListener;
-use tokio::sync::{broadcast, mpsc};
 use crate::auth::{ChallengeRegistry, SocketId};
 use crate::config::SyncConfig;
 use crate::discovery::DiscoveredPeer;
 use crate::transport::TlsContext;
+use tokio::net::TcpListener;
+use tokio::sync::{broadcast, mpsc};
 
 use super::connect::accept_inbound_peer;
 use super::peers::EngineControl;

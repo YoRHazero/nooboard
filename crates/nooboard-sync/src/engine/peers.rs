@@ -7,19 +7,21 @@ use tokio::sync::mpsc;
 use tokio_rustls::TlsStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
+use crate::discovery::DiscoveredPeer;
 use crate::error::{ConnectionError, SyncError};
 use crate::session::actor::SessionCommand;
-use crate::discovery::DiscoveredPeer;
 
 use super::candidates::{CandidateRegistry, ConnectTarget};
 use super::policy::DedupeDecision;
-use super::types::FileDecisionInput;
+use super::types::{ConnectedPeerInfo, FileDecisionInput, PeerConnectionState};
 
 #[derive(Debug)]
 pub(super) struct PeerHandle {
     pub(super) command_tx: mpsc::Sender<SessionCommand>,
     pub(super) addr: SocketAddr,
     pub(super) outbound: bool,
+    pub(super) session_id: u64,
+    pub(super) connected_at_ms: u64,
 }
 
 #[derive(Debug)]
@@ -39,10 +41,12 @@ pub(super) enum EngineControl {
     },
     PeerFailed {
         peer_node_id: String,
+        session_id: u64,
         error: ConnectionError,
     },
     PeerDisconnected {
         peer_node_id: String,
+        session_id: u64,
     },
     DiscoveredPeer(DiscoveredPeer),
 }
@@ -98,8 +102,7 @@ impl PeerRegistry {
         decision: FileDecisionInput,
     ) -> Result<(), ConnectionError> {
         if let Some(peer) = self.peers.get(&decision.peer_node_id) {
-            peer
-                .command_tx
+            peer.command_tx
                 .send(SessionCommand::FileDecision {
                     transfer_id: decision.transfer_id,
                     accept: decision.accept,
@@ -134,8 +137,18 @@ impl PeerRegistry {
         }
     }
 
-    pub(super) fn remove_peer(&mut self, peer_node_id: &str) {
-        self.peers.remove(peer_node_id);
+    pub(super) fn remove_peer_if_session(&mut self, peer_node_id: &str, session_id: u64) -> bool {
+        let should_remove = self
+            .peers
+            .get(peer_node_id)
+            .map(|peer| peer.session_id == session_id)
+            .unwrap_or(false);
+        if should_remove {
+            self.peers.remove(peer_node_id);
+            true
+        } else {
+            false
+        }
     }
 
     pub(super) fn insert_peer(&mut self, peer_node_id: String, handle: PeerHandle) {
@@ -153,6 +166,33 @@ impl PeerRegistry {
         self.peers
             .get(peer_node_id)
             .map(|peer| peer.command_tx.clone())
+    }
+
+    pub(super) fn peer_matches_session(&self, peer_node_id: &str, session_id: u64) -> bool {
+        self.peers
+            .get(peer_node_id)
+            .map(|peer| peer.session_id == session_id)
+            .unwrap_or(false)
+    }
+
+    pub(super) fn snapshot(&self) -> Vec<ConnectedPeerInfo> {
+        let mut peers: Vec<ConnectedPeerInfo> = self
+            .peers
+            .iter()
+            .map(|(peer_node_id, handle)| ConnectedPeerInfo {
+                peer_node_id: peer_node_id.clone(),
+                addr: handle.addr,
+                outbound: handle.outbound,
+                connected_at_ms: handle.connected_at_ms,
+                state: PeerConnectionState::Connected,
+            })
+            .collect();
+        peers.sort_unstable_by(|left, right| left.peer_node_id.cmp(&right.peer_node_id));
+        peers
+    }
+
+    pub(super) fn clear_peers(&mut self) {
+        self.peers.clear();
     }
 
     pub(super) fn apply_discovered_peer(
@@ -197,6 +237,8 @@ mod tests {
                     .parse()
                     .expect("test addr should be valid"),
                 outbound: true,
+                session_id: 1,
+                connected_at_ms: 10,
             },
         );
 
@@ -210,5 +252,47 @@ mod tests {
             .await;
 
         assert!(matches!(result, Err(ConnectionError::State(_))));
+    }
+
+    #[test]
+    fn remove_peer_if_session_ignores_stale_disconnect() {
+        let mut registry = PeerRegistry::new();
+        let (command_tx_old, _command_rx_old) = mpsc::channel(1);
+        let (command_tx_new, _command_rx_new) = mpsc::channel(1);
+
+        registry.insert_peer(
+            "node-b".to_string(),
+            PeerHandle {
+                command_tx: command_tx_old,
+                addr: "127.0.0.1:10001"
+                    .parse()
+                    .expect("test addr should be valid"),
+                outbound: false,
+                session_id: 1,
+                connected_at_ms: 1,
+            },
+        );
+        registry.insert_peer(
+            "node-b".to_string(),
+            PeerHandle {
+                command_tx: command_tx_new,
+                addr: "127.0.0.1:10002"
+                    .parse()
+                    .expect("test addr should be valid"),
+                outbound: true,
+                session_id: 2,
+                connected_at_ms: 2,
+            },
+        );
+
+        assert!(!registry.remove_peer_if_session("node-b", 1));
+        let snapshot = registry.snapshot();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(
+            snapshot[0].addr,
+            "127.0.0.1:10002"
+                .parse::<SocketAddr>()
+                .expect("addr must parse")
+        );
     }
 }

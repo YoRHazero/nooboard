@@ -65,6 +65,30 @@ async fn wait_running(
     Err("sync engine did not become running".into())
 }
 
+async fn wait_peer_count(
+    peers_rx: &mut tokio::sync::watch::Receiver<Vec<nooboard_sync::ConnectedPeerInfo>>,
+    expected: usize,
+    timeout_duration: Duration,
+) -> Result<Vec<nooboard_sync::ConnectedPeerInfo>, Box<dyn std::error::Error>> {
+    if peers_rx.borrow().len() == expected {
+        return Ok(peers_rx.borrow().clone());
+    }
+
+    let deadline = Instant::now() + timeout_duration;
+    while Instant::now() < deadline {
+        let remain = deadline.duration_since(Instant::now());
+        if timeout(remain, peers_rx.changed()).await.is_err() {
+            break;
+        }
+
+        if peers_rx.borrow().len() == expected {
+            return Ok(peers_rx.borrow().clone());
+        }
+    }
+
+    Err(format!("peer count did not reach {expected}").into())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn file_transfer_accept_path_works() -> Result<(), Box<dyn std::error::Error>> {
     let dir_a = TempDir::new()?;
@@ -298,8 +322,65 @@ async fn control_channel_can_disconnect_specific_peer() -> Result<(), Box<dyn st
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn missing_peer_file_decision_emits_connection_error_event(
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn peers_snapshot_updates_on_connect_and_disconnect() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir_a = TempDir::new()?;
+    let dir_b = TempDir::new()?;
+
+    let port_a = free_port();
+    let port_b = free_port();
+
+    let mut handle_a = start_sync_engine(make_config(
+        "node-a",
+        port_a,
+        port_b,
+        dir_a.path().to_path_buf(),
+        1024 * 1024,
+    ))
+    .await?;
+    let mut handle_b = start_sync_engine(make_config(
+        "node-b",
+        port_b,
+        port_a,
+        dir_b.path().to_path_buf(),
+        1024 * 1024,
+    ))
+    .await?;
+
+    wait_running(&mut handle_a.status_rx).await?;
+    wait_running(&mut handle_b.status_rx).await?;
+
+    let peers_a = wait_peer_count(&mut handle_a.peers_rx, 1, Duration::from_secs(3)).await?;
+    assert_eq!(peers_a[0].peer_node_id, "node-b");
+    assert_eq!(peers_a[0].addr.port(), port_b);
+    assert!(peers_a[0].outbound);
+    assert!(peers_a[0].connected_at_ms > 0);
+
+    let peers_b = wait_peer_count(&mut handle_b.peers_rx, 1, Duration::from_secs(3)).await?;
+    assert_eq!(peers_b[0].peer_node_id, "node-a");
+    assert_eq!(peers_b[0].addr.ip().to_string(), "127.0.0.1");
+    assert!(!peers_b[0].outbound);
+    assert!(peers_b[0].connected_at_ms > 0);
+
+    handle_a
+        .control_tx
+        .send(SyncControlCommand::DisconnectPeer {
+            peer_node_id: "node-b".to_string(),
+        })
+        .await?;
+
+    let _ = wait_peer_count(&mut handle_a.peers_rx, 0, Duration::from_secs(1)).await?;
+    let _ = wait_peer_count(&mut handle_b.peers_rx, 0, Duration::from_secs(1)).await?;
+
+    let _ = handle_a.shutdown_tx.send(());
+    let _ = handle_b.shutdown_tx.send(());
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn missing_peer_file_decision_emits_connection_error_event()
+-> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let listen_port = free_port();
     let peer_port = free_port();

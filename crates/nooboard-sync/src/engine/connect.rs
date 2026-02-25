@@ -15,8 +15,8 @@ use crate::transport::{TlsContext, framed_with_max_packet};
 
 use super::candidates::ConnectTarget;
 use super::handshake::{perform_client_handshake, perform_server_handshake};
-use super::policy::DedupeDecision;
 use super::peers::{EngineControl, PeerRegistry};
+use super::policy::DedupeDecision;
 
 pub(super) fn schedule_connect_attempts(
     config: &SyncConfig,

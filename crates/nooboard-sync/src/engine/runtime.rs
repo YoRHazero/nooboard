@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc, watch};
@@ -12,19 +13,18 @@ use tracing::{debug, error, info, warn};
 
 use crate::auth::ChallengeRegistry;
 use crate::config::SyncConfig;
-use crate::session::actor::{SessionActorContext, SessionCommand, run_session_actor};
-use crate::discovery::{
-    DiscoveredPeer, MdnsDiscoveryConfig, MdnsHandle, start_mdns_discovery,
-};
+use crate::discovery::{DiscoveredPeer, MdnsDiscoveryConfig, MdnsHandle, start_mdns_discovery};
 use crate::error::SyncError;
+use crate::session::actor::{SessionActorContext, SessionCommand, run_session_actor};
 use crate::transport::TlsContext;
 
 use super::connect::{connection_direction_allowed, schedule_connect_attempts};
 use super::ingress::{run_accept_loop, run_discovery_forward_loop};
-use super::policy::{DedupeDecision, dedupe_decision};
 use super::peers::{EngineControl, PeerHandle, PeerRegistry};
+use super::policy::{DedupeDecision, dedupe_decision};
 use super::types::{
-    FileDecisionInput, SyncControlCommand, SyncEngineHandle, SyncEvent, SyncStatus, TransferUpdate,
+    ConnectedPeerInfo, FileDecisionInput, SyncControlCommand, SyncEngineHandle, SyncEvent,
+    SyncStatus, TransferUpdate,
 };
 
 pub async fn start_sync_engine(config: SyncConfig) -> Result<SyncEngineHandle, SyncError> {
@@ -47,6 +47,7 @@ pub async fn start_sync_engine_with_discovery(
     let (control_tx, control_rx) = mpsc::channel(64);
     let (event_tx, event_rx) = mpsc::channel(128);
     let (progress_tx, progress_rx) = broadcast::channel::<TransferUpdate>(256);
+    let (peers_tx, peers_rx) = watch::channel(Vec::<ConnectedPeerInfo>::new());
     let (status_tx, status_rx) = watch::channel(if config.enabled {
         SyncStatus::Starting
     } else {
@@ -63,6 +64,7 @@ pub async fn start_sync_engine_with_discovery(
             control_rx,
             event_tx,
             progress_tx,
+            peers_tx,
             status_tx,
             shutdown_tx.clone(),
             discovery_rx,
@@ -76,6 +78,7 @@ pub async fn start_sync_engine_with_discovery(
         control_tx,
         event_rx,
         progress_rx,
+        peers_rx,
         status_rx,
         shutdown_tx,
     })
@@ -89,6 +92,7 @@ async fn run_engine(
     mut control_rx: mpsc::Receiver<SyncControlCommand>,
     event_tx: mpsc::Sender<SyncEvent>,
     progress_tx: broadcast::Sender<TransferUpdate>,
+    peers_tx: watch::Sender<Vec<ConnectedPeerInfo>>,
     status_tx: watch::Sender<SyncStatus>,
     shutdown_tx: broadcast::Sender<()>,
     mut discovery_rx: Option<mpsc::Receiver<DiscoveredPeer>>,
@@ -101,6 +105,7 @@ async fn run_engine(
         &mut control_rx,
         event_tx,
         progress_tx,
+        &peers_tx,
         &status_tx,
         shutdown_tx,
         &mut discovery_rx,
@@ -124,6 +129,7 @@ async fn run_engine_inner(
     control_rx: &mut mpsc::Receiver<SyncControlCommand>,
     event_tx: mpsc::Sender<SyncEvent>,
     progress_tx: broadcast::Sender<TransferUpdate>,
+    peers_tx: &watch::Sender<Vec<ConnectedPeerInfo>>,
     status_tx: &watch::Sender<SyncStatus>,
     shutdown_tx: broadcast::Sender<()>,
     discovery_rx: &mut Option<mpsc::Receiver<DiscoveredPeer>>,
@@ -182,6 +188,7 @@ async fn run_engine_inner(
     reconnect_timer.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     let mut registry = PeerRegistry::new();
+    let mut session_id_seed = 1_u64;
 
     let _ = status_tx.send(SyncStatus::Running);
 
@@ -239,7 +246,12 @@ async fn run_engine_inner(
             }
             maybe_control_command = control_rx.recv() => {
                 match maybe_control_command {
-                    Some(command) => handle_sync_control_command(command, &mut registry).await,
+                    Some(command) => {
+                        let changed = handle_sync_control_command(command, &mut registry).await;
+                        if changed {
+                            publish_peer_snapshot(&registry, peers_tx);
+                        }
+                    }
                     None => break,
                 }
             }
@@ -248,7 +260,7 @@ async fn run_engine_inner(
                     break;
                 };
 
-                handle_engine_control(
+                let changed = handle_engine_control(
                     control,
                     &config,
                     &event_tx,
@@ -256,12 +268,18 @@ async fn run_engine_inner(
                     &shutdown_tx,
                     &engine_control_tx,
                     &mut registry,
+                    &mut session_id_seed,
                 ).await;
+                if changed {
+                    publish_peer_snapshot(&registry, peers_tx);
+                }
             }
         }
     }
 
     registry.shutdown_all().await;
+    registry.clear_peers();
+    publish_peer_snapshot(&registry, peers_tx);
 
     let _ = shutdown_tx.send(());
     accept_task.abort();
@@ -272,13 +290,18 @@ async fn run_engine_inner(
     Ok(())
 }
 
-async fn handle_sync_control_command(command: SyncControlCommand, registry: &mut PeerRegistry) {
+async fn handle_sync_control_command(
+    command: SyncControlCommand,
+    registry: &mut PeerRegistry,
+) -> bool {
     match command {
         SyncControlCommand::DisconnectPeer { peer_node_id } => {
             if let Some(addr) = registry.disconnect_peer(&peer_node_id).await {
                 info!(peer=%peer_node_id, addr=%addr, "disconnect peer requested by control channel");
+                true
             } else {
                 warn!(peer=%peer_node_id, "disconnect peer requested but peer is not connected");
+                false
             }
         }
     }
@@ -292,7 +315,8 @@ async fn handle_engine_control(
     shutdown_tx: &broadcast::Sender<()>,
     engine_control_tx: &mpsc::Sender<EngineControl>,
     registry: &mut PeerRegistry,
-) {
+    session_id_seed: &mut u64,
+) -> bool {
     match control {
         EngineControl::Connected {
             peer_node_id,
@@ -304,19 +328,19 @@ async fn handle_engine_control(
 
             if peer_node_id == config.noob_id {
                 error!(peer=%peer_node_id, "node_id conflict: local and remote are identical");
-                return;
+                return false;
             }
 
             let decision = dedupe_decision(&config.noob_id, &peer_node_id);
             if !connection_direction_allowed(outbound, decision) {
                 debug!(peer=%peer_node_id, outbound, "drop connection due to node_id dedupe direction");
-                return;
+                return false;
             }
 
             if let Some(existing_outbound) = registry.peer_outbound(&peer_node_id) {
                 if existing_outbound == outbound {
                     debug!(peer=%peer_node_id, "drop duplicate connection in same direction");
-                    return;
+                    return false;
                 }
 
                 if let Some(command_tx) = registry.peer_command_tx(&peer_node_id) {
@@ -324,6 +348,8 @@ async fn handle_engine_control(
                 }
             }
 
+            let session_id = *session_id_seed;
+            *session_id_seed = session_id_seed.wrapping_add(1);
             let command_tx = spawn_session_actor_for_peer(
                 config,
                 event_tx,
@@ -331,6 +357,7 @@ async fn handle_engine_control(
                 shutdown_tx,
                 engine_control_tx,
                 &peer_node_id,
+                session_id,
                 framed,
             );
 
@@ -340,20 +367,30 @@ async fn handle_engine_control(
                     command_tx,
                     addr,
                     outbound,
+                    session_id,
+                    connected_at_ms: now_millis_u64(),
                 },
             );
+            true
         }
         EngineControl::ConnectFailed { addr, error } => {
             warn!(addr=%addr, "connection attempt failed: {error}");
             emit_connection_error_event(event_tx, None, Some(addr), error);
+            false
         }
         EngineControl::ConnectAttemptFinished { addr } => {
             registry.clear_connecting(&addr);
+            false
         }
         EngineControl::PeerFailed {
             peer_node_id,
+            session_id,
             error,
         } => {
+            if !registry.peer_matches_session(&peer_node_id, session_id) {
+                debug!(peer=%peer_node_id, session_id, "ignore stale peer failure from closed session");
+                return false;
+            }
             warn!(peer=%peer_node_id, "session actor failed: {error}");
             emit_connection_error_event(
                 event_tx,
@@ -361,9 +398,18 @@ async fn handle_engine_control(
                 None,
                 SyncError::Connection(error),
             );
+            false
         }
-        EngineControl::PeerDisconnected { peer_node_id } => {
-            registry.remove_peer(&peer_node_id);
+        EngineControl::PeerDisconnected {
+            peer_node_id,
+            session_id,
+        } => {
+            if registry.remove_peer_if_session(&peer_node_id, session_id) {
+                true
+            } else {
+                debug!(peer=%peer_node_id, session_id, "ignore stale peer disconnected from old session");
+                false
+            }
         }
         EngineControl::DiscoveredPeer(peer) => {
             if matches!(
@@ -372,6 +418,7 @@ async fn handle_engine_control(
             ) {
                 error!(peer=%peer.node_id, "discovery conflict: local node_id equals remote node_id");
             }
+            false
         }
     }
 }
@@ -383,6 +430,7 @@ fn spawn_session_actor_for_peer(
     shutdown_tx: &broadcast::Sender<()>,
     engine_control_tx: &mpsc::Sender<EngineControl>,
     peer_node_id: &str,
+    session_id: u64,
     framed: Framed<TlsStream<TcpStream>, LengthDelimitedCodec>,
 ) -> mpsc::Sender<SessionCommand> {
     let (command_tx, command_rx) = mpsc::channel(128);
@@ -410,6 +458,7 @@ fn spawn_session_actor_for_peer(
             let _ = disconnect_tx
                 .send(EngineControl::PeerFailed {
                     peer_node_id: peer_node_id_for_task.clone(),
+                    session_id,
                     error,
                 })
                 .await;
@@ -418,6 +467,7 @@ fn spawn_session_actor_for_peer(
         let _ = disconnect_tx
             .send(EngineControl::PeerDisconnected {
                 peer_node_id: peer_node_id_for_task,
+                session_id,
             })
             .await;
     });
@@ -437,5 +487,25 @@ fn emit_connection_error_event(
         error: error.to_string(),
     }) {
         warn!("drop connection error event: {send_error}");
+    }
+}
+
+fn publish_peer_snapshot(
+    registry: &PeerRegistry,
+    peers_tx: &watch::Sender<Vec<ConnectedPeerInfo>>,
+) {
+    let _ = peers_tx.send(registry.snapshot());
+}
+
+fn now_millis_u64() -> u64 {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+
+    if millis > u64::MAX as u128 {
+        u64::MAX
+    } else {
+        millis as u64
     }
 }

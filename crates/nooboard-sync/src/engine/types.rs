@@ -12,6 +12,20 @@ pub enum SyncStatus {
     Error(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PeerConnectionState {
+    Connected,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectedPeerInfo {
+    pub peer_node_id: String,
+    pub addr: SocketAddr,
+    pub outbound: bool,
+    pub connected_at_ms: u64,
+    pub state: PeerConnectionState,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransferState {
     Started {
@@ -87,6 +101,7 @@ pub struct SyncEngineHandle {
     pub control_tx: mpsc::Sender<SyncControlCommand>,
     pub event_rx: mpsc::Receiver<SyncEvent>,
     pub progress_rx: broadcast::Receiver<TransferUpdate>,
+    pub peers_rx: watch::Receiver<Vec<ConnectedPeerInfo>>,
     pub status_rx: watch::Receiver<SyncStatus>,
     pub shutdown_tx: broadcast::Sender<()>,
 }
