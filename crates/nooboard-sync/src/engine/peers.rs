@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 use tokio_rustls::TlsStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
+use crate::error::{ConnectionError, SyncError};
 use crate::session::actor::SessionCommand;
 use crate::discovery::DiscoveredPeer;
 
@@ -29,8 +30,16 @@ pub(super) enum EngineControl {
         outbound: bool,
         framed: Framed<TlsStream<TcpStream>, LengthDelimitedCodec>,
     },
+    ConnectFailed {
+        addr: SocketAddr,
+        error: SyncError,
+    },
     ConnectAttemptFinished {
         addr: SocketAddr,
+    },
+    PeerFailed {
+        peer_node_id: String,
+        error: ConnectionError,
     },
     PeerDisconnected {
         peer_node_id: String,
@@ -84,19 +93,31 @@ impl PeerRegistry {
         }
     }
 
-    pub(super) async fn forward_file_decision(&self, decision: FileDecisionInput) -> bool {
+    pub(super) async fn forward_file_decision(
+        &self,
+        decision: FileDecisionInput,
+    ) -> Result<(), ConnectionError> {
         if let Some(peer) = self.peers.get(&decision.peer_node_id) {
-            let _ = peer
+            peer
                 .command_tx
                 .send(SessionCommand::FileDecision {
                     transfer_id: decision.transfer_id,
                     accept: decision.accept,
                     reason: decision.reason,
                 })
-                .await;
-            true
+                .await
+                .map_err(|error| {
+                    ConnectionError::State(format!(
+                        "failed to forward FileDecision to peer {} transfer {}: {}",
+                        decision.peer_node_id, decision.transfer_id, error
+                    ))
+                })?;
+            Ok(())
         } else {
-            false
+            Err(ConnectionError::State(format!(
+                "peer {} is not connected",
+                decision.peer_node_id
+            )))
         }
     }
 
@@ -140,5 +161,54 @@ impl PeerRegistry {
         peer: &DiscoveredPeer,
     ) -> DedupeDecision {
         self.candidates.apply_discovered_peer(local_node_id, peer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn forward_file_decision_returns_error_when_peer_missing() {
+        let registry = PeerRegistry::new();
+        let result = registry
+            .forward_file_decision(FileDecisionInput {
+                peer_node_id: "missing-peer".to_string(),
+                transfer_id: 1,
+                accept: true,
+                reason: None,
+            })
+            .await;
+
+        assert!(matches!(result, Err(ConnectionError::State(_))));
+    }
+
+    #[tokio::test]
+    async fn forward_file_decision_returns_error_when_session_channel_closed() {
+        let mut registry = PeerRegistry::new();
+        let (command_tx, command_rx) = mpsc::channel(1);
+        drop(command_rx);
+
+        registry.insert_peer(
+            "node-b".to_string(),
+            PeerHandle {
+                command_tx,
+                addr: "127.0.0.1:12345"
+                    .parse()
+                    .expect("test addr should be valid"),
+                outbound: true,
+            },
+        );
+
+        let result = registry
+            .forward_file_decision(FileDecisionInput {
+                peer_node_id: "node-b".to_string(),
+                transfer_id: 7,
+                accept: false,
+                reason: Some("reject".to_string()),
+            })
+            .await;
+
+        assert!(matches!(result, Err(ConnectionError::State(_))));
     }
 }

@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use tokio::sync::{broadcast, mpsc, watch};
@@ -57,6 +58,11 @@ pub enum SyncEvent {
         file_name: String,
         file_size: u64,
         total_chunks: u32,
+    },
+    ConnectionError {
+        peer_node_id: Option<String>,
+        addr: Option<SocketAddr>,
+        error: String,
     },
     TransferUpdate(TransferUpdate),
 }

@@ -128,6 +128,7 @@ async fn file_transfer_accept_path_works() -> Result<(), Box<dyn std::error::Err
                         break;
                     }
                 }
+                SyncEvent::ConnectionError { .. } => {}
                 SyncEvent::TextReceived(_) => {}
             }
         } else {
@@ -273,14 +274,83 @@ async fn control_channel_can_disconnect_specific_peer() -> Result<(), Box<dyn st
         .send("after-disconnect".to_string())
         .await?;
 
-    let maybe_event = timeout(Duration::from_millis(900), handle_b.event_rx.recv()).await;
-    assert!(
-        maybe_event.is_err(),
-        "peer should be disconnected and not receive text before reconnect loop runs"
-    );
+    let deadline = Instant::now() + Duration::from_millis(900);
+    while Instant::now() < deadline {
+        let remain = deadline.duration_since(Instant::now());
+        let maybe_event = timeout(remain, handle_b.event_rx.recv()).await;
+        match maybe_event {
+            Err(_) => break,
+            Ok(Some(SyncEvent::TextReceived(text))) => {
+                assert_ne!(
+                    text, "after-disconnect",
+                    "peer should be disconnected and not receive text before reconnect loop runs"
+                );
+            }
+            Ok(Some(_)) => {}
+            Ok(None) => break,
+        }
+    }
 
     let _ = handle_a.shutdown_tx.send(());
     let _ = handle_b.shutdown_tx.send(());
 
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn missing_peer_file_decision_emits_connection_error_event(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let listen_port = free_port();
+    let peer_port = free_port();
+    let mut config = make_config(
+        "solo-node",
+        listen_port,
+        peer_port,
+        dir.path().to_path_buf(),
+        1024 * 1024,
+    );
+    config.manual_peers.clear();
+
+    let mut handle = start_sync_engine(config).await?;
+    wait_running(&mut handle.status_rx).await?;
+
+    handle
+        .decision_tx
+        .send(nooboard_sync::FileDecisionInput {
+            peer_node_id: "ghost-peer".to_string(),
+            transfer_id: 42,
+            accept: true,
+            reason: None,
+        })
+        .await?;
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut saw_connection_error = false;
+    while Instant::now() < deadline {
+        let remain = deadline.duration_since(Instant::now());
+        let event = timeout(remain, handle.event_rx.recv()).await?;
+        if let Some(SyncEvent::ConnectionError {
+            peer_node_id,
+            addr: _,
+            error,
+        }) = event
+        {
+            if peer_node_id.as_deref() == Some("ghost-peer")
+                && error.contains("connection error")
+                && error.contains("not connected")
+            {
+                saw_connection_error = true;
+                break;
+            }
+        }
+    }
+
+    assert!(
+        saw_connection_error,
+        "must emit connection error event for missing peer decision"
+    );
+
+    let _ = handle.shutdown_tx.send(());
     Ok(())
 }

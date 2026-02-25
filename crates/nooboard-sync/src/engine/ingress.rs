@@ -3,8 +3,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use tokio::net::TcpListener;
 use tokio::sync::{broadcast, mpsc};
-use tracing::debug;
-
 use crate::auth::{ChallengeRegistry, SocketId};
 use crate::config::SyncConfig;
 use crate::discovery::DiscoveredPeer;
@@ -61,7 +59,9 @@ pub(super) async fn run_accept_loop(
                                 .await;
                         }
                         Err(error) => {
-                            debug!(addr=%addr, "reject inbound connection: {error}");
+                            let _ = control_tx
+                                .send(EngineControl::ConnectFailed { addr, error })
+                                .await;
                         }
                     }
                 });

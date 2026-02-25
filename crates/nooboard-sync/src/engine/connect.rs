@@ -39,15 +39,25 @@ pub(super) fn schedule_connect_attempts(
 
         tokio::spawn(async move {
             let result = connect_outbound_peer(&config, &tls, target.clone()).await;
-            if let Ok((peer_node_id, framed)) = result {
-                let _ = control_tx
-                    .send(EngineControl::Connected {
-                        peer_node_id,
-                        addr: target.addr,
-                        outbound: true,
-                        framed,
-                    })
-                    .await;
+            match result {
+                Ok((peer_node_id, framed)) => {
+                    let _ = control_tx
+                        .send(EngineControl::Connected {
+                            peer_node_id,
+                            addr: target.addr,
+                            outbound: true,
+                            framed,
+                        })
+                        .await;
+                }
+                Err(error) => {
+                    let _ = control_tx
+                        .send(EngineControl::ConnectFailed {
+                            addr: target.addr,
+                            error,
+                        })
+                        .await;
+                }
             }
 
             let _ = control_tx

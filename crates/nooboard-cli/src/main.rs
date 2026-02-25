@@ -11,7 +11,7 @@ use nooboard_core::{ClipboardEvent, NooboardError};
 use nooboard_platform::{ClipboardBackend, DEFAULT_WATCH_INTERVAL};
 use nooboard_storage::{SqliteEventRepository, StorageError, default_dev_config_path};
 use nooboard_sync::{
-    FileDecisionInput, SyncEngineHandle, SyncEvent, SyncStatus, start_sync_engine,
+    FileDecisionInput, SyncEngineHandle, SyncEvent, SyncStatus, TransferState, start_sync_engine,
 };
 use tokio::sync::mpsc;
 use tracing_subscriber::EnvFilter;
@@ -199,6 +199,9 @@ async fn handle_watch(
     } else {
         None
     };
+    let mut sync_progress_rx = sync_handle
+        .as_mut()
+        .map(|handle| handle.progress_rx.resubscribe());
 
     println!(
         "watching clipboard changes (interval={}ms). Press Ctrl+C to stop.",
@@ -266,9 +269,6 @@ async fn handle_watch(
 
                         println!("[remote] {text}");
                     }
-                    Some(SyncEvent::FileDownloaded { path, size }) => {
-                        println!("[file] downloaded {} ({} bytes)", path.display(), size);
-                    }
                     Some(SyncEvent::FileDecisionRequired { peer_node_id, transfer_id, file_name, file_size, total_chunks }) => {
                         println!(
                             "[file] incoming from {}: {} ({} bytes, {} chunks)",
@@ -288,9 +288,88 @@ async fn handle_watch(
                             });
                         }
                     }
+                    Some(SyncEvent::TransferUpdate(update)) => {
+                        match update.state {
+                            TransferState::Started { file_name, total_bytes } => {
+                                println!(
+                                    "[file] {:?} transfer {} with {} started: {} ({} bytes)",
+                                    update.direction,
+                                    update.transfer_id,
+                                    update.peer_node_id,
+                                    file_name,
+                                    total_bytes
+                                );
+                            }
+                            TransferState::Finished { path } => {
+                                match path {
+                                    Some(path) => println!(
+                                        "[file] downloaded {} from {}",
+                                        path.display(),
+                                        update.peer_node_id
+                                    ),
+                                    None => println!(
+                                        "[file] upload {} to {} finished",
+                                        update.transfer_id,
+                                        update.peer_node_id
+                                    ),
+                                }
+                            }
+                            TransferState::Failed { reason } => {
+                                println!(
+                                    "[file] transfer {} with {} failed: {}",
+                                    update.transfer_id, update.peer_node_id, reason
+                                );
+                            }
+                            TransferState::Cancelled { reason } => {
+                                println!(
+                                    "[file] transfer {} with {} cancelled{}",
+                                    update.transfer_id,
+                                    update.peer_node_id,
+                                    reason
+                                        .as_deref()
+                                        .map(|value| format!(": {value}"))
+                                        .unwrap_or_default()
+                                );
+                            }
+                            TransferState::Progress { .. } => {}
+                        }
+                    }
+                    Some(SyncEvent::ConnectionError { peer_node_id, addr, error }) => {
+                        match (peer_node_id, addr) {
+                            (Some(peer), Some(addr)) => {
+                                println!("[sync-error] peer={} addr={} error={}", peer, addr, error);
+                            }
+                            (Some(peer), None) => {
+                                println!("[sync-error] peer={} error={}", peer, error);
+                            }
+                            (None, Some(addr)) => {
+                                println!("[sync-error] addr={} error={}", addr, error);
+                            }
+                            (None, None) => {
+                                println!("[sync-error] error={}", error);
+                            }
+                        }
+                    }
                     None => {
                         sync_handle = None;
+                        sync_progress_rx = None;
                     }
+                }
+            }
+            maybe_progress = recv_sync_progress(&mut sync_progress_rx), if sync_progress_rx.is_some() => {
+                if let Some(update) = maybe_progress {
+                    if let TransferState::Progress { done_bytes, total_bytes, .. } = update.state {
+                        println!(
+                            "[file] {:?} transfer {} with {} progress: {}/{} bytes",
+                            update.direction,
+                            update.transfer_id,
+                            update.peer_node_id,
+                            done_bytes,
+                            total_bytes
+                        );
+                    }
+                } else {
+                    sync_progress_rx = None;
                 }
             }
         }
@@ -380,6 +459,22 @@ async fn recv_sync_event(sync_handle: &mut Option<SyncEngineHandle>) -> Option<S
     match sync_handle {
         Some(handle) => handle.event_rx.recv().await,
         None => None,
+    }
+}
+
+async fn recv_sync_progress(
+    sync_progress_rx: &mut Option<tokio::sync::broadcast::Receiver<nooboard_sync::TransferUpdate>>,
+) -> Option<nooboard_sync::TransferUpdate> {
+    let Some(progress_rx) = sync_progress_rx.as_mut() else {
+        return None;
+    };
+
+    loop {
+        match progress_rx.recv().await {
+            Ok(update) => return Some(update),
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => return None,
+        }
     }
 }
 

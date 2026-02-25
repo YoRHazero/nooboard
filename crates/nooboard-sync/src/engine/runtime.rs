@@ -220,8 +220,18 @@ async fn run_engine_inner(
                     Some(decision) => {
                         let peer_node_id = decision.peer_node_id.clone();
                         let transfer_id = decision.transfer_id;
-                        if !registry.forward_file_decision(decision).await {
-                            warn!(peer=%peer_node_id, transfer_id, "drop file decision because peer is not connected");
+                        if let Err(error) = registry.forward_file_decision(decision).await {
+                            warn!(
+                                peer=%peer_node_id,
+                                transfer_id,
+                                "drop file decision: {error}"
+                            );
+                            emit_connection_error_event(
+                                &event_tx,
+                                Some(peer_node_id),
+                                None,
+                                SyncError::Connection(error),
+                            );
                         }
                     }
                     None => break,
@@ -333,8 +343,24 @@ async fn handle_engine_control(
                 },
             );
         }
+        EngineControl::ConnectFailed { addr, error } => {
+            warn!(addr=%addr, "connection attempt failed: {error}");
+            emit_connection_error_event(event_tx, None, Some(addr), error);
+        }
         EngineControl::ConnectAttemptFinished { addr } => {
             registry.clear_connecting(&addr);
+        }
+        EngineControl::PeerFailed {
+            peer_node_id,
+            error,
+        } => {
+            warn!(peer=%peer_node_id, "session actor failed: {error}");
+            emit_connection_error_event(
+                event_tx,
+                Some(peer_node_id),
+                None,
+                SyncError::Connection(error),
+            );
         }
         EngineControl::PeerDisconnected { peer_node_id } => {
             registry.remove_peer(&peer_node_id);
@@ -381,7 +407,12 @@ fn spawn_session_actor_for_peer(
         .await;
 
         if let Err(error) = actor_result {
-            warn!(peer=%peer_node_id_for_task, "session actor terminated: {error}");
+            let _ = disconnect_tx
+                .send(EngineControl::PeerFailed {
+                    peer_node_id: peer_node_id_for_task.clone(),
+                    error,
+                })
+                .await;
         }
 
         let _ = disconnect_tx
@@ -392,4 +423,19 @@ fn spawn_session_actor_for_peer(
     });
 
     command_tx
+}
+
+fn emit_connection_error_event(
+    event_tx: &mpsc::Sender<SyncEvent>,
+    peer_node_id: Option<String>,
+    addr: Option<std::net::SocketAddr>,
+    error: SyncError,
+) {
+    if let Err(send_error) = event_tx.try_send(SyncEvent::ConnectionError {
+        peer_node_id,
+        addr,
+        error: error.to_string(),
+    }) {
+        warn!("drop connection error event: {send_error}");
+    }
 }

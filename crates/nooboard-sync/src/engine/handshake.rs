@@ -126,11 +126,15 @@ pub(super) async fn perform_server_handshake(
         .issue_challenge(socket_id, handshake_timeout)
         .await;
 
-    send_packet(
+    if let Err(error) = send_packet(
         framed,
         &Packet::Handshake(HandshakePacket::Challenge { nonce }),
     )
-    .await?;
+    .await
+    {
+        challenge_registry.clear(socket_id).await;
+        return Err(error.into());
+    }
 
     let response = timeout(handshake_timeout, recv_handshake_only(framed)).await;
     let response = match response {
