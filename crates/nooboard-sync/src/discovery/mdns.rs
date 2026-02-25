@@ -7,33 +7,10 @@ use tracing::{debug, warn};
 
 use crate::error::DiscoveryError;
 
+use super::DiscoveredPeer;
+
 pub const NOOBOARD_SERVICE_TYPE: &str = "_nooboard-sync._tcp.local.";
 const NODE_ID_PROPERTY: &str = "node_id";
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DiscoveredPeer {
-    pub node_id: String,
-    pub addr: SocketAddr,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DedupeDecision {
-    ConnectOut,
-    WaitInbound,
-    RejectConflict,
-}
-
-pub fn dedupe_decision(local_node_id: &str, peer_node_id: &str) -> DedupeDecision {
-    if local_node_id == peer_node_id {
-        return DedupeDecision::RejectConflict;
-    }
-
-    if local_node_id < peer_node_id {
-        DedupeDecision::ConnectOut
-    } else {
-        DedupeDecision::WaitInbound
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct MdnsDiscoveryConfig {
@@ -204,16 +181,6 @@ fn sanitize_label(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn smaller_node_id_must_initiate_connection() {
-        assert_eq!(dedupe_decision("a", "b"), DedupeDecision::ConnectOut);
-        assert_eq!(dedupe_decision("z", "b"), DedupeDecision::WaitInbound);
-        assert_eq!(
-            dedupe_decision("same", "same"),
-            DedupeDecision::RejectConflict
-        );
-    }
 
     #[test]
     fn sanitize_label_replaces_non_ascii() {

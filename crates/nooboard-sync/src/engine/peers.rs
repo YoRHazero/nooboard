@@ -7,14 +7,16 @@ use tokio::sync::mpsc;
 use tokio_rustls::TlsStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
-use crate::connection::actor::ConnectionCommand;
-use crate::discovery::{DedupeDecision, DiscoveredPeer, dedupe_decision};
+use crate::session::actor::SessionCommand;
+use crate::discovery::DiscoveredPeer;
 
+use super::candidates::{CandidateRegistry, ConnectTarget};
+use super::policy::DedupeDecision;
 use super::types::FileDecisionInput;
 
 #[derive(Debug)]
 pub(super) struct PeerHandle {
-    pub(super) command_tx: mpsc::Sender<ConnectionCommand>,
+    pub(super) command_tx: mpsc::Sender<SessionCommand>,
     pub(super) addr: SocketAddr,
     pub(super) outbound: bool,
 }
@@ -36,17 +38,11 @@ pub(super) enum EngineControl {
     DiscoveredPeer(DiscoveredPeer),
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct ConnectTarget {
-    pub(super) addr: SocketAddr,
-    pub(super) expected_node_id: Option<String>,
-}
-
 #[derive(Debug, Default)]
 pub(super) struct PeerRegistry {
     peers: HashMap<String, PeerHandle>,
     connecting_addrs: HashSet<SocketAddr>,
-    discovered_targets: HashMap<String, SocketAddr>,
+    candidates: CandidateRegistry,
 }
 
 impl PeerRegistry {
@@ -63,23 +59,7 @@ impl PeerRegistry {
     }
 
     pub(super) fn connect_targets(&self, manual_peers: &[SocketAddr]) -> Vec<ConnectTarget> {
-        let mut targets = Vec::new();
-
-        for addr in manual_peers {
-            targets.push(ConnectTarget {
-                addr: *addr,
-                expected_node_id: None,
-            });
-        }
-
-        for (node_id, addr) in &self.discovered_targets {
-            targets.push(ConnectTarget {
-                addr: *addr,
-                expected_node_id: Some(node_id.clone()),
-            });
-        }
-
-        targets
+        self.candidates.connect_targets(manual_peers)
     }
 
     pub(super) fn should_skip_target(&self, addr: &SocketAddr) -> bool {
@@ -90,7 +70,7 @@ impl PeerRegistry {
         for peer in self.peers.values() {
             let _ = peer
                 .command_tx
-                .send(ConnectionCommand::SendText(text.clone()))
+                .send(SessionCommand::SendText(text.clone()))
                 .await;
         }
     }
@@ -99,7 +79,7 @@ impl PeerRegistry {
         for peer in self.peers.values() {
             let _ = peer
                 .command_tx
-                .send(ConnectionCommand::SendFile(path.clone()))
+                .send(SessionCommand::SendFile(path.clone()))
                 .await;
         }
     }
@@ -108,7 +88,7 @@ impl PeerRegistry {
         if let Some(peer) = self.peers.get(&decision.peer_node_id) {
             let _ = peer
                 .command_tx
-                .send(ConnectionCommand::FileDecision {
+                .send(SessionCommand::FileDecision {
                     transfer_id: decision.transfer_id,
                     accept: decision.accept,
                     reason: decision.reason,
@@ -123,13 +103,13 @@ impl PeerRegistry {
     pub(super) async fn disconnect_peer(&mut self, peer_node_id: &str) -> Option<SocketAddr> {
         let peer = self.peers.remove(peer_node_id)?;
         let addr = peer.addr;
-        let _ = peer.command_tx.send(ConnectionCommand::Shutdown).await;
+        let _ = peer.command_tx.send(SessionCommand::Shutdown).await;
         Some(addr)
     }
 
     pub(super) async fn shutdown_all(&self) {
         for peer in self.peers.values() {
-            let _ = peer.command_tx.send(ConnectionCommand::Shutdown).await;
+            let _ = peer.command_tx.send(SessionCommand::Shutdown).await;
         }
     }
 
@@ -148,7 +128,7 @@ impl PeerRegistry {
     pub(super) fn peer_command_tx(
         &self,
         peer_node_id: &str,
-    ) -> Option<mpsc::Sender<ConnectionCommand>> {
+    ) -> Option<mpsc::Sender<SessionCommand>> {
         self.peers
             .get(peer_node_id)
             .map(|peer| peer.command_tx.clone())
@@ -159,17 +139,6 @@ impl PeerRegistry {
         local_node_id: &str,
         peer: &DiscoveredPeer,
     ) -> DedupeDecision {
-        let decision = dedupe_decision(local_node_id, &peer.node_id);
-        match decision {
-            DedupeDecision::ConnectOut => {
-                self.discovered_targets
-                    .insert(peer.node_id.clone(), peer.addr);
-            }
-            DedupeDecision::WaitInbound => {
-                self.discovered_targets.remove(&peer.node_id);
-            }
-            DedupeDecision::RejectConflict => {}
-        }
-        decision
+        self.candidates.apply_discovered_peer(local_node_id, peer)
     }
 }

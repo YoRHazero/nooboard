@@ -31,6 +31,12 @@ pub struct DownloadedFile {
     pub size: u64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TransferProgress {
+    pub done_bytes: u64,
+    pub total_bytes: u64,
+}
+
 #[derive(Debug, Clone)]
 pub enum IdleTimeoutAction {
     RejectDecision { transfer_id: u32, reason: String },
@@ -124,7 +130,7 @@ impl IncomingTransfer {
         transfer_id: u32,
         seq: u32,
         data: &[u8],
-    ) -> Result<(), FileReceiveError> {
+    ) -> Result<TransferProgress, FileReceiveError> {
         self.last_activity = Instant::now();
 
         match &mut self.state {
@@ -156,7 +162,10 @@ impl IncomingTransfer {
                     });
                 }
 
-                Ok(())
+                Ok(TransferProgress {
+                    done_bytes: *written_bytes,
+                    total_bytes: self.expected_size,
+                })
             }
         }
     }
@@ -308,7 +317,7 @@ impl FileReceiverStateMachine {
         transfer_id: u32,
         seq: u32,
         data: &[u8],
-    ) -> Result<(), FileReceiveError> {
+    ) -> Result<TransferProgress, FileReceiveError> {
         let result = {
             let transfer = self
                 .active
@@ -342,11 +351,27 @@ impl FileReceiverStateMachine {
     }
 
     pub async fn abort_transfer(&mut self, transfer_id: u32) -> Result<(), FileReceiveError> {
+        let _ = self.abort_transfer_with_flag(transfer_id).await?;
+        Ok(())
+    }
+
+    pub async fn abort_transfer_with_flag(
+        &mut self,
+        transfer_id: u32,
+    ) -> Result<bool, FileReceiveError> {
         let Some(transfer) = self.active.remove(&transfer_id) else {
-            return Ok(());
+            return Ok(false);
         };
 
-        transfer.cleanup_tmp().await
+        transfer.cleanup_tmp().await?;
+        Ok(true)
+    }
+
+    pub async fn handle_file_cancel_with_flag(
+        &mut self,
+        transfer_id: u32,
+    ) -> Result<bool, FileReceiveError> {
+        self.abort_transfer_with_flag(transfer_id).await
     }
 
     pub async fn collect_idle_actions(

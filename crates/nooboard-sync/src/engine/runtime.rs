@@ -12,19 +12,19 @@ use tracing::{debug, error, info, warn};
 
 use crate::auth::ChallengeRegistry;
 use crate::config::SyncConfig;
-use crate::connection::actor::{ConnectionActorContext, ConnectionCommand, run_connection_actor};
+use crate::session::actor::{SessionActorContext, SessionCommand, run_session_actor};
 use crate::discovery::{
-    DedupeDecision, DiscoveredPeer, MdnsDiscoveryConfig, MdnsHandle, dedupe_decision,
-    start_mdns_discovery,
+    DiscoveredPeer, MdnsDiscoveryConfig, MdnsHandle, start_mdns_discovery,
 };
 use crate::error::SyncError;
 use crate::transport::TlsContext;
 
 use super::connect::{connection_direction_allowed, schedule_connect_attempts};
 use super::ingress::{run_accept_loop, run_discovery_forward_loop};
+use super::policy::{DedupeDecision, dedupe_decision};
 use super::peers::{EngineControl, PeerHandle, PeerRegistry};
 use super::types::{
-    FileDecisionInput, SyncControlCommand, SyncEngineHandle, SyncEvent, SyncStatus,
+    FileDecisionInput, SyncControlCommand, SyncEngineHandle, SyncEvent, SyncStatus, TransferUpdate,
 };
 
 pub async fn start_sync_engine(config: SyncConfig) -> Result<SyncEngineHandle, SyncError> {
@@ -46,6 +46,7 @@ pub async fn start_sync_engine_with_discovery(
     let (decision_tx, decision_rx) = mpsc::channel(128);
     let (control_tx, control_rx) = mpsc::channel(64);
     let (event_tx, event_rx) = mpsc::channel(128);
+    let (progress_tx, progress_rx) = broadcast::channel::<TransferUpdate>(256);
     let (status_tx, status_rx) = watch::channel(if config.enabled {
         SyncStatus::Starting
     } else {
@@ -61,6 +62,7 @@ pub async fn start_sync_engine_with_discovery(
             decision_rx,
             control_rx,
             event_tx,
+            progress_tx,
             status_tx,
             shutdown_tx.clone(),
             discovery_rx,
@@ -73,6 +75,7 @@ pub async fn start_sync_engine_with_discovery(
         decision_tx,
         control_tx,
         event_rx,
+        progress_rx,
         status_rx,
         shutdown_tx,
     })
@@ -85,6 +88,7 @@ async fn run_engine(
     mut decision_rx: mpsc::Receiver<FileDecisionInput>,
     mut control_rx: mpsc::Receiver<SyncControlCommand>,
     event_tx: mpsc::Sender<SyncEvent>,
+    progress_tx: broadcast::Sender<TransferUpdate>,
     status_tx: watch::Sender<SyncStatus>,
     shutdown_tx: broadcast::Sender<()>,
     mut discovery_rx: Option<mpsc::Receiver<DiscoveredPeer>>,
@@ -96,6 +100,7 @@ async fn run_engine(
         &mut decision_rx,
         &mut control_rx,
         event_tx,
+        progress_tx,
         &status_tx,
         shutdown_tx,
         &mut discovery_rx,
@@ -118,6 +123,7 @@ async fn run_engine_inner(
     decision_rx: &mut mpsc::Receiver<FileDecisionInput>,
     control_rx: &mut mpsc::Receiver<SyncControlCommand>,
     event_tx: mpsc::Sender<SyncEvent>,
+    progress_tx: broadcast::Sender<TransferUpdate>,
     status_tx: &watch::Sender<SyncStatus>,
     shutdown_tx: broadcast::Sender<()>,
     discovery_rx: &mut Option<mpsc::Receiver<DiscoveredPeer>>,
@@ -236,6 +242,7 @@ async fn run_engine_inner(
                     control,
                     &config,
                     &event_tx,
+                    &progress_tx,
                     &shutdown_tx,
                     &engine_control_tx,
                     &mut registry,
@@ -271,6 +278,7 @@ async fn handle_engine_control(
     control: EngineControl,
     config: &SyncConfig,
     event_tx: &mpsc::Sender<SyncEvent>,
+    progress_tx: &broadcast::Sender<TransferUpdate>,
     shutdown_tx: &broadcast::Sender<()>,
     engine_control_tx: &mpsc::Sender<EngineControl>,
     registry: &mut PeerRegistry,
@@ -302,13 +310,14 @@ async fn handle_engine_control(
                 }
 
                 if let Some(command_tx) = registry.peer_command_tx(&peer_node_id) {
-                    let _ = command_tx.send(ConnectionCommand::Shutdown).await;
+                    let _ = command_tx.send(SessionCommand::Shutdown).await;
                 }
             }
 
-            let command_tx = spawn_connection_actor_for_peer(
+            let command_tx = spawn_session_actor_for_peer(
                 config,
                 event_tx,
+                progress_tx,
                 shutdown_tx,
                 engine_control_tx,
                 &peer_node_id,
@@ -341,35 +350,38 @@ async fn handle_engine_control(
     }
 }
 
-fn spawn_connection_actor_for_peer(
+fn spawn_session_actor_for_peer(
     config: &SyncConfig,
     event_tx: &mpsc::Sender<SyncEvent>,
+    progress_tx: &broadcast::Sender<TransferUpdate>,
     shutdown_tx: &broadcast::Sender<()>,
     engine_control_tx: &mpsc::Sender<EngineControl>,
     peer_node_id: &str,
     framed: Framed<TlsStream<TcpStream>, LengthDelimitedCodec>,
-) -> mpsc::Sender<ConnectionCommand> {
+) -> mpsc::Sender<SessionCommand> {
     let (command_tx, command_rx) = mpsc::channel(128);
     let disconnect_tx = engine_control_tx.clone();
     let peer_node_id_for_task = peer_node_id.to_string();
 
     let actor_config = config.clone();
     let actor_event_tx = event_tx.clone();
+    let actor_progress_tx = progress_tx.clone();
     let actor_shutdown_tx = shutdown_tx.clone();
 
     tokio::spawn(async move {
-        let actor_result = run_connection_actor(ConnectionActorContext {
+        let actor_result = run_session_actor(SessionActorContext {
             peer_node_id: peer_node_id_for_task.clone(),
             config: actor_config,
             framed,
             command_rx,
             event_tx: actor_event_tx,
+            progress_tx: actor_progress_tx,
             shutdown_rx: actor_shutdown_tx.subscribe(),
         })
         .await;
 
         if let Err(error) = actor_result {
-            warn!(peer=%peer_node_id_for_task, "connection actor terminated: {error}");
+            warn!(peer=%peer_node_id_for_task, "session actor terminated: {error}");
         }
 
         let _ = disconnect_tx

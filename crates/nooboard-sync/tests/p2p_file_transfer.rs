@@ -2,7 +2,7 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use nooboard_sync::{SyncConfig, SyncControlCommand, SyncEvent, start_sync_engine};
+use nooboard_sync::{SyncConfig, SyncControlCommand, SyncEvent, TransferState, start_sync_engine};
 use tempfile::TempDir;
 use tokio::fs;
 use tokio::time::timeout;
@@ -122,9 +122,11 @@ async fn file_transfer_accept_path_works() -> Result<(), Box<dyn std::error::Err
                         })
                         .await?;
                 }
-                SyncEvent::FileDownloaded { path, .. } => {
-                    downloaded = Some(path);
-                    break;
+                SyncEvent::TransferUpdate(update) => {
+                    if let TransferState::Finished { path: Some(path) } = update.state {
+                        downloaded = Some(path);
+                        break;
+                    }
                 }
                 SyncEvent::TextReceived(_) => {}
             }

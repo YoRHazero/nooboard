@@ -12,12 +12,45 @@ pub enum SyncStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransferState {
+    Started {
+        file_name: String,
+        total_bytes: u64,
+    },
+    Progress {
+        done_bytes: u64,
+        total_bytes: u64,
+        bps: Option<u64>,
+        eta_ms: Option<u64>,
+    },
+    Finished {
+        path: Option<PathBuf>,
+    },
+    Failed {
+        reason: String,
+    },
+    Cancelled {
+        reason: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransferDirection {
+    Incoming,
+    Outgoing,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransferUpdate {
+    pub transfer_id: u32,
+    pub peer_node_id: String,
+    pub direction: TransferDirection,
+    pub state: TransferState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncEvent {
     TextReceived(String),
-    FileDownloaded {
-        path: PathBuf,
-        size: u64,
-    },
     FileDecisionRequired {
         peer_node_id: String,
         transfer_id: u32,
@@ -25,6 +58,7 @@ pub enum SyncEvent {
         file_size: u64,
         total_chunks: u32,
     },
+    TransferUpdate(TransferUpdate),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,6 +80,7 @@ pub struct SyncEngineHandle {
     pub decision_tx: mpsc::Sender<FileDecisionInput>,
     pub control_tx: mpsc::Sender<SyncControlCommand>,
     pub event_rx: mpsc::Receiver<SyncEvent>,
+    pub progress_rx: broadcast::Receiver<TransferUpdate>,
     pub status_rx: watch::Receiver<SyncStatus>,
     pub shutdown_tx: broadcast::Sender<()>,
 }

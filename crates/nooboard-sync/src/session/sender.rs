@@ -8,10 +8,17 @@ use tokio::io::AsyncReadExt;
 use tracing::{debug, warn};
 
 use crate::config::SyncConfig;
+use crate::engine::TransferState;
 use crate::error::ConnectionError;
 use crate::protocol::{DataPacket, Packet};
 
-use super::ConnectionResult;
+use super::SessionResult;
+
+#[derive(Debug, Clone)]
+pub struct TransferStateUpdate {
+    pub transfer_id: u32,
+    pub state: TransferState,
+}
 
 struct OutgoingTransfer {
     transfer_id: u32,
@@ -19,8 +26,11 @@ struct OutgoingTransfer {
     next_seq: u32,
     deadline: Instant,
     accepted: Option<bool>,
+    decision_reason: Option<String>,
     file: fs::File,
+    file_name: String,
     file_size: u64,
+    sent_bytes: u64,
     chunk_size: usize,
     hasher: Sha256,
     end_sent: bool,
@@ -31,6 +41,7 @@ pub struct FileSender {
     upload: Option<OutgoingTransfer>,
     transfer_id_seed: u32,
     outbox: VecDeque<Packet>,
+    updates: VecDeque<TransferStateUpdate>,
 }
 
 impl FileSender {
@@ -40,6 +51,7 @@ impl FileSender {
             upload: None,
             transfer_id_seed: 1,
             outbox: VecDeque::new(),
+            updates: VecDeque::new(),
         }
     }
 
@@ -51,6 +63,7 @@ impl FileSender {
         if let Some(transfer) = self.upload.as_mut() {
             if transfer.transfer_id == transfer_id {
                 transfer.accepted = Some(accept);
+                transfer.decision_reason = reason.clone();
                 if !accept {
                     warn!(
                         transfer_id,
@@ -62,8 +75,25 @@ impl FileSender {
         }
     }
 
-    pub async fn tick(&mut self, config: &SyncConfig, peer_node_id: &str) -> ConnectionResult<()> {
-        if self.upload.is_none() {
+    pub fn pop_packet(&mut self) -> Option<Packet> {
+        self.outbox.pop_front()
+    }
+
+    pub fn requeue_packet_front(&mut self, packet: Packet) {
+        self.outbox.push_front(packet);
+    }
+
+    pub fn pop_update(&mut self) -> Option<TransferStateUpdate> {
+        self.updates.pop_front()
+    }
+
+    pub async fn tick(
+        &mut self,
+        config: &SyncConfig,
+        peer_node_id: &str,
+        allow_new_data: bool,
+    ) -> SessionResult<()> {
+        if self.upload.is_none() && allow_new_data {
             if let Some(path) = self.pending_files.pop_front() {
                 match self
                     .start_upload(config, &path, self.transfer_id_seed, peer_node_id)
@@ -78,17 +108,19 @@ impl FileSender {
                             path = %path.display(),
                             "skip file upload: {error}"
                         );
+                        self.updates.push_back(TransferStateUpdate {
+                            transfer_id: self.transfer_id_seed,
+                            state: TransferState::Failed {
+                                reason: error.to_string(),
+                            },
+                        });
                         self.transfer_id_seed = self.transfer_id_seed.wrapping_add(1);
                     }
                 }
             }
         }
 
-        self.progress_upload(config).await
-    }
-
-    pub fn pop_packet(&mut self) -> Option<Packet> {
-        self.outbox.pop_front()
+        self.progress_upload(config, allow_new_data).await
     }
 
     async fn start_upload(
@@ -97,7 +129,7 @@ impl FileSender {
         path: &Path,
         transfer_id: u32,
         peer_node_id: &str,
-    ) -> ConnectionResult<()> {
+    ) -> SessionResult<()> {
         let metadata = fs::metadata(path).await.map_err(ConnectionError::Io)?;
         if !metadata.is_file() {
             return Err(ConnectionError::State(format!(
@@ -126,10 +158,17 @@ impl FileSender {
         let file = fs::File::open(path).await.map_err(ConnectionError::Io)?;
         self.outbox.push_back(Packet::Data(DataPacket::FileStart {
             transfer_id,
-            file_name,
+            file_name: file_name.clone(),
             file_size: metadata.len(),
             total_chunks,
         }));
+        self.updates.push_back(TransferStateUpdate {
+            transfer_id,
+            state: TransferState::Started {
+                file_name: file_name.clone(),
+                total_bytes: metadata.len(),
+            },
+        });
 
         debug!(
             peer = %peer_node_id,
@@ -144,8 +183,11 @@ impl FileSender {
             next_seq: 0,
             deadline: Instant::now() + Duration::from_millis(config.file_decision_timeout_ms),
             accepted: None,
+            decision_reason: None,
             file,
+            file_name,
             file_size: metadata.len(),
+            sent_bytes: 0,
             chunk_size: config.file_chunk_size,
             hasher: Sha256::new(),
             end_sent: false,
@@ -154,7 +196,11 @@ impl FileSender {
         Ok(())
     }
 
-    async fn progress_upload(&mut self, config: &SyncConfig) -> ConnectionResult<()> {
+    async fn progress_upload(
+        &mut self,
+        config: &SyncConfig,
+        allow_new_data: bool,
+    ) -> SessionResult<()> {
         let (outbox, upload) = (&mut self.outbox, &mut self.upload);
         let Some(state) = upload.as_mut() else {
             return Ok(());
@@ -165,6 +211,12 @@ impl FileSender {
                 outbox.push_back(Packet::Data(DataPacket::FileCancel {
                     transfer_id: state.transfer_id,
                 }));
+                self.updates.push_back(TransferStateUpdate {
+                    transfer_id: state.transfer_id,
+                    state: TransferState::Cancelled {
+                        reason: state.decision_reason.take(),
+                    },
+                });
                 *upload = None;
                 return Ok(());
             }
@@ -172,6 +224,15 @@ impl FileSender {
                 outbox.push_back(Packet::Data(DataPacket::FileCancel {
                     transfer_id: state.transfer_id,
                 }));
+                self.updates.push_back(TransferStateUpdate {
+                    transfer_id: state.transfer_id,
+                    state: TransferState::Failed {
+                        reason: format!(
+                            "file decision timeout for outgoing transfer {}",
+                            state.transfer_id
+                        ),
+                    },
+                });
                 *upload = None;
                 return Ok(());
             }
@@ -179,6 +240,10 @@ impl FileSender {
                 return Ok(());
             }
             Some(true) => {}
+        }
+
+        if !allow_new_data {
+            return Ok(());
         }
 
         if state.end_sent {
@@ -193,6 +258,10 @@ impl FileSender {
                 checksum,
             }));
             state.end_sent = true;
+            self.updates.push_back(TransferStateUpdate {
+                transfer_id: state.transfer_id,
+                state: TransferState::Finished { path: None },
+            });
             return Ok(());
         }
 
@@ -209,23 +278,49 @@ impl FileSender {
                     checksum: hex::encode(state.hasher.clone().finalize()),
                 }));
                 state.end_sent = true;
+                self.updates.push_back(TransferStateUpdate {
+                    transfer_id: state.transfer_id,
+                    state: TransferState::Finished { path: None },
+                });
                 return Ok(());
             }
 
-            return Err(ConnectionError::State(format!(
-                "unexpected EOF for transfer {}",
-                state.transfer_id
-            )));
+            outbox.push_back(Packet::Data(DataPacket::FileCancel {
+                transfer_id: state.transfer_id,
+            }));
+            self.updates.push_back(TransferStateUpdate {
+                transfer_id: state.transfer_id,
+                state: TransferState::Failed {
+                    reason: format!(
+                        "unexpected EOF for transfer {} ({})",
+                        state.transfer_id, state.file_name
+                    ),
+                },
+            });
+            *upload = None;
+            return Ok(());
         }
 
         buffer.truncate(read_size);
         state.hasher.update(&buffer);
+        state.sent_bytes = state
+            .sent_bytes
+            .saturating_add(u64::try_from(read_size).unwrap_or(u64::MAX));
 
         outbox.push_back(Packet::Data(DataPacket::FileChunk {
             transfer_id: state.transfer_id,
             seq: state.next_seq,
             data: buffer,
         }));
+        self.updates.push_back(TransferStateUpdate {
+            transfer_id: state.transfer_id,
+            state: TransferState::Progress {
+                done_bytes: state.sent_bytes,
+                total_bytes: state.file_size,
+                bps: None,
+                eta_ms: None,
+            },
+        });
 
         state.next_seq = state.next_seq.saturating_add(1);
         tokio::task::yield_now().await;

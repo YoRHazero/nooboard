@@ -4,4 +4,4 @@ pub mod receiver;
 pub mod sender;
 pub mod stream;
 
-pub type ConnectionResult<T> = Result<T, crate::error::ConnectionError>;
+pub type SessionResult<T> = Result<T, crate::error::ConnectionError>;

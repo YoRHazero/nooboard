@@ -10,12 +10,13 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 use crate::auth::{ChallengeRegistry, SocketId};
 use crate::config::SyncConfig;
-use crate::discovery::DedupeDecision;
 use crate::error::SyncError;
 use crate::transport::{TlsContext, framed_with_max_packet};
 
+use super::candidates::ConnectTarget;
 use super::handshake::{perform_client_handshake, perform_server_handshake};
-use super::peers::{ConnectTarget, EngineControl, PeerRegistry};
+use super::policy::DedupeDecision;
+use super::peers::{EngineControl, PeerRegistry};
 
 pub(super) fn schedule_connect_attempts(
     config: &SyncConfig,
@@ -103,7 +104,7 @@ pub(super) fn connection_direction_allowed(outbound: bool, decision: DedupeDecis
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::discovery::dedupe_decision;
+    use crate::engine::policy::dedupe_decision;
 
     #[test]
     fn dedupe_direction_follows_small_connect_large_rule() {
