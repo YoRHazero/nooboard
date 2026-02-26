@@ -5,7 +5,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params, types::Type};
 
 use crate::StorageError;
 use crate::config::{AppConfig, StorageConfig};
-use crate::model::{EventState, HistoryRecord};
+use crate::model::{EventState, HistoryCursor, HistoryRecord};
 use crate::sql_catalog::SqlCatalog;
 
 pub struct SqliteEventRepository {
@@ -47,29 +47,43 @@ impl SqliteEventRepository {
         Ok(())
     }
 
-    pub fn append_local_text(
+    pub fn append_text(
         &mut self,
         text: &str,
+        event_id: Option<uuid::Uuid>,
+        origin_device_id: Option<&str>,
         created_at_ms: i64,
         applied_at_ms: i64,
     ) -> Result<bool, StorageError> {
-        let latest_content = self.latest_active_content()?;
-        if latest_content.as_deref() == Some(text) {
-            return Ok(false);
+        let should_skip_duplicate = event_id.is_none() && origin_device_id.is_none();
+        if should_skip_duplicate {
+            let latest_content = self.latest_active_content()?;
+            if latest_content.as_deref() == Some(text) {
+                return Ok(false);
+            }
         }
 
-        let event_id = uuid::Uuid::now_v7();
-        self.conn.execute(
+        let event_id = event_id.unwrap_or_else(uuid::Uuid::now_v7);
+        let origin_device_id = origin_device_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(self.local_device_id.as_str());
+
+        let inserted = self.conn.execute(
             &self.sql.insert_event,
             params![
                 event_id.as_bytes().as_slice(),
-                self.local_device_id.as_str(),
+                origin_device_id,
                 created_at_ms,
                 applied_at_ms,
                 text,
                 EventState::Active.as_str(),
             ],
-        )?;
+        )? > 0;
+
+        if !inserted {
+            return Ok(false);
+        }
 
         self.inserts_since_gc = self.inserts_since_gc.saturating_add(1);
         self.run_gc_if_needed(applied_at_ms)?;
@@ -77,17 +91,37 @@ impl SqliteEventRepository {
         Ok(true)
     }
 
-    pub fn list_history(&self, limit: usize) -> Result<Vec<HistoryRecord>, StorageError> {
+    pub fn list_history(
+        &self,
+        limit: usize,
+        cursor: Option<HistoryCursor>,
+    ) -> Result<Vec<HistoryRecord>, StorageError> {
         if limit == 0 {
             return Ok(Vec::new());
         }
 
         let limit = i64::try_from(limit).map_err(|_| StorageError::LimitOutOfRange(limit))?;
-        let mut statement = self.conn.prepare(&self.sql.list_history)?;
-
-        let rows =
-            statement.query_map(params![EventState::Active.as_str(), limit], map_history_row)?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        match cursor {
+            None => {
+                let mut statement = self.conn.prepare(&self.sql.list_history)?;
+                let rows = statement
+                    .query_map(params![EventState::Active.as_str(), limit], map_history_row)?;
+                rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+            }
+            Some(cursor) => {
+                let mut statement = self.conn.prepare(&self.sql.list_history_with_cursor)?;
+                let rows = statement.query_map(
+                    params![
+                        EventState::Active.as_str(),
+                        cursor.created_at_ms,
+                        &cursor.event_id[..],
+                        limit
+                    ],
+                    map_history_row,
+                )?;
+                rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+            }
+        }
     }
 
     pub fn search_history(
@@ -96,7 +130,7 @@ impl SqliteEventRepository {
         keyword: &str,
     ) -> Result<Vec<HistoryRecord>, StorageError> {
         if keyword.trim().is_empty() {
-            return self.list_history(limit);
+            return self.list_history(limit, None);
         }
         if limit == 0 {
             return Ok(Vec::new());
@@ -284,10 +318,10 @@ mod tests {
             SqliteEventRepository::open(make_config("append-list", LifecycleConfig::default(), 0))?;
         repository.init_storage()?;
 
-        assert!(repository.append_local_text("first", 100, 100)?);
-        assert!(repository.append_local_text("second", 200, 200)?);
+        assert!(repository.append_text("first", None, None, 100, 100)?);
+        assert!(repository.append_text("second", None, None, 200, 200)?);
 
-        let records = repository.list_history(10)?;
+        let records = repository.list_history(10, None)?;
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].content, "second");
         assert_eq!(records[0].created_at_ms, 200);
@@ -304,9 +338,9 @@ mod tests {
             SqliteEventRepository::open(make_config("search", LifecycleConfig::default(), 0))?;
         repository.init_storage()?;
 
-        assert!(repository.append_local_text("alpha", 100, 100)?);
-        assert!(repository.append_local_text("beta", 200, 200)?);
-        assert!(repository.append_local_text("alphabet", 300, 300)?);
+        assert!(repository.append_text("alpha", None, None, 100, 100)?);
+        assert!(repository.append_text("beta", None, None, 200, 200)?);
+        assert!(repository.append_text("alphabet", None, None, 300, 300)?);
 
         let records = repository.search_history(10, "alpha")?;
         assert_eq!(records.len(), 2);
@@ -323,10 +357,10 @@ mod tests {
             SqliteEventRepository::open(make_config("dedup", LifecycleConfig::default(), 0))?;
         repository.init_storage()?;
 
-        assert!(repository.append_local_text("dup", 100, 100)?);
-        assert!(!repository.append_local_text("dup", 200, 200)?);
+        assert!(repository.append_text("dup", None, None, 100, 100)?);
+        assert!(!repository.append_text("dup", None, None, 200, 200)?);
 
-        let records = repository.list_history(10)?;
+        let records = repository.list_history(10, None)?;
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].content, "dup");
 
@@ -349,21 +383,87 @@ mod tests {
         const DAY_MS: i64 = 24 * 60 * 60 * 1000;
         let now_ms = 10 * DAY_MS;
 
-        assert!(repository.append_local_text(
+        assert!(repository.append_text(
             "expired",
+            None,
+            None,
             now_ms - 3 * DAY_MS,
             now_ms - 3 * DAY_MS
         )?);
-        assert!(repository.append_local_text(
+        assert!(repository.append_text(
             "tombstone",
+            None,
+            None,
             now_ms - (DAY_MS + DAY_MS / 2),
             now_ms - (DAY_MS + DAY_MS / 2)
         )?);
-        assert!(repository.append_local_text("fresh", now_ms, now_ms)?);
+        assert!(repository.append_text("fresh", None, None, now_ms, now_ms)?);
 
-        let records = repository.list_history(10)?;
+        let records = repository.list_history(10, None)?;
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].content, "fresh");
+
+        let _ = fs::remove_dir_all(repository.storage.db_root.clone());
+        Ok(())
+    }
+
+    #[test]
+    fn list_history_with_cursor_pages_from_new_to_old() -> Result<(), StorageError> {
+        let mut repository =
+            SqliteEventRepository::open(make_config("cursor-page", LifecycleConfig::default(), 0))?;
+        repository.init_storage()?;
+
+        assert!(repository.append_text("first", None, None, 100, 100)?);
+        assert!(repository.append_text("second", None, None, 200, 200)?);
+        assert!(repository.append_text("third", None, None, 300, 300)?);
+
+        let first_page = repository.list_history(2, None)?;
+        assert_eq!(first_page.len(), 2);
+        assert_eq!(first_page[0].content, "third");
+        assert_eq!(first_page[1].content, "second");
+
+        let cursor = first_page[1].cursor();
+        let second_page = repository.list_history(2, Some(cursor))?;
+        assert_eq!(second_page.len(), 1);
+        assert_eq!(second_page[0].content, "first");
+
+        let _ = fs::remove_dir_all(repository.storage.db_root.clone());
+        Ok(())
+    }
+
+    #[test]
+    fn append_text_accepts_explicit_event_id_and_origin_device() -> Result<(), StorageError> {
+        let mut repository = SqliteEventRepository::open(make_config(
+            "append-explicit-event",
+            LifecycleConfig::default(),
+            0,
+        ))?;
+        repository.init_storage()?;
+
+        let event_id = uuid::Uuid::now_v7();
+        assert!(repository.append_text(
+            "remote-text",
+            Some(event_id),
+            Some("remote-node"),
+            100,
+            100
+        )?);
+
+        let records = repository.list_history(10, None)?;
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].event_id, *event_id.as_bytes());
+        assert_eq!(records[0].origin_device_id, "remote-node");
+
+        assert!(!repository.append_text(
+            "remote-text",
+            Some(event_id),
+            Some("remote-node"),
+            100,
+            100
+        )?);
+
+        let records = repository.list_history(10, None)?;
+        assert_eq!(records.len(), 1);
 
         let _ = fs::remove_dir_all(repository.storage.db_root.clone());
         Ok(())

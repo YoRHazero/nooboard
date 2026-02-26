@@ -9,6 +9,7 @@ pub struct SqlCatalog {
     pub insert_event: String,
     pub select_latest_active_content: String,
     pub list_history: String,
+    pub list_history_with_cursor: String,
     pub search_history: String,
     pub gc_mark_tombstone: String,
     pub gc_delete_expired_tombstone: String,
@@ -24,6 +25,10 @@ impl SqlCatalog {
                 "select_latest_active_content.sql",
             )?,
             list_history: load_query(&storage.queries_dir, "list_history.sql")?,
+            list_history_with_cursor: load_query(
+                &storage.queries_dir,
+                "list_history_with_cursor.sql",
+            )?,
             search_history: load_query(&storage.queries_dir, "search_history.sql")?,
             gc_mark_tombstone: load_query(&storage.queries_dir, "gc_mark_tombstone.sql")?,
             gc_delete_expired_tombstone: load_query(

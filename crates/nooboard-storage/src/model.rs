@@ -29,4 +29,17 @@ impl HistoryRecord {
             .map(|byte| format!("{byte:02x}"))
             .collect()
     }
+
+    pub fn cursor(&self) -> HistoryCursor {
+        HistoryCursor {
+            created_at_ms: self.created_at_ms,
+            event_id: self.event_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HistoryCursor {
+    pub created_at_ms: i64,
+    pub event_id: [u8; 16],
 }

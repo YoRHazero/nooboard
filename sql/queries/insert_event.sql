@@ -1,4 +1,4 @@
-INSERT INTO events (
+INSERT OR IGNORE INTO events (
     event_id,
     origin_device_id,
     created_at_ms,

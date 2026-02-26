@@ -159,7 +159,7 @@ fn handle_history(
             .search_history(limit, value)
             .map_err(storage_error_to_core)?,
         _ => repository
-            .list_history(limit)
+            .list_history(limit, None)
             .map_err(storage_error_to_core)?,
     };
 
@@ -538,7 +538,7 @@ fn persist_event(
     let applied_at_ms = current_timestamp_ms();
 
     repository
-        .append_local_text(&event.text, created_at_ms, applied_at_ms)
+        .append_text(&event.text, None, None, created_at_ms, applied_at_ms)
         .map_err(storage_error_to_core)?;
 
     Ok(())
