@@ -33,7 +33,7 @@ pub enum HandshakePacket {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DataPacket {
     ClipboardText {
-        id: String,
+        event_id: String,
         content: String,
     },
     FileStart {

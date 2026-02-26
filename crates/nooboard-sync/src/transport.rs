@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use futures::{SinkExt, StreamExt};
-use futures::stream::SplitSink;
 use bytes::Bytes;
+use futures::stream::SplitSink;
+use futures::{SinkExt, StreamExt};
 use rcgen::generate_simple_self_signed;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer, ServerName, UnixTime};
@@ -149,6 +149,8 @@ where
     S: AsyncRead + AsyncWrite + Unpin,
 {
     let encoded = encode_packet(packet)?;
-    sink.send(encoded.into()).await.map_err(|e| TransportError::Io(e))?;
+    sink.send(encoded.into())
+        .await
+        .map_err(|e| TransportError::Io(e))?;
     Ok(())
 }

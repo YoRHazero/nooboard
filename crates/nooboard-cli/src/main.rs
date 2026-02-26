@@ -11,10 +11,12 @@ use nooboard_core::{ClipboardEvent, NooboardError};
 use nooboard_platform::{ClipboardBackend, DEFAULT_WATCH_INTERVAL};
 use nooboard_storage::{SqliteEventRepository, StorageError, default_dev_config_path};
 use nooboard_sync::{
-    FileDecisionInput, SyncEngineHandle, SyncEvent, SyncStatus, TransferState, start_sync_engine,
+    FileDecisionInput, SendFileRequest, SendTextRequest, SyncEngineHandle, SyncEvent, SyncStatus,
+    TransferState, start_sync_engine,
 };
 use tokio::sync::mpsc;
 use tracing_subscriber::EnvFilter;
+use uuid::Uuid;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -235,7 +237,15 @@ async fn handle_watch(
                         }
 
                         if let Some(handle) = sync_handle.as_ref() {
-                            if let Err(error) = handle.text_tx.send(event.text.clone()).await {
+                            if let Err(error) = handle
+                                .text_tx
+                                .send(SendTextRequest {
+                                    event_id: Uuid::now_v7().to_string(),
+                                    content: event.text.clone(),
+                                    targets: None,
+                                })
+                                .await
+                            {
                                 watch_error = Some(NooboardError::channel(format!(
                                     "failed to send text to sync engine: {error}"
                                 )));
@@ -410,7 +420,10 @@ async fn handle_send_file(
 
     handle
         .file_tx
-        .send(path.clone())
+        .send(SendFileRequest {
+            path: path.clone(),
+            targets: None,
+        })
         .await
         .map_err(|error| NooboardError::channel(format!("failed to queue file: {error}")))?;
 

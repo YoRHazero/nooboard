@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::time::Duration;
@@ -23,8 +22,8 @@ use super::ingress::{run_accept_loop, run_discovery_forward_loop};
 use super::peers::{EngineControl, PeerHandle, PeerRegistry};
 use super::policy::{DedupeDecision, dedupe_decision};
 use super::types::{
-    ConnectedPeerInfo, FileDecisionInput, SyncControlCommand, SyncEngineHandle, SyncEvent,
-    SyncStatus, TransferUpdate,
+    ConnectedPeerInfo, FileDecisionInput, SendFileRequest, SendTextRequest, SyncControlCommand,
+    SyncEngineHandle, SyncEvent, SyncStatus, TransferUpdate,
 };
 
 pub async fn start_sync_engine(config: SyncConfig) -> Result<SyncEngineHandle, SyncError> {
@@ -41,8 +40,8 @@ pub async fn start_sync_engine_with_discovery(
 
     std::fs::create_dir_all(&config.download_dir)?;
 
-    let (text_tx, text_rx) = mpsc::channel(128);
-    let (file_tx, file_rx) = mpsc::channel(32);
+    let (text_tx, text_rx) = mpsc::channel::<SendTextRequest>(128);
+    let (file_tx, file_rx) = mpsc::channel::<SendFileRequest>(32);
     let (decision_tx, decision_rx) = mpsc::channel(128);
     let (control_tx, control_rx) = mpsc::channel(64);
     let (event_tx, event_rx) = mpsc::channel(128);
@@ -86,8 +85,8 @@ pub async fn start_sync_engine_with_discovery(
 
 async fn run_engine(
     config: SyncConfig,
-    mut text_rx: mpsc::Receiver<String>,
-    mut file_rx: mpsc::Receiver<PathBuf>,
+    mut text_rx: mpsc::Receiver<SendTextRequest>,
+    mut file_rx: mpsc::Receiver<SendFileRequest>,
     mut decision_rx: mpsc::Receiver<FileDecisionInput>,
     mut control_rx: mpsc::Receiver<SyncControlCommand>,
     event_tx: mpsc::Sender<SyncEvent>,
@@ -123,8 +122,8 @@ async fn run_engine(
 #[allow(clippy::too_many_arguments)]
 async fn run_engine_inner(
     config: SyncConfig,
-    text_rx: &mut mpsc::Receiver<String>,
-    file_rx: &mut mpsc::Receiver<PathBuf>,
+    text_rx: &mut mpsc::Receiver<SendTextRequest>,
+    file_rx: &mut mpsc::Receiver<SendFileRequest>,
     decision_rx: &mut mpsc::Receiver<FileDecisionInput>,
     control_rx: &mut mpsc::Receiver<SyncControlCommand>,
     event_tx: mpsc::Sender<SyncEvent>,
@@ -212,13 +211,13 @@ async fn run_engine_inner(
             }
             maybe_text = text_rx.recv() => {
                 match maybe_text {
-                    Some(text) => registry.broadcast_text(text).await,
+                    Some(request) => registry.send_text(request).await,
                     None => break,
                 }
             }
             maybe_path = file_rx.recv() => {
                 match maybe_path {
-                    Some(path) => registry.broadcast_file(path).await,
+                    Some(request) => registry.send_file(request).await,
                     None => break,
                 }
             }

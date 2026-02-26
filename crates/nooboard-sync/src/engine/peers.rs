@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
-use std::path::PathBuf;
 
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -13,7 +12,9 @@ use crate::session::actor::SessionCommand;
 
 use super::candidates::{CandidateRegistry, ConnectTarget};
 use super::policy::DedupeDecision;
-use super::types::{ConnectedPeerInfo, FileDecisionInput, PeerConnectionState};
+use super::types::{
+    ConnectedPeerInfo, FileDecisionInput, PeerConnectionState, SendFileRequest, SendTextRequest,
+};
 
 #[derive(Debug)]
 pub(super) struct PeerHandle {
@@ -79,21 +80,74 @@ impl PeerRegistry {
         self.connecting_addrs.contains(addr) || self.peers.values().any(|peer| peer.addr == *addr)
     }
 
-    pub(super) async fn broadcast_text(&self, text: String) {
-        for peer in self.peers.values() {
-            let _ = peer
-                .command_tx
-                .send(SessionCommand::SendText(text.clone()))
-                .await;
+    pub(super) async fn send_text(&self, request: SendTextRequest) {
+        let SendTextRequest {
+            event_id,
+            content,
+            targets,
+        } = request;
+        let session_request = SendTextRequest {
+            event_id,
+            content,
+            targets: None,
+        };
+
+        match targets {
+            None => {
+                for peer in self.peers.values() {
+                    let _ = peer
+                        .command_tx
+                        .send(SessionCommand::SendText(session_request.clone()))
+                        .await;
+                }
+            }
+            Some(targets) => {
+                let mut deduped = HashSet::new();
+                for target in targets {
+                    if !deduped.insert(target.clone()) {
+                        continue;
+                    }
+                    if let Some(peer) = self.peers.get(&target) {
+                        let _ = peer
+                            .command_tx
+                            .send(SessionCommand::SendText(session_request.clone()))
+                            .await;
+                    }
+                }
+            }
         }
     }
 
-    pub(super) async fn broadcast_file(&self, path: PathBuf) {
-        for peer in self.peers.values() {
-            let _ = peer
-                .command_tx
-                .send(SessionCommand::SendFile(path.clone()))
-                .await;
+    pub(super) async fn send_file(&self, request: SendFileRequest) {
+        let SendFileRequest { path, targets } = request;
+        let session_request = SendFileRequest {
+            path,
+            targets: None,
+        };
+
+        match targets {
+            None => {
+                for peer in self.peers.values() {
+                    let _ = peer
+                        .command_tx
+                        .send(SessionCommand::SendFile(session_request.clone()))
+                        .await;
+                }
+            }
+            Some(targets) => {
+                let mut deduped = HashSet::new();
+                for target in targets {
+                    if !deduped.insert(target.clone()) {
+                        continue;
+                    }
+                    if let Some(peer) = self.peers.get(&target) {
+                        let _ = peer
+                            .command_tx
+                            .send(SessionCommand::SendFile(session_request.clone()))
+                            .await;
+                    }
+                }
+            }
         }
     }
 
@@ -206,7 +260,30 @@ impl PeerRegistry {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
+    use tokio::time::timeout;
+
+    fn insert_peer_for_test(
+        registry: &mut PeerRegistry,
+        peer_node_id: &str,
+    ) -> mpsc::Receiver<SessionCommand> {
+        let (command_tx, command_rx) = mpsc::channel(4);
+        registry.insert_peer(
+            peer_node_id.to_string(),
+            PeerHandle {
+                command_tx,
+                addr: "127.0.0.1:10001"
+                    .parse()
+                    .expect("test addr should be valid"),
+                outbound: true,
+                session_id: 1,
+                connected_at_ms: 1,
+            },
+        );
+        command_rx
+    }
 
     #[tokio::test]
     async fn forward_file_decision_returns_error_when_peer_missing() {
@@ -293,6 +370,78 @@ mod tests {
             "127.0.0.1:10002"
                 .parse::<SocketAddr>()
                 .expect("addr must parse")
+        );
+    }
+
+    #[tokio::test]
+    async fn send_text_only_dispatches_to_targets() {
+        let mut registry = PeerRegistry::new();
+        let mut receiver_b = insert_peer_for_test(&mut registry, "node-b");
+        let mut receiver_c = insert_peer_for_test(&mut registry, "node-c");
+
+        registry
+            .send_text(SendTextRequest {
+                event_id: "evt-1".to_string(),
+                content: "hello".to_string(),
+                targets: Some(vec![
+                    "node-c".to_string(),
+                    "missing-node".to_string(),
+                    "node-c".to_string(),
+                ]),
+            })
+            .await;
+
+        let received = timeout(Duration::from_millis(100), receiver_c.recv())
+            .await
+            .expect("node-c should receive text")
+            .expect("session command should exist");
+        match received {
+            SessionCommand::SendText(request) => {
+                assert_eq!(request.event_id, "evt-1");
+                assert_eq!(request.content, "hello");
+                assert!(request.targets.is_none());
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        assert!(
+            timeout(Duration::from_millis(100), receiver_b.recv())
+                .await
+                .is_err(),
+            "node-b should not receive targeted text"
+        );
+    }
+
+    #[tokio::test]
+    async fn send_file_only_dispatches_to_targets() {
+        let mut registry = PeerRegistry::new();
+        let mut receiver_b = insert_peer_for_test(&mut registry, "node-b");
+        let mut receiver_c = insert_peer_for_test(&mut registry, "node-c");
+
+        registry
+            .send_file(SendFileRequest {
+                path: std::path::PathBuf::from("/tmp/demo.txt"),
+                targets: Some(vec!["node-b".to_string()]),
+            })
+            .await;
+
+        let received = timeout(Duration::from_millis(100), receiver_b.recv())
+            .await
+            .expect("node-b should receive file command")
+            .expect("session command should exist");
+        match received {
+            SessionCommand::SendFile(request) => {
+                assert_eq!(request.path, std::path::PathBuf::from("/tmp/demo.txt"));
+                assert!(request.targets.is_none());
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        assert!(
+            timeout(Duration::from_millis(100), receiver_c.recv())
+                .await
+                .is_err(),
+            "node-c should not receive targeted file"
         );
     }
 }

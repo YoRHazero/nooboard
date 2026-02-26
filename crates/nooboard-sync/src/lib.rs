@@ -9,8 +9,8 @@ pub mod transport;
 
 pub use config::SyncConfig;
 pub use engine::{
-    ConnectedPeerInfo, FileDecisionInput, PeerConnectionState, SyncControlCommand,
-    SyncEngineHandle, SyncEvent, SyncStatus, TransferDirection, TransferState, TransferUpdate,
-    start_sync_engine,
+    ConnectedPeerInfo, FileDecisionInput, PeerConnectionState, SendFileRequest, SendTextRequest,
+    SyncControlCommand, SyncEngineHandle, SyncEvent, SyncStatus, TransferDirection, TransferState,
+    TransferUpdate, start_sync_engine,
 };
 pub use error::SyncError;

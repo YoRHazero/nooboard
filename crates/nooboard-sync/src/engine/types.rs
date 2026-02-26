@@ -90,13 +90,26 @@ pub struct FileDecisionInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SendTextRequest {
+    pub event_id: String,
+    pub content: String,
+    pub targets: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SendFileRequest {
+    pub path: PathBuf,
+    pub targets: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncControlCommand {
     DisconnectPeer { peer_node_id: String },
 }
 
 pub struct SyncEngineHandle {
-    pub text_tx: mpsc::Sender<String>,
-    pub file_tx: mpsc::Sender<PathBuf>,
+    pub text_tx: mpsc::Sender<SendTextRequest>,
+    pub file_tx: mpsc::Sender<SendFileRequest>,
     pub decision_tx: mpsc::Sender<FileDecisionInput>,
     pub control_tx: mpsc::Sender<SyncControlCommand>,
     pub event_rx: mpsc::Receiver<SyncEvent>,

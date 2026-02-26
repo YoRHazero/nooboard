@@ -12,8 +12,8 @@ use crate::engine::TransferState;
 use crate::error::ConnectionError;
 use crate::protocol::{DataPacket, Packet};
 
-use super::path::sanitize_file_name;
 use super::SessionResult;
+use super::path::sanitize_file_name;
 
 #[derive(Debug, Clone)]
 pub struct TransferStateUpdate {
@@ -149,9 +149,12 @@ impl FileSender {
         let raw_file_name = path
             .file_name()
             .and_then(|name| name.to_str())
-            .ok_or_else(|| ConnectionError::State(format!("invalid file name: {}", path.display())))?;
-        let file_name = sanitize_file_name(raw_file_name)
-            .map_err(|_| ConnectionError::State(format!("invalid file name: {}", path.display())))?;
+            .ok_or_else(|| {
+                ConnectionError::State(format!("invalid file name: {}", path.display()))
+            })?;
+        let file_name = sanitize_file_name(raw_file_name).map_err(|_| {
+            ConnectionError::State(format!("invalid file name: {}", path.display()))
+        })?;
 
         let total_chunks = if metadata.len() == 0 {
             0

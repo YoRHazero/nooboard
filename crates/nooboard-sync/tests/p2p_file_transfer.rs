@@ -2,7 +2,10 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use nooboard_sync::{SyncConfig, SyncControlCommand, SyncEvent, TransferState, start_sync_engine};
+use nooboard_sync::{
+    SendFileRequest, SendTextRequest, SyncConfig, SyncControlCommand, SyncEvent, TransferState,
+    start_sync_engine,
+};
 use tempfile::TempDir;
 use tokio::fs;
 use tokio::time::timeout;
@@ -122,7 +125,13 @@ async fn file_transfer_accept_path_works() -> Result<(), Box<dyn std::error::Err
     let source_file = dir_a.path().join("hello.txt");
     fs::write(&source_file, b"hello stage3").await?;
 
-    handle_a.file_tx.send(source_file.clone()).await?;
+    handle_a
+        .file_tx
+        .send(SendFileRequest {
+            path: source_file.clone(),
+            targets: None,
+        })
+        .await?;
 
     let mut downloaded = None;
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -202,7 +211,13 @@ async fn file_reject_cleans_tmp_file() -> Result<(), Box<dyn std::error::Error>>
 
     let source_file = dir_a.path().join("reject.txt");
     fs::write(&source_file, b"this file is too big").await?;
-    handle_a.file_tx.send(source_file.clone()).await?;
+    handle_a
+        .file_tx
+        .send(SendFileRequest {
+            path: source_file.clone(),
+            targets: None,
+        })
+        .await?;
 
     let mut saw_decision_request = false;
     let deadline = Instant::now() + Duration::from_secs(3);
@@ -295,7 +310,11 @@ async fn control_channel_can_disconnect_specific_peer() -> Result<(), Box<dyn st
 
     handle_a
         .text_tx
-        .send("after-disconnect".to_string())
+        .send(SendTextRequest {
+            event_id: "evt-after-disconnect".to_string(),
+            content: "after-disconnect".to_string(),
+            targets: None,
+        })
         .await?;
 
     let deadline = Instant::now() + Duration::from_millis(900);

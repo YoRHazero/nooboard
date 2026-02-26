@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures::StreamExt;
@@ -6,24 +6,65 @@ use tokio::sync::{broadcast, mpsc};
 use tokio::time::{MissedTickBehavior, interval};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, warn};
-use uuid::Uuid;
 
 use crate::config::SyncConfig;
-use crate::engine::{SyncEvent, TransferDirection, TransferState, TransferUpdate};
+use crate::engine::{
+    SendFileRequest, SendTextRequest, SyncEvent, TransferDirection, TransferState, TransferUpdate,
+};
 use crate::error::{ConnectionError, TransportError};
 use crate::protocol::{DataPacket, Packet, decode_packet};
 
 use super::SessionResult;
+use super::outbox::PacketOutbox;
 use super::receiver::{FileReceiverLimits, FileReceiverStateMachine, IdleTimeoutAction};
 use super::sender::FileSender;
-use super::outbox::PacketOutbox;
 
 const MAX_DATA_DRAIN_PER_LOOP: usize = 8;
+const SEEN_TEXT_IDS_LIMIT: usize = 4096;
+
+#[derive(Debug)]
+struct SeenTextIdCache {
+    seen: HashSet<String>,
+    order: VecDeque<String>,
+    limit: usize,
+}
+
+impl SeenTextIdCache {
+    fn new(limit: usize) -> Self {
+        Self {
+            seen: HashSet::new(),
+            order: VecDeque::new(),
+            limit,
+        }
+    }
+
+    fn insert(&mut self, event_id: String) -> bool {
+        if self.seen.contains(&event_id) {
+            return false;
+        }
+
+        self.order.push_back(event_id.clone());
+        self.seen.insert(event_id);
+
+        while self.order.len() > self.limit {
+            if let Some(oldest) = self.order.pop_front() {
+                self.seen.remove(&oldest);
+            }
+        }
+
+        true
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.seen.len()
+    }
+}
 
 #[derive(Debug)]
 pub enum SessionCommand {
-    SendText(String),
-    SendFile(std::path::PathBuf),
+    SendText(SendTextRequest),
+    SendFile(SendFileRequest),
     FileDecision {
         transfer_id: u32,
         accept: bool,
@@ -59,7 +100,7 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
     let mut outbox = PacketOutbox::new();
 
     let mut sender = FileSender::new();
-    let mut seen_text_ids = HashSet::new();
+    let mut seen_text_ids = SeenTextIdCache::new(SEEN_TEXT_IDS_LIMIT);
 
     let mut receiver = FileReceiverStateMachine::new(FileReceiverLimits {
         download_dir: ctx.config.download_dir.clone(),
@@ -89,7 +130,7 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                 outbox.remaining_data_capacity() > 0,
             )
             .await?;
-        
+
         // Sender -> Outbox
         let mut drained = 0;
         while drained < MAX_DATA_DRAIN_PER_LOOP {
@@ -235,16 +276,16 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
             // 6. command from caller
             maybe_command = ctx.command_rx.recv() => {
                 match maybe_command {
-                    Some(SessionCommand::SendText(content)) => {
+                    Some(SessionCommand::SendText(request)) => {
                         if outbox.queue_data(Packet::Data(DataPacket::ClipboardText {
-                            id: Uuid::now_v7().to_string(),
-                            content,
+                            event_id: request.event_id,
+                            content: request.content,
                         })).is_err() {
                             warn!(peer=%ctx.peer_node_id, "drop outgoing text because data queue is full");
                         }
                     }
-                    Some(SessionCommand::SendFile(path)) => {
-                        sender.enqueue_file(path);
+                    Some(SessionCommand::SendFile(request)) => {
+                        sender.enqueue_file(request.path);
                     }
                     Some(SessionCommand::FileDecision { transfer_id, accept, reason }) => {
                         match receiver.apply_decision(transfer_id, accept).await {
@@ -302,7 +343,7 @@ async fn handle_incoming_packet(
     outbox: &mut PacketOutbox,
     sender: &mut FileSender,
     receiver: &mut FileReceiverStateMachine,
-    seen_text_ids: &mut HashSet<String>,
+    seen_text_ids: &mut SeenTextIdCache,
     event_tx: &mpsc::Sender<SyncEvent>,
     progress_tx: &broadcast::Sender<TransferUpdate>,
 ) -> SessionResult<bool> {
@@ -322,8 +363,8 @@ async fn handle_incoming_packet(
             return Ok(true);
         }
         Packet::Data(data_packet) => match data_packet {
-            DataPacket::ClipboardText { id, content } => {
-                if seen_text_ids.insert(id) {
+            DataPacket::ClipboardText { event_id, content } => {
+                if seen_text_ids.insert(event_id) {
                     let _ = event_tx.send(SyncEvent::TextReceived(content)).await;
                 }
             }
@@ -414,7 +455,10 @@ async fn handle_incoming_packet(
                 }
                 Err(error) => {
                     warn!(transfer_id, "file chunk failed: {error}");
-                    if outbox.queue_data(Packet::Data(DataPacket::FileCancel { transfer_id })).is_err() {
+                    if outbox
+                        .queue_data(Packet::Data(DataPacket::FileCancel { transfer_id }))
+                        .is_err()
+                    {
                         warn!(peer=%peer_node_id, transfer_id, "drop FileCancel after chunk failure because data queue is full");
                     }
                     let _ = receiver.abort_transfer(transfer_id).await;
@@ -450,7 +494,10 @@ async fn handle_incoming_packet(
                 }
                 Err(error) => {
                     warn!(transfer_id, "file end failed: {error}");
-                    if outbox.queue_data(Packet::Data(DataPacket::FileCancel { transfer_id })).is_err() {
+                    if outbox
+                        .queue_data(Packet::Data(DataPacket::FileCancel { transfer_id }))
+                        .is_err()
+                    {
                         warn!(peer=%peer_node_id, transfer_id, "drop FileCancel after file end failure because data queue is full");
                     }
                     let _ = receiver.abort_transfer(transfer_id).await;
@@ -511,5 +558,27 @@ async fn emit_transfer_update(
         let _ = progress_tx.send(update);
     } else {
         let _ = event_tx.send(SyncEvent::TransferUpdate(update)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seen_text_id_cache_is_bounded() {
+        let mut cache = SeenTextIdCache::new(2);
+
+        assert!(cache.insert("event-a".to_string()));
+        assert!(cache.insert("event-b".to_string()));
+        assert_eq!(cache.len(), 2);
+
+        assert!(!cache.insert("event-a".to_string()));
+        assert_eq!(cache.len(), 2);
+
+        assert!(cache.insert("event-c".to_string()));
+        assert_eq!(cache.len(), 2);
+        assert!(cache.insert("event-a".to_string()));
+        assert_eq!(cache.len(), 2);
     }
 }
