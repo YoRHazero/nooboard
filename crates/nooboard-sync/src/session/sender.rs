@@ -12,6 +12,7 @@ use crate::engine::TransferState;
 use crate::error::ConnectionError;
 use crate::protocol::{DataPacket, Packet};
 
+use super::path::sanitize_file_name;
 use super::SessionResult;
 
 #[derive(Debug, Clone)]
@@ -145,9 +146,12 @@ impl FileSender {
             )));
         }
 
-        let file_name = sanitize_outgoing_file_name(path).ok_or_else(|| {
-            ConnectionError::State(format!("invalid file name: {}", path.display()))
-        })?;
+        let raw_file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| ConnectionError::State(format!("invalid file name: {}", path.display())))?;
+        let file_name = sanitize_file_name(raw_file_name)
+            .map_err(|_| ConnectionError::State(format!("invalid file name: {}", path.display())))?;
 
         let total_chunks = if metadata.len() == 0 {
             0
@@ -327,13 +331,4 @@ impl FileSender {
 
         Ok(())
     }
-}
-
-fn sanitize_outgoing_file_name(path: &Path) -> Option<String> {
-    let name = path.file_name()?.to_str()?;
-    if name.contains('/') || name.contains('\\') || name.contains("..") {
-        return None;
-    }
-
-    Some(name.to_string())
 }

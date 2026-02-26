@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use tokio::fs;
+
 use crate::error::FileReceiveError;
 
 pub(crate) fn sanitize_file_name(raw: &str) -> Result<String, FileReceiveError> {
@@ -24,7 +26,7 @@ pub(crate) async fn resolve_final_path(
     file_name: &str,
 ) -> Result<PathBuf, FileReceiveError> {
     let candidate = download_dir.join(file_name);
-    if !candidate.exists() {
+    if !fs::try_exists(&candidate).await? {
         return Ok(candidate);
     }
 
@@ -40,7 +42,7 @@ pub(crate) async fn resolve_final_path(
 
     for index in 1..=10_000 {
         let candidate = download_dir.join(format!("{stem} ({index}){extension}"));
-        if !candidate.exists() {
+        if !fs::try_exists(&candidate).await? {
             return Ok(candidate);
         }
     }

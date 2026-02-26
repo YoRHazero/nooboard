@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use futures::{SinkExt, StreamExt};
+use futures::stream::SplitSink;
+use bytes::Bytes;
 use rcgen::generate_simple_self_signed;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer, ServerName, UnixTime};
@@ -137,4 +139,16 @@ where
         Some(Err(error)) => Err(TransportError::Io(error)),
         None => Ok(None),
     }
+}
+
+pub async fn send_packet_sink<S>(
+    sink: &mut SplitSink<Framed<S, LengthDelimitedCodec>, Bytes>,
+    packet: &Packet,
+) -> Result<(), TransportError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    let encoded = encode_packet(packet)?;
+    sink.send(encoded.into()).await.map_err(|e| TransportError::Io(e))?;
+    Ok(())
 }

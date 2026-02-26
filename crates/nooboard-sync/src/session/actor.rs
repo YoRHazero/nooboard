@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use futures::StreamExt;
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::{MissedTickBehavior, interval};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
@@ -9,12 +10,13 @@ use uuid::Uuid;
 
 use crate::config::SyncConfig;
 use crate::engine::{SyncEvent, TransferDirection, TransferState, TransferUpdate};
-use crate::protocol::{DataPacket, Packet};
+use crate::error::{ConnectionError, TransportError};
+use crate::protocol::{DataPacket, Packet, decode_packet};
 
 use super::SessionResult;
 use super::receiver::{FileReceiverLimits, FileReceiverStateMachine, IdleTimeoutAction};
 use super::sender::FileSender;
-use super::stream::PriorityPacketStream;
+use super::outbox::PacketOutbox;
 
 const MAX_DATA_DRAIN_PER_LOOP: usize = 8;
 
@@ -41,7 +43,21 @@ pub struct SessionActorContext {
 }
 
 pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()> {
-    let mut stream = PriorityPacketStream::new(ctx.framed);
+    let (mut sink, mut stream_reader) = ctx.framed.split();
+    let (writer_tx, mut writer_rx) = mpsc::channel::<Packet>(1);
+    let (writer_error_tx, mut writer_error_rx) = mpsc::channel::<ConnectionError>(1);
+
+    tokio::spawn(async move {
+        while let Some(packet) = writer_rx.recv().await {
+            if let Err(error) = crate::transport::send_packet_sink(&mut sink, &packet).await {
+                let _ = writer_error_tx.send(ConnectionError::from(error)).await;
+                break;
+            }
+        }
+    });
+
+    let mut outbox = PacketOutbox::new();
+
     let mut sender = FileSender::new();
     let mut seen_text_ids = HashSet::new();
 
@@ -70,11 +86,25 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
             .tick(
                 &ctx.config,
                 &ctx.peer_node_id,
-                stream.remaining_data_capacity() > 0,
+                outbox.remaining_data_capacity() > 0,
             )
             .await?;
+        
+        // Sender -> Outbox
+        let mut drained = 0;
+        while drained < MAX_DATA_DRAIN_PER_LOOP {
+            let Some(packet) = sender.pop_packet() else {
+                break;
+            };
 
-        drain_sender_data_packets(&mut sender, &mut stream);
+            match outbox.queue_data(packet) {
+                Ok(()) => drained += 1,
+                Err(packet) => {
+                    sender.requeue_packet_front(packet);
+                    break;
+                }
+            }
+        }
 
         while let Some(update) = sender.pop_update() {
             emit_transfer_update(
@@ -88,18 +118,75 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
             .await;
         }
 
-        let _ = stream.flush_one().await?;
-
         tokio::select! {
+            // 1. outbox -> writer
+            res = writer_tx.reserve(), if outbox.has_pending() => {
+                match res {
+                    Ok(permit) => {
+                        if let Some(packet) = outbox.pop_next() {
+                            permit.send(packet);
+                        }
+                    }
+                    Err(error) => {
+                        return Err(ConnectionError::State(format!(
+                            "outbox writer channel closed: {error}"
+                        )));
+                    }
+                }
+            }
+
+            // 1.1 writer transport errors
+            maybe_writer_error = writer_error_rx.recv() => {
+                match maybe_writer_error {
+                    Some(error) => return Err(error),
+                    None => {
+                        return Err(ConnectionError::State(
+                            "writer task exited unexpectedly".to_string(),
+                        ))
+                    }
+                }
+            }
+
+            // 2. receive data from peer
+            maybe_bytes = stream_reader.next() => {
+                match maybe_bytes {
+                    Some(Ok(bytes)) => {
+                        let packet = decode_packet(&bytes)
+                            .map_err(TransportError::Protocol)
+                            .map_err(ConnectionError::from)?;
+
+                        if handle_incoming_packet(
+                            &ctx.peer_node_id,
+                            packet,
+                            &mut outbox,
+                            &mut sender,
+                            &mut receiver,
+                            &mut seen_text_ids,
+                            &ctx.event_tx,
+                            &ctx.progress_tx,
+                        ).await? {
+                            last_pong = Instant::now();
+                        }
+                    }
+                    Some(Err(error)) => return Err(ConnectionError::Io(error)),
+                    None => break,
+                }
+            }
+
+            // 3. Command from peer
             _ = ctx.shutdown_rx.recv() => {
-                debug!(peer=%ctx.peer_node_id, "session actor received shutdown");
+                debug!(peer=%ctx.peer_node_id, "shutdown signal received");
                 break;
             }
+
+            // 4. periodic ping
             _ = ping_timer.tick() => {
-                if !stream.try_queue_control(Packet::Ping { timestamp: now_millis_u64() }) {
+                if !outbox.queue_control(Packet::Ping { timestamp: now_millis_u64() }) {
                     warn!(peer=%ctx.peer_node_id, "drop ping because control queue is full");
                 }
             }
+
+            // 5. periodic idle check
             _ = idle_timer.tick() => {
                 let actions = receiver
                     .collect_idle_actions(Duration::from_millis(ctx.config.transfer_idle_timeout_ms))
@@ -107,11 +194,11 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                 for action in actions {
                     match action {
                         IdleTimeoutAction::RejectDecision { transfer_id, reason } => {
-                            if !stream.try_queue_data(Packet::Data(DataPacket::FileDecision {
+                            if outbox.queue_data(Packet::Data(DataPacket::FileDecision {
                                 transfer_id,
                                 accept: false,
                                 reason: Some(reason.clone()),
-                            })) {
+                            })).is_err() {
                                 warn!(peer=%ctx.peer_node_id, transfer_id, "drop timeout FileDecision because data queue is full");
                             }
                             emit_transfer_update(
@@ -128,7 +215,7 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                         }
                         IdleTimeoutAction::CancelTransfer { transfer_id, reason } => {
                             warn!(peer=%ctx.peer_node_id, transfer_id, "{reason}");
-                            if !stream.try_queue_data(Packet::Data(DataPacket::FileCancel { transfer_id })) {
+                            if outbox.queue_data(Packet::Data(DataPacket::FileCancel { transfer_id })).is_err() {
                                 warn!(peer=%ctx.peer_node_id, transfer_id, "drop timeout FileCancel because data queue is full");
                             }
                             emit_transfer_update(
@@ -144,13 +231,15 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                     }
                 }
             }
+
+            // 6. command from caller
             maybe_command = ctx.command_rx.recv() => {
                 match maybe_command {
                     Some(SessionCommand::SendText(content)) => {
-                        if !stream.try_queue_data(Packet::Data(DataPacket::ClipboardText {
+                        if outbox.queue_data(Packet::Data(DataPacket::ClipboardText {
                             id: Uuid::now_v7().to_string(),
                             content,
-                        })) {
+                        })).is_err() {
                             warn!(peer=%ctx.peer_node_id, "drop outgoing text because data queue is full");
                         }
                     }
@@ -160,11 +249,11 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                     Some(SessionCommand::FileDecision { transfer_id, accept, reason }) => {
                         match receiver.apply_decision(transfer_id, accept).await {
                             Ok(()) => {
-                                if !stream.try_queue_data(Packet::Data(DataPacket::FileDecision {
+                                if outbox.queue_data(Packet::Data(DataPacket::FileDecision {
                                     transfer_id,
                                     accept,
                                     reason: reason.clone(),
-                                })) {
+                                })).is_err() {
                                     warn!(peer=%ctx.peer_node_id, transfer_id, "drop local FileDecision because data queue is full");
                                 }
                                 if !accept {
@@ -187,26 +276,6 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                     Some(SessionCommand::Shutdown) | None => break,
                 }
             }
-            maybe_packet = stream.recv() => {
-                match maybe_packet? {
-                    Some(packet) => {
-                        if handle_incoming_packet(
-                            &ctx.peer_node_id,
-                            packet,
-                            &mut stream,
-                            &mut sender,
-                            &mut receiver,
-                            &mut seen_text_ids,
-                            &ctx.event_tx,
-                            &ctx.progress_tx,
-                        ).await? {
-                            last_pong = Instant::now();
-                        }
-                    }
-                    None => break,
-                }
-            }
-            _ = tokio::time::sleep(Duration::from_millis(1)), if stream.has_pending() => {}
         }
     }
 
@@ -230,7 +299,7 @@ fn now_millis_u64() -> u64 {
 async fn handle_incoming_packet(
     peer_node_id: &str,
     packet: Packet,
-    stream: &mut PriorityPacketStream,
+    outbox: &mut PacketOutbox,
     sender: &mut FileSender,
     receiver: &mut FileReceiverStateMachine,
     seen_text_ids: &mut HashSet<String>,
@@ -244,7 +313,7 @@ async fn handle_incoming_packet(
             ));
         }
         Packet::Ping { timestamp } => {
-            if !stream.try_queue_control(Packet::Pong { timestamp }) {
+            if !outbox.queue_control(Packet::Pong { timestamp }) {
                 warn!(peer=%peer_node_id, "drop pong because control queue is full");
             }
             return Ok(false);
@@ -292,12 +361,14 @@ async fn handle_incoming_packet(
                         .await;
                     }
                     Err(error) => {
-                        if !stream.try_queue_data(Packet::Data(DataPacket::FileDecision {
+                        let packet = Packet::Data(DataPacket::FileDecision {
                             transfer_id,
                             accept: false,
                             reason: Some(error.to_string()),
-                        })) {
-                            warn!(peer=%peer_node_id, transfer_id, "drop auto reject FileDecision because data queue is full");
+                        });
+
+                        if outbox.queue_data(packet).is_err() {
+                            warn!(peer=%peer_node_id, transfer_id, "drop auto-reject FileDecision");
                         }
                         emit_transfer_update(
                             peer_node_id,
@@ -343,8 +414,7 @@ async fn handle_incoming_packet(
                 }
                 Err(error) => {
                     warn!(transfer_id, "file chunk failed: {error}");
-                    if !stream.try_queue_data(Packet::Data(DataPacket::FileCancel { transfer_id }))
-                    {
+                    if outbox.queue_data(Packet::Data(DataPacket::FileCancel { transfer_id })).is_err() {
                         warn!(peer=%peer_node_id, transfer_id, "drop FileCancel after chunk failure because data queue is full");
                     }
                     let _ = receiver.abort_transfer(transfer_id).await;
@@ -380,8 +450,7 @@ async fn handle_incoming_packet(
                 }
                 Err(error) => {
                     warn!(transfer_id, "file end failed: {error}");
-                    if !stream.try_queue_data(Packet::Data(DataPacket::FileCancel { transfer_id }))
-                    {
+                    if outbox.queue_data(Packet::Data(DataPacket::FileCancel { transfer_id })).is_err() {
                         warn!(peer=%peer_node_id, transfer_id, "drop FileCancel after file end failure because data queue is full");
                     }
                     let _ = receiver.abort_transfer(transfer_id).await;
@@ -420,22 +489,7 @@ async fn handle_incoming_packet(
         },
     }
 
-    Ok(false)
-}
-
-fn drain_sender_data_packets(sender: &mut FileSender, stream: &mut PriorityPacketStream) {
-    let mut drained = 0;
-    while drained < MAX_DATA_DRAIN_PER_LOOP {
-        let Some(packet) = sender.pop_packet() else {
-            break;
-        };
-
-        if !stream.try_queue_data(packet.clone()) {
-            sender.requeue_packet_front(packet);
-            break;
-        }
-        drained += 1;
-    }
+    Ok(true)
 }
 
 async fn emit_transfer_update(
