@@ -20,6 +20,7 @@ pub enum PeerConnectionState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectedPeerInfo {
     pub peer_node_id: String,
+    pub peer_device_id: String,
     pub addr: SocketAddr,
     pub outbound: bool,
     pub connected_at_ms: u64,
@@ -65,7 +66,11 @@ pub struct TransferUpdate {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncEvent {
-    TextReceived(String),
+    TextReceived {
+        event_id: String,
+        content: String,
+        source_device_id: String,
+    },
     FileDecisionRequired {
         peer_node_id: String,
         transfer_id: u32,

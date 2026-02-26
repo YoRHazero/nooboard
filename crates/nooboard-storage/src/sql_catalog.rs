@@ -1,8 +1,3 @@
-use std::fs;
-use std::path::Path;
-
-use crate::{StorageConfig, StorageError};
-
 #[derive(Debug, Clone)]
 pub struct SqlCatalog {
     pub schema: String,
@@ -16,30 +11,23 @@ pub struct SqlCatalog {
 }
 
 impl SqlCatalog {
-    pub fn load(storage: &StorageConfig) -> Result<Self, StorageError> {
-        Ok(Self {
-            schema: fs::read_to_string(&storage.schema_sql)?,
-            insert_event: load_query(&storage.queries_dir, "insert_event.sql")?,
-            select_latest_active_content: load_query(
-                &storage.queries_dir,
-                "select_latest_active_content.sql",
-            )?,
-            list_history: load_query(&storage.queries_dir, "list_history.sql")?,
-            list_history_with_cursor: load_query(
-                &storage.queries_dir,
-                "list_history_with_cursor.sql",
-            )?,
-            search_history: load_query(&storage.queries_dir, "search_history.sql")?,
-            gc_mark_tombstone: load_query(&storage.queries_dir, "gc_mark_tombstone.sql")?,
-            gc_delete_expired_tombstone: load_query(
-                &storage.queries_dir,
-                "gc_delete_expired_tombstone.sql",
-            )?,
-        })
+    pub fn load() -> Self {
+        Self {
+            schema: include_str!("../sql/bootstrap/schema.sql").to_string(),
+            insert_event: include_str!("../sql/queries/insert_event.sql").to_string(),
+            select_latest_active_content: include_str!(
+                "../sql/queries/select_latest_active_content.sql"
+            )
+            .to_string(),
+            list_history: include_str!("../sql/queries/list_history.sql").to_string(),
+            list_history_with_cursor: include_str!("../sql/queries/list_history_with_cursor.sql")
+                .to_string(),
+            search_history: include_str!("../sql/queries/search_history.sql").to_string(),
+            gc_mark_tombstone: include_str!("../sql/queries/gc_mark_tombstone.sql").to_string(),
+            gc_delete_expired_tombstone: include_str!(
+                "../sql/queries/gc_delete_expired_tombstone.sql"
+            )
+            .to_string(),
+        }
     }
-}
-
-fn load_query(queries_dir: &Path, file_name: &str) -> Result<String, StorageError> {
-    let path = queries_dir.join(file_name);
-    fs::read_to_string(path).map_err(Into::into)
 }

@@ -1,9 +1,6 @@
 [storage]
 db_root = "/Users/zero/study/rust/nooboard/.dev-data"
-schema_version = "v0.1.0"
 retain_old_versions = 0
-schema_sql = "/Users/zero/study/rust/nooboard/sql/bootstrap/schema.sql"
-queries_dir = "/Users/zero/study/rust/nooboard/sql/queries"
 
 [storage.lifecycle]
 history_window_days = 7
@@ -13,6 +10,7 @@ gc_batch_size = 500
 
 [identity]
 noob_id_file = "/Users/zero/study/rust/nooboard/.dev-data/noob_id"
+device_id = "dev-mac"
 
 [sync]
 enabled = true

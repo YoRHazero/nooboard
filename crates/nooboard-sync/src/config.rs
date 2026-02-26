@@ -23,6 +23,7 @@ pub struct SyncConfig {
     pub max_file_size: u64,
     pub active_downloads: usize,
     pub noob_id: String,
+    pub device_id: String,
 }
 
 impl SyncConfig {
@@ -33,6 +34,10 @@ impl SyncConfig {
 
         if self.noob_id.trim().is_empty() {
             return Err("sync.noob_id must not be empty".to_string());
+        }
+
+        if self.device_id.trim().is_empty() {
+            return Err("sync.device_id must not be empty".to_string());
         }
 
         if self.max_packet_size == 0 {
@@ -97,6 +102,7 @@ impl Default for SyncConfig {
             max_file_size: 10 * 1024 * 1024 * 1024,
             active_downloads: 8,
             noob_id: "dev-node".to_string(),
+            device_id: "dev-device".to_string(),
         }
     }
 }

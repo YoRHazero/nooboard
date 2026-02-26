@@ -48,10 +48,11 @@ pub(super) async fn run_accept_loop(
                     .await;
 
                     match result {
-                        Ok((peer_node_id, framed)) => {
+                        Ok((peer_node_id, peer_device_id, framed)) => {
                             let _ = control_tx
                                 .send(EngineControl::Connected {
                                     peer_node_id,
+                                    peer_device_id,
                                     addr,
                                     outbound: false,
                                     framed,

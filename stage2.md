@@ -30,8 +30,8 @@
 
 ### 3.3 版本目录策略
 1. 不做 migration。
-2. 数据库路径：`{db_root}/{schema_version}/nooboard.db`。
-3. schema 变化时 bump `schema_version`，直接新建新库。
+2. 数据库路径：`{db_root}/{STORAGE_SCHEMA_VERSION}/nooboard.db`。
+3. schema 变化时 bump `nooboard-storage` 内部常量 `STORAGE_SCHEMA_VERSION`，直接新建新库。
 4. `retain_old_versions = 0` 时，仅保留当前版本目录。
 
 ## 4. 配置与 SQL 方案
@@ -39,10 +39,7 @@
 ```toml
 [storage]
 db_root = "/Users/zero/study/rust/nooboard/.dev-data"
-schema_version = "v0.1.0"
 retain_old_versions = 0
-schema_sql = "/Users/zero/study/rust/nooboard/sql/bootstrap/schema.sql"
-queries_dir = "/Users/zero/study/rust/nooboard/sql/queries"
 
 [storage.lifecycle]
 history_window_days = 7
@@ -58,17 +55,17 @@ gc_batch_size = 500
 4. `gc_batch_size >= 1`。
 
 ### 4.2 SQL 外置文件
-1. `/Users/zero/study/rust/nooboard/sql/bootstrap/schema.sql`
-2. `/Users/zero/study/rust/nooboard/sql/queries/insert_event.sql`
-3. `/Users/zero/study/rust/nooboard/sql/queries/select_latest_active_content.sql`
-4. `/Users/zero/study/rust/nooboard/sql/queries/list_history.sql`
-5. `/Users/zero/study/rust/nooboard/sql/queries/search_history.sql`
-6. `/Users/zero/study/rust/nooboard/sql/queries/gc_mark_tombstone.sql`
-7. `/Users/zero/study/rust/nooboard/sql/queries/gc_delete_expired_tombstone.sql`
+1. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/sql/bootstrap/schema.sql`
+2. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/sql/queries/insert_event.sql`
+3. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/sql/queries/select_latest_active_content.sql`
+4. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/sql/queries/list_history.sql`
+5. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/sql/queries/search_history.sql`
+6. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/sql/queries/gc_mark_tombstone.sql`
+7. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/sql/queries/gc_delete_expired_tombstone.sql`
 
 代码约束：
 1. `nooboard-storage/src` 不允许出现 SQL 字面量。
-2. repository 仅负责 SQL 加载、参数绑定、结果映射、事务控制。
+2. repository 仅负责 SQL 使用、参数绑定、结果映射、事务控制。
 
 ## 5. 实施步骤（按顺序）
 1. 重建 `crates/nooboard-storage` crate，并加回 workspace。
@@ -96,8 +93,8 @@ gc_batch_size = 500
 7. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/src/sql_catalog.rs`
 8. `/Users/zero/study/rust/nooboard/configs/dev.toml`
 9. `/Users/zero/study/rust/nooboard/configs/prod.toml`
-10. `/Users/zero/study/rust/nooboard/sql/bootstrap/schema.sql`
-11. `/Users/zero/study/rust/nooboard/sql/queries/*.sql`
+10. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/sql/bootstrap/schema.sql`
+11. `/Users/zero/study/rust/nooboard/crates/nooboard-storage/sql/queries/*.sql`
 
 ### 6.2 修改
 1. `/Users/zero/study/rust/nooboard/Cargo.toml`

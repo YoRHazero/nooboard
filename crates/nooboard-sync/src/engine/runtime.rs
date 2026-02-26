@@ -319,6 +319,7 @@ async fn handle_engine_control(
     match control {
         EngineControl::Connected {
             peer_node_id,
+            peer_device_id,
             addr,
             outbound,
             framed,
@@ -356,6 +357,7 @@ async fn handle_engine_control(
                 shutdown_tx,
                 engine_control_tx,
                 &peer_node_id,
+                &peer_device_id,
                 session_id,
                 framed,
             );
@@ -366,6 +368,7 @@ async fn handle_engine_control(
                     command_tx,
                     addr,
                     outbound,
+                    device_id: peer_device_id,
                     session_id,
                     connected_at_ms: now_millis_u64(),
                 },
@@ -429,12 +432,14 @@ fn spawn_session_actor_for_peer(
     shutdown_tx: &broadcast::Sender<()>,
     engine_control_tx: &mpsc::Sender<EngineControl>,
     peer_node_id: &str,
+    peer_device_id: &str,
     session_id: u64,
     framed: Framed<TlsStream<TcpStream>, LengthDelimitedCodec>,
 ) -> mpsc::Sender<SessionCommand> {
     let (command_tx, command_rx) = mpsc::channel(128);
     let disconnect_tx = engine_control_tx.clone();
     let peer_node_id_for_task = peer_node_id.to_string();
+    let peer_device_id_for_task = peer_device_id.to_string();
 
     let actor_config = config.clone();
     let actor_event_tx = event_tx.clone();
@@ -444,6 +449,7 @@ fn spawn_session_actor_for_peer(
     tokio::spawn(async move {
         let actor_result = run_session_actor(SessionActorContext {
             peer_node_id: peer_node_id_for_task.clone(),
+            peer_device_id: peer_device_id_for_task.clone(),
             config: actor_config,
             framed,
             command_rx,

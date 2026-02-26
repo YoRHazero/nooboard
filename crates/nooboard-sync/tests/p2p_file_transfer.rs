@@ -52,6 +52,7 @@ fn make_config(
         max_file_size,
         active_downloads: 4,
         noob_id: node_id.to_string(),
+        device_id: format!("device-{node_id}"),
     }
 }
 
@@ -162,7 +163,7 @@ async fn file_transfer_accept_path_works() -> Result<(), Box<dyn std::error::Err
                     }
                 }
                 SyncEvent::ConnectionError { .. } => {}
-                SyncEvent::TextReceived(_) => {}
+                SyncEvent::TextReceived { .. } => {}
             }
         } else {
             break;
@@ -323,9 +324,9 @@ async fn control_channel_can_disconnect_specific_peer() -> Result<(), Box<dyn st
         let maybe_event = timeout(remain, handle_b.event_rx.recv()).await;
         match maybe_event {
             Err(_) => break,
-            Ok(Some(SyncEvent::TextReceived(text))) => {
+            Ok(Some(SyncEvent::TextReceived { content, .. })) => {
                 assert_ne!(
-                    text, "after-disconnect",
+                    content, "after-disconnect",
                     "peer should be disconnected and not receive text before reconnect loop runs"
                 );
             }

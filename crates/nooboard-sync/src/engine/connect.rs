@@ -40,10 +40,11 @@ pub(super) fn schedule_connect_attempts(
         tokio::spawn(async move {
             let result = connect_outbound_peer(&config, &tls, target.clone()).await;
             match result {
-                Ok((peer_node_id, framed)) => {
+                Ok((peer_node_id, peer_device_id, framed)) => {
                     let _ = control_tx
                         .send(EngineControl::Connected {
                             peer_node_id,
+                            peer_device_id,
                             addr: target.addr,
                             outbound: true,
                             framed,
@@ -71,7 +72,14 @@ pub(super) async fn connect_outbound_peer(
     config: &SyncConfig,
     tls: &TlsContext,
     target: ConnectTarget,
-) -> Result<(String, Framed<TlsStream<TcpStream>, LengthDelimitedCodec>), SyncError> {
+) -> Result<
+    (
+        String,
+        String,
+        Framed<TlsStream<TcpStream>, LengthDelimitedCodec>,
+    ),
+    SyncError,
+> {
     let stream = timeout(
         Duration::from_millis(config.connect_timeout_ms),
         TcpStream::connect(target.addr),
@@ -82,9 +90,9 @@ pub(super) async fn connect_outbound_peer(
     let tls_stream = tls.connect(stream, "nooboard.local").await?;
     let mut framed = framed_with_max_packet(tls_stream, config.max_packet_size);
 
-    let peer_node_id =
+    let (peer_node_id, peer_device_id) =
         perform_client_handshake(config, target.addr, &mut framed, target.expected_node_id).await?;
-    Ok((peer_node_id, framed))
+    Ok((peer_node_id, peer_device_id, framed))
 }
 
 pub(super) async fn accept_inbound_peer(
@@ -94,13 +102,20 @@ pub(super) async fn accept_inbound_peer(
     config: &SyncConfig,
     tls: &TlsContext,
     challenge_registry: Arc<ChallengeRegistry>,
-) -> Result<(String, Framed<TlsStream<TcpStream>, LengthDelimitedCodec>), SyncError> {
+) -> Result<
+    (
+        String,
+        String,
+        Framed<TlsStream<TcpStream>, LengthDelimitedCodec>,
+    ),
+    SyncError,
+> {
     let tls_stream = tls.accept(stream).await?;
     let mut framed = framed_with_max_packet(tls_stream, config.max_packet_size);
 
-    let peer_node_id =
+    let (peer_node_id, peer_device_id) =
         perform_server_handshake(config, socket_id, &challenge_registry, &mut framed).await?;
-    Ok((peer_node_id, framed))
+    Ok((peer_node_id, peer_device_id, framed))
 }
 
 pub(super) fn connection_direction_allowed(outbound: bool, decision: DedupeDecision) -> bool {

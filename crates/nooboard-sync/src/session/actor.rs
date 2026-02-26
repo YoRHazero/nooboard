@@ -75,6 +75,7 @@ pub enum SessionCommand {
 
 pub struct SessionActorContext {
     pub peer_node_id: String,
+    pub peer_device_id: String,
     pub config: SyncConfig,
     pub framed: Framed<tokio_rustls::TlsStream<tokio::net::TcpStream>, LengthDelimitedCodec>,
     pub command_rx: mpsc::Receiver<SessionCommand>,
@@ -198,6 +199,7 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
 
                         if handle_incoming_packet(
                             &ctx.peer_node_id,
+                            &ctx.peer_device_id,
                             packet,
                             &mut outbox,
                             &mut sender,
@@ -339,6 +341,7 @@ fn now_millis_u64() -> u64 {
 
 async fn handle_incoming_packet(
     peer_node_id: &str,
+    peer_device_id: &str,
     packet: Packet,
     outbox: &mut PacketOutbox,
     sender: &mut FileSender,
@@ -364,8 +367,14 @@ async fn handle_incoming_packet(
         }
         Packet::Data(data_packet) => match data_packet {
             DataPacket::ClipboardText { event_id, content } => {
-                if seen_text_ids.insert(event_id) {
-                    let _ = event_tx.send(SyncEvent::TextReceived(content)).await;
+                if seen_text_ids.insert(event_id.clone()) {
+                    let _ = event_tx
+                        .send(SyncEvent::TextReceived {
+                            event_id,
+                            content,
+                            source_device_id: peer_device_id.to_string(),
+                        })
+                        .await;
                 }
             }
             DataPacket::FileStart {

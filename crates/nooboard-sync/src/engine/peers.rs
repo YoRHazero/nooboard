@@ -21,6 +21,7 @@ pub(super) struct PeerHandle {
     pub(super) command_tx: mpsc::Sender<SessionCommand>,
     pub(super) addr: SocketAddr,
     pub(super) outbound: bool,
+    pub(super) device_id: String,
     pub(super) session_id: u64,
     pub(super) connected_at_ms: u64,
 }
@@ -29,6 +30,7 @@ pub(super) struct PeerHandle {
 pub(super) enum EngineControl {
     Connected {
         peer_node_id: String,
+        peer_device_id: String,
         addr: SocketAddr,
         outbound: bool,
         framed: Framed<TlsStream<TcpStream>, LengthDelimitedCodec>,
@@ -235,6 +237,7 @@ impl PeerRegistry {
             .iter()
             .map(|(peer_node_id, handle)| ConnectedPeerInfo {
                 peer_node_id: peer_node_id.clone(),
+                peer_device_id: handle.device_id.clone(),
                 addr: handle.addr,
                 outbound: handle.outbound,
                 connected_at_ms: handle.connected_at_ms,
@@ -278,6 +281,7 @@ mod tests {
                     .parse()
                     .expect("test addr should be valid"),
                 outbound: true,
+                device_id: peer_node_id.to_string(),
                 session_id: 1,
                 connected_at_ms: 1,
             },
@@ -314,6 +318,7 @@ mod tests {
                     .parse()
                     .expect("test addr should be valid"),
                 outbound: true,
+                device_id: "node-b-device".to_string(),
                 session_id: 1,
                 connected_at_ms: 10,
             },
@@ -345,6 +350,7 @@ mod tests {
                     .parse()
                     .expect("test addr should be valid"),
                 outbound: false,
+                device_id: "node-b-old".to_string(),
                 session_id: 1,
                 connected_at_ms: 1,
             },
@@ -357,6 +363,7 @@ mod tests {
                     .parse()
                     .expect("test addr should be valid"),
                 outbound: true,
+                device_id: "node-b-new".to_string(),
                 session_id: 2,
                 connected_at_ms: 2,
             },

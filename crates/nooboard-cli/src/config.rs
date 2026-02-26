@@ -18,6 +18,7 @@ struct CliConfig {
 #[derive(Debug, Deserialize, Default)]
 struct IdentitySection {
     noob_id_file: Option<PathBuf>,
+    device_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -60,6 +61,7 @@ pub fn load_sync_config(config_path: &Path) -> Result<Option<SyncConfig>, Nooboa
         .map(|path| absolutize(path, base_dir))
         .unwrap_or_else(default_noob_id_file);
     let noob_id = ensure_noob_id(&noob_id_file)?;
+    let device_id = resolve_device_id(&parsed.identity, &noob_id);
 
     let download_dir = parsed
         .sync
@@ -115,6 +117,7 @@ pub fn load_sync_config(config_path: &Path) -> Result<Option<SyncConfig>, Nooboa
         max_file_size: parsed.sync.max_file_size.unwrap_or(10 * 1024 * 1024 * 1024),
         active_downloads: parsed.sync.active_downloads.unwrap_or(8),
         noob_id,
+        device_id,
     };
 
     if let Err(message) = config.validate() {
@@ -145,6 +148,30 @@ fn ensure_noob_id(path: &Path) -> Result<String, NooboardError> {
 
 fn default_noob_id_file() -> PathBuf {
     home_dir().join(".nooboard").join("noob_id")
+}
+
+fn resolve_device_id(identity: &IdentitySection, noob_id: &str) -> String {
+    identity
+        .device_id
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var("NOOBOARD_DEVICE_ID")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .or_else(|| {
+            std::env::var("HOSTNAME")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_else(|| {
+            let suffix_len = noob_id.len().min(8);
+            format!("device-{}", &noob_id[..suffix_len])
+        })
 }
 
 fn default_download_dir() -> PathBuf {
@@ -197,8 +224,32 @@ noob_id_file = \"{}\"
         let loaded = load_sync_config(&config_path)?;
         let loaded = loaded.expect("sync config must be enabled");
         assert!(!loaded.noob_id.trim().is_empty());
+        assert!(!loaded.device_id.trim().is_empty());
         assert!(noob_id_path.exists());
 
+        Ok(())
+    }
+
+    #[test]
+    fn uses_configured_device_id_when_provided() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let config_path = temp.path().join("dev.toml");
+
+        let raw = "\
+[sync]
+enabled = true
+listen_addr = \"127.0.0.1:19001\"
+token = \"abc\"
+manual_peers = []
+
+[identity]
+device_id = \"Alice MacBook\"
+";
+        fs::write(&config_path, raw)?;
+
+        let loaded = load_sync_config(&config_path)?;
+        let loaded = loaded.expect("sync config must be enabled");
+        assert_eq!(loaded.device_id, "Alice MacBook");
         Ok(())
     }
 }

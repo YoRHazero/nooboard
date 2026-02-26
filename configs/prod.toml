@@ -1,9 +1,6 @@
 [storage]
 db_root = "/Users/zero/study/rust/nooboard/.data"
-schema_version = "v0.1.0"
 retain_old_versions = 2
-schema_sql = "/Users/zero/study/rust/nooboard/sql/bootstrap/schema.sql"
-queries_dir = "/Users/zero/study/rust/nooboard/sql/queries"
 
 [storage.lifecycle]
 history_window_days = 7

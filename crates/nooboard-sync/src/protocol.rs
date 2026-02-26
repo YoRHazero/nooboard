@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::ProtocolError;
 
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Packet {
@@ -18,6 +18,7 @@ pub enum HandshakePacket {
     Hello {
         protocol_version: u16,
         node_id: String,
+        device_id: String,
     },
     Challenge {
         nonce: String,

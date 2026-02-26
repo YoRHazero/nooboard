@@ -262,22 +262,25 @@ async fn handle_watch(
             }
             maybe_sync_event = recv_sync_event(&mut sync_handle), if sync_handle.is_some() => {
                 match maybe_sync_event {
-                    Some(SyncEvent::TextReceived(text)) => {
-                        if let Err(error) = backend.write_text(&text) {
+                    Some(SyncEvent::TextReceived { event_id, content, source_device_id }) => {
+                        if let Err(error) = backend.write_text(&content) {
                             watch_error = Some(error);
                             shutdown.store(true, Ordering::Relaxed);
                             break;
                         }
 
-                        suppress_text_once = Some(text.clone());
-                        let event = ClipboardEvent::new(text.clone());
+                        suppress_text_once = Some(content.clone());
+                        let event = ClipboardEvent::new(content.clone());
                         if let Err(error) = persist_event(&mut repository, &event) {
                             watch_error = Some(error);
                             shutdown.store(true, Ordering::Relaxed);
                             break;
                         }
 
-                        println!("[remote] {text}");
+                        println!(
+                            "[remote] src={} event={} text={}",
+                            source_device_id, event_id, content
+                        );
                     }
                     Some(SyncEvent::FileDecisionRequired { peer_node_id, transfer_id, file_name, file_size, total_chunks }) => {
                         println!(

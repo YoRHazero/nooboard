@@ -4,7 +4,7 @@ use std::path::Path;
 use rusqlite::{Connection, OptionalExtension, Row, params, types::Type};
 
 use crate::StorageError;
-use crate::config::{AppConfig, StorageConfig};
+use crate::config::{AppConfig, STORAGE_SCHEMA_VERSION, StorageConfig};
 use crate::model::{EventState, HistoryCursor, HistoryRecord};
 use crate::sql_catalog::SqlCatalog;
 
@@ -28,7 +28,7 @@ impl SqliteEventRepository {
 
         fs::create_dir_all(storage.current_version_dir())?;
 
-        let sql = SqlCatalog::load(&storage)?;
+        let sql = SqlCatalog::load();
         let conn = Connection::open(storage.db_path())?;
 
         Ok(Self {
@@ -244,7 +244,7 @@ fn prune_old_versions(storage: &StorageConfig) -> Result<(), StorageError> {
         }
 
         let directory_name = entry.file_name();
-        if directory_name == storage.schema_version.as_str() {
+        if directory_name == STORAGE_SCHEMA_VERSION {
             continue;
         }
 
@@ -261,10 +261,6 @@ mod tests {
 
     use super::*;
     use crate::config::LifecycleConfig;
-
-    fn workspace_root() -> std::path::PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
-    }
 
     fn temp_db_root(name: &str) -> std::path::PathBuf {
         let millis = SystemTime::now()
@@ -283,14 +279,10 @@ mod tests {
         lifecycle: LifecycleConfig,
         retain_old_versions: usize,
     ) -> AppConfig {
-        let root = workspace_root();
         AppConfig {
             storage: StorageConfig {
                 db_root: temp_db_root(name),
-                schema_version: "v0.1.0-test".to_string(),
                 retain_old_versions,
-                schema_sql: root.join("sql").join("bootstrap").join("schema.sql"),
-                queries_dir: root.join("sql").join("queries"),
                 lifecycle,
             },
         }

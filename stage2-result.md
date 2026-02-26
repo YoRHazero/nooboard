@@ -11,13 +11,13 @@
 1. 重建 `nooboard-storage` 并接回 workspace。
 2. 依赖统一收敛到根 `Cargo.toml` 的 `[workspace.dependencies]`，子 crate 使用 `workspace = true`。
 3. 实现 Stage2 配置模型：
-   - `db_root` + `schema_version` 版本目录规则
+   - `db_root` + `STORAGE_SCHEMA_VERSION` 版本目录规则
    - `retain_old_versions` 清理策略
    - lifecycle 参数校验（`history_window_days` / `dedup_window_days` / `gc_every_inserts` / `gc_batch_size`）
-4. 实现 SQL 外置加载：
-   - `sql/bootstrap/schema.sql`
-   - `sql/queries/*.sql`
-   - `nooboard-storage/src` 中不内嵌 SQL 语句
+4. 实现 SQL 外置文件 + 编译期内嵌：
+   - `crates/nooboard-storage/sql/bootstrap/schema.sql`
+   - `crates/nooboard-storage/sql/queries/*.sql`
+   - `nooboard-storage/src` 中不内嵌 SQL 字面量
 5. 实现 repository 核心能力：
    - `init_storage()`
    - `append_local_text(...) -> bool`
@@ -39,7 +39,7 @@
 2. 生命周期：
    - 超过 `history_window_days`：`active -> tombstone`（内容清空）
    - 超过 `dedup_window_days`：删除 tombstone
-3. 版本目录：`{db_root}/{schema_version}/nooboard.db`。
+3. 版本目录：`{db_root}/{STORAGE_SCHEMA_VERSION}/nooboard.db`。
 4. `retain_old_versions = 0` 时仅保留当前版本目录。
 
 ## 4. 变更文件
@@ -55,14 +55,14 @@
    - `crates/nooboard-storage/src/sql_catalog.rs`
    - `crates/nooboard-storage/src/repository.rs`
 3. SQL：
-   - `sql/bootstrap/schema.sql`
-   - `sql/queries/insert_event.sql`
-   - `sql/queries/select_latest_active_content.sql`
-   - `sql/queries/list_history.sql`
-   - `sql/queries/search_history.sql`
-   - `sql/queries/gc_mark_tombstone.sql`
-   - `sql/queries/gc_delete_expired_tombstone.sql`
-   - 删除旧文件：`sql/schema.sql`
+   - `crates/nooboard-storage/sql/bootstrap/schema.sql`
+   - `crates/nooboard-storage/sql/queries/insert_event.sql`
+   - `crates/nooboard-storage/sql/queries/select_latest_active_content.sql`
+   - `crates/nooboard-storage/sql/queries/list_history.sql`
+   - `crates/nooboard-storage/sql/queries/search_history.sql`
+   - `crates/nooboard-storage/sql/queries/gc_mark_tombstone.sql`
+   - `crates/nooboard-storage/sql/queries/gc_delete_expired_tombstone.sql`
+   - 删除旧目录：`/Users/zero/study/rust/nooboard/sql`
 4. CLI/配置/脚本：
    - `crates/nooboard-cli/Cargo.toml`
    - `crates/nooboard-cli/src/main.rs`

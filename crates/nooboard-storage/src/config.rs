@@ -5,6 +5,8 @@ use serde::Deserialize;
 
 use crate::StorageError;
 
+pub const STORAGE_SCHEMA_VERSION: &str = "v0.1.0";
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
     pub storage: StorageConfig,
@@ -13,11 +15,8 @@ pub struct AppConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct StorageConfig {
     pub db_root: PathBuf,
-    pub schema_version: String,
     #[serde(default)]
     pub retain_old_versions: usize,
-    pub schema_sql: PathBuf,
-    pub queries_dir: PathBuf,
     #[serde(default)]
     pub lifecycle: LifecycleConfig,
 }
@@ -68,7 +67,7 @@ impl AppConfig {
 
 impl StorageConfig {
     pub fn current_version_dir(&self) -> PathBuf {
-        self.db_root.join(&self.schema_version)
+        self.db_root.join(STORAGE_SCHEMA_VERSION)
     }
 
     pub fn db_path(&self) -> PathBuf {
@@ -77,23 +76,9 @@ impl StorageConfig {
 
     fn resolve_relative_paths(&mut self, base_dir: &Path) {
         absolutize_if_relative(&mut self.db_root, base_dir);
-        absolutize_if_relative(&mut self.schema_sql, base_dir);
-        absolutize_if_relative(&mut self.queries_dir, base_dir);
     }
 
     pub(crate) fn validate(&self) -> Result<(), StorageError> {
-        if self.schema_version.trim().is_empty() {
-            return Err(StorageError::InvalidConfig(
-                "storage.schema_version must not be empty".to_string(),
-            ));
-        }
-
-        if self.schema_version.contains('/') || self.schema_version.contains('\\') {
-            return Err(StorageError::InvalidConfig(
-                "storage.schema_version must not contain path separators".to_string(),
-            ));
-        }
-
         if self.lifecycle.history_window_days < 1 {
             return Err(StorageError::InvalidConfig(
                 "storage.lifecycle.history_window_days must be >= 1".to_string(),
@@ -179,10 +164,7 @@ mod tests {
         let raw = r#"
 [storage]
 db_root = "./data"
-schema_version = "v0.1.0"
 retain_old_versions = 0
-schema_sql = "./sql/bootstrap/schema.sql"
-queries_dir = "./sql/queries"
 
 [storage.lifecycle]
 history_window_days = 7
@@ -209,10 +191,7 @@ gc_batch_size = 1
         let raw = r#"
 [storage]
 db_root = "./data"
-schema_version = "v0.1.0"
 retain_old_versions = 0
-schema_sql = "./sql/bootstrap/schema.sql"
-queries_dir = "./sql/queries"
 
 [storage.lifecycle]
 history_window_days = 7
@@ -226,10 +205,42 @@ gc_batch_size = 1
 
         assert_eq!(config.storage.db_root, dir.join("./data"));
         assert_eq!(
-            config.storage.schema_sql,
-            dir.join("./sql/bootstrap/schema.sql")
+            config.storage.current_version_dir(),
+            dir.join(format!("./data/{STORAGE_SCHEMA_VERSION}"))
         );
-        assert_eq!(config.storage.queries_dir, dir.join("./sql/queries"));
+
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn load_ignores_legacy_schema_paths_fields() -> Result<(), StorageError> {
+        let dir = temp_dir("legacy-schema-fields");
+        fs::create_dir_all(&dir)?;
+        let config_path = dir.join("dev.toml");
+
+        let raw = r#"
+[storage]
+db_root = "./data"
+retain_old_versions = 0
+schema_version = "v9.9.9"
+schema_sql = "./old/schema.sql"
+queries_dir = "./old/queries"
+
+[storage.lifecycle]
+history_window_days = 7
+dedup_window_days = 14
+gc_every_inserts = 1
+gc_batch_size = 1
+"#;
+
+        fs::write(&config_path, raw)?;
+        let config = AppConfig::load(&config_path)?;
+
+        assert_eq!(
+            config.storage.current_version_dir(),
+            dir.join(format!("./data/{STORAGE_SCHEMA_VERSION}"))
+        );
 
         let _ = fs::remove_dir_all(dir);
         Ok(())

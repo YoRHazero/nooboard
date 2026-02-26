@@ -6,13 +6,19 @@ CONFIG_FILE="$ROOT_DIR/configs/dev.toml"
 
 DB_ROOT="$(sed -nE 's/^[[:space:]]*db_root[[:space:]]*=[[:space:]]*"([^"]+)".*$/\1/p' "$CONFIG_FILE" | head -n 1)"
 SCHEMA_VERSION="$(sed -nE 's/^[[:space:]]*schema_version[[:space:]]*=[[:space:]]*"([^"]+)".*$/\1/p' "$CONFIG_FILE" | head -n 1)"
+if [[ -z "$SCHEMA_VERSION" ]]; then
+  SCHEMA_VERSION="$(
+    sed -nE 's/^[[:space:]]*pub const STORAGE_SCHEMA_VERSION: &str = "([^"]+)";/\1/p' \
+      "$ROOT_DIR/crates/nooboard-storage/src/config.rs" | head -n 1
+  )"
+fi
 
 if [[ -z "$DB_ROOT" ]]; then
   echo "failed to parse db_root from $CONFIG_FILE" >&2
   exit 1
 fi
 if [[ -z "$SCHEMA_VERSION" ]]; then
-  echo "failed to parse schema_version from $CONFIG_FILE" >&2
+  echo "failed to resolve schema version from config and storage constant" >&2
   exit 1
 fi
 
