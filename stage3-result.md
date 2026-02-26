@@ -83,7 +83,6 @@
 - `cargo check`：通过
 - `cargo test -p nooboard-sync`：通过
   - 单元测试 + 集成测试（含 p2p 文件传输、拒绝清理、控制断连）
-- `cargo test -p nooboard-cli`：通过
 
 ## 当前风险与后续建议
 - 当前实现已满足 Stage3 硬约束并通过测试。

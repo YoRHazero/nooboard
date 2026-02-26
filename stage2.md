@@ -1,13 +1,13 @@
 # nooboard Stage2 开发计划（当前基线）
 
 ## 1. 当前基线
-1. 当前 workspace 仅保留 `nooboard-core`、`nooboard-platform`、`nooboard-platform-macos`、`nooboard-cli`。
+1. 当前 workspace 基线为 `nooboard-core`、`nooboard-platform`、`nooboard-platform-macos`。
 2. 本计划只面向 Stage2 重建，不包含任何 Stage3+ 兼容或迁移工作。
 3. Stage1 基线必须保持可用：`get` / `set` / `watch`。
 
 ## 2. Stage2 目标
 1. 从零重建 Stage2 存储能力（单表 `events`）。
-2. 恢复并完成 CLI 的 `history` 能力。
+2. 恢复并完成 `history` 查询能力。
 3. `watch` 在输出事件的同时可落库到 Stage2 存储。
 4. SQL 全部外置，Rust 代码不内嵌 SQL 字面量。
 5. 不做旧库 migration，采用版本目录隔离。
@@ -78,8 +78,8 @@ gc_batch_size = 500
    3. `list_history(limit)`
    4. `search_history(limit, keyword)`
    5. `run_gc_if_needed(now_ms)`
-6. 调整 CLI：恢复 `history` 命令、恢复 `--config`，并将 `watch` 接入存储写入。
-7. 更新 `configs/dev.toml`、`configs/prod.toml`、`scripts/reset_db.sh` 以匹配版本目录规则。
+6. 调整上层调试入口：恢复 `history`、`watch` 与配置加载链路，并将 `watch` 接入存储写入。
+7. 更新 `configs/dev.toml`、`configs/prod.toml` 以匹配版本目录规则。
 8. 完成测试与回归，冻结基线。
 
 ## 6. 计划内文件清单
@@ -98,9 +98,8 @@ gc_batch_size = 500
 
 ### 6.2 修改
 1. `/Users/zero/study/rust/nooboard/Cargo.toml`
-2. `/Users/zero/study/rust/nooboard/crates/nooboard-cli/Cargo.toml`
-3. `/Users/zero/study/rust/nooboard/crates/nooboard-cli/src/main.rs`
-4. `/Users/zero/study/rust/nooboard/scripts/reset_db.sh`
+2. `/Users/zero/study/rust/nooboard/configs/dev.toml`
+3. `/Users/zero/study/rust/nooboard/configs/prod.toml`
 
 ## 7. 验收标准（DoD）
 1. Stage1 不回归：`get` / `set` / `watch` 可用。

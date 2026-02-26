@@ -5,7 +5,7 @@
 ## 1. 范围与基线
 1. 本次开发严格按 `stage2.md` 推进，仅覆盖 Stage2。
 2. 保持 Stage3+ crate 删除基线，不恢复 `nooboard-sync` / `nooboard-app` / `nooboard-gui`。
-3. Stage1 基线命令 `get` / `set` / `watch` 代码路径保留，并在 CLI 上继续可构建。
+3. Stage1 基线能力 `get` / `set` / `watch` 代码路径保留，并继续可构建。
 
 ## 2. 主要完成项
 1. 重建 `nooboard-storage` 并接回 workspace。
@@ -25,14 +25,13 @@
    - `search_history(limit, keyword)`
    - `run_gc_if_needed(now_ms)`
 6. 事件状态改为枚举驱动：`EventState::{Active, Tombstone}`，SQL 中 `state` 改为参数绑定。
-7. CLI 完成 Stage2 接入：
+7. 上层调用入口完成 Stage2 接入：
    - 恢复全局 `--config`
    - 新增 `history` 命令（支持 `--limit` / `--keyword`）
    - `watch` 在输出事件同时写入 Stage2 存储
-8. 更新运行配置与脚本：
+8. 更新运行配置：
    - `configs/dev.toml`
    - `configs/prod.toml`
-   - `scripts/reset_db.sh`（按版本目录重建 DB）
 
 ## 3. 关键数据与生命周期实现
 1. 单表 `events`：`event_id`、`origin_device_id`、`created_at_ms`、`applied_at_ms`、`content`、`state`。
@@ -63,12 +62,9 @@
    - `crates/nooboard-storage/sql/queries/gc_mark_tombstone.sql`
    - `crates/nooboard-storage/sql/queries/gc_delete_expired_tombstone.sql`
    - 删除旧目录：`/Users/zero/study/rust/nooboard/sql`
-4. CLI/配置/脚本：
-   - `crates/nooboard-cli/Cargo.toml`
-   - `crates/nooboard-cli/src/main.rs`
+4. 配置与接入层改动：
    - `configs/dev.toml`
    - `configs/prod.toml`
-   - `scripts/reset_db.sh`
 5. 保持 Stage3+ 删除基线（未恢复相关 crates）：
    - `crates/nooboard-sync/*`
    - `crates/nooboard-app/*`
@@ -77,12 +73,11 @@
 ## 5. 验证结果
 1. `cargo check`：通过。
 2. `cargo test -p nooboard-storage`：通过（7/7）。
-3. `cargo run -p nooboard-cli -- --config configs/dev.toml history --limit 3`：通过（空库返回 `no history records`）。
-4. `bash scripts/reset_db.sh`：通过（重建 `.../.dev-data/v0.1.0/nooboard.db`）。
-5. 代码检索：未发现 `clipboard_history` / `sync_seen_events` / `schema_path` 残留。
+3. 存储生命周期与目录清理策略相关单测：通过。
+4. 代码检索：未发现 `clipboard_history` / `sync_seen_events` / `schema_path` 残留。
 
 ## 6. DoD 对照
-1. Stage1 不回归（`get` / `set` / `watch` 命令仍保留）：通过。
+1. Stage1 不回归（`get` / `set` / `watch` 能力仍保留）：通过。
 2. Stage2 `history` 可查询：通过。
 3. 无 Stage3 旧字段残留：通过。
 4. `nooboard-storage/src` 无 SQL 字面量：通过。

@@ -4,7 +4,7 @@
 1. 当前 workspace 基线为 Stage2。
 2. Stage3 目标是在现有基线上增加多设备 P2P 实时同步能力（含文本与文件）。
 3. Stage3 新增同步能力必须与 `nooboard-storage` 协作，但同步 crate 本身不能依赖 `nooboard-storage`。
-4. 协作方式采用 Channel 适配器模式：`nooboard-sync` 通过 `mpsc/watch` 通道与上层交互，由 `nooboard-cli` 负责组装。
+4. 协作方式采用 Channel 适配器模式：`nooboard-sync` 通过 `mpsc/watch` 通道与上层交互，由 `nooboard-app` 负责组装。
 
 ## 2. Stage3 目标
 1. 剪贴板同步：支持多设备 P2P 实时同步剪贴板文本。
@@ -16,7 +16,7 @@
 ## 3. 架构设计
 ### 3.1 Crate 拆分与依赖
 1. 新增 `crates/nooboard-sync`。
-2. 配置解耦：`nooboard-sync` 仅定义配置结构体，文件 IO 由 `nooboard-cli` 处理。
+2. 配置解耦：`nooboard-sync` 仅定义配置结构体，文件 IO 由 `nooboard-app` 处理。
 3. 接口暴露：通过 `SyncEngineHandle` 暴露 Channels。
 4. 约束：`cargo tree -p nooboard-sync` 不得出现 `nooboard-storage`。
 
@@ -44,7 +44,7 @@ pub struct SyncConfig {
 ```
 
 补充说明：
-1. `noob_id` 文件路径由上层配置（如 `identity.noob_id_file`）决定，`nooboard-cli` 负责读取或生成 UUID 并注入到 `SyncConfig.noob_id`。
+1. `noob_id` 文件路径由上层配置（如 `identity.noob_id_file`）决定，`nooboard-app` 负责读取或生成 UUID 并注入到 `SyncConfig.noob_id`。
 2. `download_dir` 必须在启动阶段确保存在，并作为接收安全根目录。
 
 ### 3.3 传输与协议（Protocol）
@@ -130,7 +130,7 @@ pub enum DataPacket {
 ### 3.7 接收端状态机
 1. `Packet::Handshake(_)` 交给 `HandshakeStateMachine`。
 2. `Packet::Ping/Pong` 直接处理并更新活跃时间。
-3. `Packet::Data(ClipboardText)` 发送给 CLI。
+3. `Packet::Data(ClipboardText)` 发送给上层应用。
 4. `Packet::Data(FileStart/FileDecision/FileChunk/FileEnd/FileCancel)` 交给 `FileReceiverStateMachine`。
 
 ### 3.8 文件传输决策（FileDecision）
@@ -138,7 +138,7 @@ pub enum DataPacket {
 2. 接收端必须在 `file_decision_timeout_ms` 内回复 `FileDecision`（`accept=true/false`）。
 3. 强约束：发送端仅在收到 `FileDecision { accept: true }` 后才允许发送 `FileChunk`/`FileEnd`。
 4. 若收到 `accept=false` 或超时未决策，发送端必须终止该传输并清理状态；已创建的 `.tmp` 文件必须删除。
-5. 接收端可按策略自动拒绝（如大小超限、路径非法），也可由 CLI 交互后返回决策。
+5. 接收端可按策略自动拒绝（如大小超限、路径非法），也可由上层应用交互后返回决策。
 
 ### 3.9 同步语义与保活
 1. 强约束：仅同步在线期间新事件，离线后重连不补发历史数据。
@@ -181,8 +181,8 @@ pub enum SyncEvent {
 3. 实现 `engine.rs`（连接去重、生命周期、重连）。
 
 ### Phase 3: 集成与验证
-1. 改造 `nooboard-cli`：读取 TOML 配置，管理 `noob_id` 文件读取/生成，确保 `download_dir` 存在（默认 `~/Downloads/nooboard`），桥接 `SyncEngineHandle`。
-2. 实现 CLI 命令与测试。
+1. 改造 `nooboard-app`：读取 TOML 配置，管理 `noob_id` 文件读取/生成，确保 `download_dir` 存在（默认 `~/Downloads/nooboard`），桥接 `SyncEngineHandle`。
+2. 实现 app 层接口与测试。
 3. 联调测试：文本同步、大文件传输、`FileDecision` 接受/拒绝与超时、心跳优先、断网重连与清理。
 
 ## 5. 计划内文件清单
@@ -202,8 +202,8 @@ pub enum SyncEvent {
 
 ### 5.2 修改
 1. `/Users/zero/study/rust/nooboard/Cargo.toml`
-2. `/Users/zero/study/rust/nooboard/crates/nooboard-cli/src/config.rs`
-3. `/Users/zero/study/rust/nooboard/crates/nooboard-cli/src/main.rs`
+2. `/Users/zero/study/rust/nooboard/crates/nooboard-app/src/config.rs`
+3. `/Users/zero/study/rust/nooboard/crates/nooboard-app/src/service.rs`
 4. `/Users/zero/study/rust/nooboard/configs/dev.toml`
 
 ## 6. 验收标准（DoD）
@@ -220,4 +220,4 @@ pub enum SyncEvent {
 11. 非阻塞体验：文件传输期间心跳正常，文本消息低延迟可达。
 12. `noob_id` 可持久化复用，文件缺失时可自动生成并写入。
 13. `nooboard-sync` 不依赖 `nooboard-storage`（依赖图检查通过）。
-14. `cargo check` 与关键测试通过（至少 `nooboard-sync`、`nooboard-cli`）。
+14. `cargo check` 与关键测试通过（至少 `nooboard-sync`、`nooboard-app`）。
