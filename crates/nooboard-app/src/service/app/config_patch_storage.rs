@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use super::{AppServiceImpl, StorageConfigView, StoragePatch};
 use crate::AppResult;
 
@@ -14,11 +16,20 @@ impl AppServiceImpl {
             gc_every_inserts,
             gc_batch_size,
         } = patch;
+        let config_base_dir = self
+            .config_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf();
 
         let applied = self
             .execute_storage_config_transcation(move |config| {
                 if let Some(db_root) = db_root {
-                    config.storage.db_root = db_root;
+                    config.storage.db_root = if db_root.is_relative() {
+                        config_base_dir.join(db_root)
+                    } else {
+                        db_root
+                    };
                 }
                 if let Some(retain_old_versions) = retain_old_versions {
                     config.storage.retain_old_versions = retain_old_versions;

@@ -186,6 +186,61 @@ async fn storage_patch_invalid_values_are_rejected_without_persisting()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn storage_patch_resolves_relative_db_root_from_config_dir()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = TempDir::new()?;
+    let db_a = root.path().join("db-a");
+    let (service, _dir, config_path) = new_service(&db_a)?;
+
+    let relative_db_root = PathBuf::from("db-relative");
+    let expected_db_root = config_path
+        .parent()
+        .expect("config path must have parent")
+        .join(&relative_db_root);
+
+    let applied = service
+        .apply_storage_patch(StoragePatch {
+            db_root: Some(relative_db_root),
+            ..StoragePatch::default()
+        })
+        .await?;
+    assert_eq!(applied.db_root, expected_db_root);
+
+    service
+        .store_remote_text(RemoteTextRequest {
+            event_id: EventId::new(),
+            content: "from-relative".to_string(),
+            device_id: "remote-a".to_string(),
+        })
+        .await?;
+
+    let before_restart = service
+        .list_history(ListHistoryRequest {
+            limit: 10,
+            cursor: None,
+        })
+        .await?;
+    assert_eq!(before_restart.records.len(), 1);
+    assert_eq!(before_restart.records[0].content, "from-relative");
+
+    service.restart_engine().await?;
+    let after_restart = service
+        .list_history(ListHistoryRequest {
+            limit: 10,
+            cursor: None,
+        })
+        .await?;
+    assert_eq!(after_restart.records.len(), 1);
+    assert_eq!(after_restart.records[0].content, "from-relative");
+
+    let persisted = AppConfig::load(config_path)?;
+    assert_eq!(persisted.storage.db_root, expected_db_root);
+
+    service.stop_engine().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn network_patch_does_not_reconfigure_storage_runtime()
 -> Result<(), Box<dyn std::error::Error>> {
     let root = TempDir::new()?;
