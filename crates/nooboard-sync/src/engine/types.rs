@@ -83,7 +83,6 @@ pub enum SyncEvent {
         addr: Option<SocketAddr>,
         error: String,
     },
-    TransferUpdate(TransferUpdate),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

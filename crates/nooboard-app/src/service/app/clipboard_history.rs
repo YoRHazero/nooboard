@@ -28,7 +28,7 @@ impl AppServiceImpl {
             )
             .await?;
 
-        let broadcast_attempted = request.targets.should_send();
+        let broadcast_attempted = config.sync.network.enabled && request.targets.should_send();
         if broadcast_attempted {
             let sync_request = SendTextRequest {
                 event_id: event_id.to_string(),

@@ -1,13 +1,15 @@
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use nooboard_app::{
-    AppConfig, AppError, AppResult, AppService, AppServiceImpl, ClipboardPort, EventId,
+    AppConfig, AppError, AppEvent, AppResult, AppService, AppServiceImpl, ClipboardPort, EventId,
     FileDecisionRequest, ListHistoryRequest, LocalClipboardChangeRequest, NetworkPatch, NodeId,
-    RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest, Targets,
+    RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest, SyncEvent, Targets,
+    TransferState,
 };
 use tempfile::TempDir;
+use tokio::time::{Duration, Instant, timeout};
 
 #[derive(Default)]
 struct MockClipboardBackend {
@@ -44,14 +46,31 @@ fn toml_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "\\\\")
 }
 
+fn free_port() -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("must bind ephemeral port");
+    let port = listener
+        .local_addr()
+        .expect("must resolve local addr")
+        .port();
+    drop(listener);
+    port
+}
+
 fn write_test_config(
     dir: &TempDir,
     recent_limit: usize,
+    listen_addr: SocketAddr,
+    manual_peers: &[SocketAddr],
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let config_path = dir.path().join("app.toml");
     let noob_id_file = dir.path().join("node_id");
     let db_root = dir.path().join("db");
     let download_dir = dir.path().join("downloads");
+    let manual_peers = manual_peers
+        .iter()
+        .map(|addr| format!("\"{addr}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
 
     let raw = format!(
         r#"
@@ -79,8 +98,8 @@ gc_batch_size = 20
 [sync.network]
 enabled = true
 mdns_enabled = true
-listen_addr = "127.0.0.1:0"
-manual_peers = []
+listen_addr = "{listen_addr}"
+manual_peers = [{manual_peers}]
 
 [sync.auth]
 token = "test-sync-token"
@@ -104,6 +123,8 @@ max_packet_size = 65536
         db_root = toml_path(&db_root),
         download_dir = toml_path(&download_dir),
         recent_limit = recent_limit,
+        listen_addr = listen_addr,
+        manual_peers = manual_peers,
     );
 
     std::fs::write(&config_path, raw)?;
@@ -115,7 +136,25 @@ fn new_service(
 ) -> Result<(AppServiceImpl, Arc<MockClipboardBackend>, TempDir, PathBuf), Box<dyn std::error::Error>>
 {
     let dir = TempDir::new()?;
-    let config_path = write_test_config(&dir, recent_limit)?;
+    let config_path = write_test_config(
+        &dir,
+        recent_limit,
+        "127.0.0.1:0".parse().expect("valid loopback addr"),
+        &[],
+    )?;
+    let backend = Arc::new(MockClipboardBackend::default());
+    let service = AppServiceImpl::new(&config_path, backend.clone())?;
+    Ok((service, backend, dir, config_path))
+}
+
+fn new_service_with_network(
+    recent_limit: usize,
+    listen_addr: SocketAddr,
+    manual_peers: Vec<SocketAddr>,
+) -> Result<(AppServiceImpl, Arc<MockClipboardBackend>, TempDir, PathBuf), Box<dyn std::error::Error>>
+{
+    let dir = TempDir::new()?;
+    let config_path = write_test_config(&dir, recent_limit, listen_addr, &manual_peers)?;
     let backend = Arc::new(MockClipboardBackend::default());
     let service = AppServiceImpl::new(&config_path, backend.clone())?;
     Ok((service, backend, dir, config_path))
@@ -153,6 +192,37 @@ async fn clipboard_flow_covers_a1_a2_a3_a4() -> Result<(), Box<dyn std::error::E
             targets: Targets::nodes(vec![NodeId::new("peer-node-x")]),
         })
         .await?;
+
+    service.stop_engine().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn local_clipboard_change_succeeds_when_network_disabled()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (service, _backend, _dir, _config_path) = new_service(50)?;
+    service.start_engine().await?;
+    service
+        .apply_network_patch(NetworkPatch::SetNetworkEnabled(false))
+        .await?;
+
+    let result = service
+        .apply_local_clipboard_change(LocalClipboardChangeRequest {
+            text: "offline-local".to_string(),
+            targets: Targets::all(),
+        })
+        .await?;
+    assert!(!result.broadcast_attempted);
+
+    let history = service
+        .list_history(ListHistoryRequest {
+            limit: 10,
+            cursor: None,
+        })
+        .await?;
+    assert_eq!(history.records.len(), 1);
+    assert_eq!(history.records[0].event_id, result.event_id);
+    assert_eq!(history.records[0].content, "offline-local");
 
     service.stop_engine().await?;
     Ok(())
@@ -347,6 +417,120 @@ async fn broadcast_config_transaction_covers_normal_and_error_paths()
     assert_eq!(persisted.sync.network.manual_peers, vec![peer_b]);
 
     service.stop_engine().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn transfer_events_do_not_break_sync_event_bridge() -> Result<(), Box<dyn std::error::Error>>
+{
+    let port_a = free_port();
+    let port_b = free_port();
+    let listen_a: SocketAddr = format!("127.0.0.1:{port_a}").parse()?;
+    let listen_b: SocketAddr = format!("127.0.0.1:{port_b}").parse()?;
+
+    let (service_a, _backend_a, dir_a, _config_a) =
+        new_service_with_network(50, listen_a, vec![listen_b])?;
+    let (service_b, _backend_b, _dir_b, _config_b) =
+        new_service_with_network(50, listen_b, vec![listen_a])?;
+
+    service_a.start_engine().await?;
+    service_b.start_engine().await?;
+
+    let mut receiver_b = service_b.subscribe_events().await?;
+
+    let connect_deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < connect_deadline {
+        if !service_a.connected_peers().await?.is_empty()
+            && !service_b.connected_peers().await?.is_empty()
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(
+        !service_a.connected_peers().await?.is_empty(),
+        "service A must connect to service B before file transfer"
+    );
+    assert!(
+        !service_b.connected_peers().await?.is_empty(),
+        "service B must connect to service A before file transfer"
+    );
+
+    let file_path = dir_a.path().join("bridge-check.txt");
+    std::fs::write(&file_path, "bridge-check-body")?;
+    service_a
+        .send_file(SendFileRequest {
+            path: file_path,
+            targets: Targets::all(),
+        })
+        .await?;
+
+    let transfer_deadline = Instant::now() + Duration::from_secs(15);
+    let mut transfer_finished = false;
+    while Instant::now() < transfer_deadline {
+        let remain = transfer_deadline.saturating_duration_since(Instant::now());
+        if remain.is_zero() {
+            break;
+        }
+
+        let event = timeout(remain, receiver_b.recv()).await??;
+        match event {
+            AppEvent::Sync(SyncEvent::FileDecisionRequired {
+                peer_node_id,
+                transfer_id,
+                ..
+            }) => {
+                service_b
+                    .respond_file_decision(FileDecisionRequest {
+                        peer_node_id,
+                        transfer_id,
+                        accept: true,
+                        reason: None,
+                    })
+                    .await?;
+            }
+            AppEvent::Transfer(update) => {
+                if matches!(update.state, TransferState::Finished { .. }) {
+                    transfer_finished = true;
+                    break;
+                }
+            }
+            AppEvent::Sync(_) => {}
+        }
+    }
+    assert!(transfer_finished, "must observe transfer finished event");
+
+    let marker = "after-transfer";
+    service_a
+        .apply_local_clipboard_change(LocalClipboardChangeRequest {
+            text: marker.to_string(),
+            targets: Targets::all(),
+        })
+        .await?;
+
+    let text_deadline = Instant::now() + Duration::from_secs(10);
+    let mut saw_text_received = false;
+    while Instant::now() < text_deadline {
+        let remain = text_deadline.saturating_duration_since(Instant::now());
+        if remain.is_zero() {
+            break;
+        }
+
+        let event = timeout(remain, receiver_b.recv()).await??;
+        if let AppEvent::Sync(SyncEvent::TextReceived { content, .. }) = event
+            && content == marker
+        {
+            saw_text_received = true;
+            break;
+        }
+    }
+    assert!(
+        saw_text_received,
+        "text events must still flow after transfer updates"
+    );
+
+    service_a.stop_engine().await?;
+    service_b.stop_engine().await?;
     Ok(())
 }
 

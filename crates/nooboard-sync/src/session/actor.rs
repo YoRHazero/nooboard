@@ -154,7 +154,6 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                 TransferDirection::Outgoing,
                 update.transfer_id,
                 update.state,
-                &ctx.event_tx,
                 &ctx.progress_tx,
             )
             .await;
@@ -251,7 +250,6 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                                 TransferState::Cancelled {
                                     reason: Some(reason),
                                 },
-                                &ctx.event_tx,
                                 &ctx.progress_tx,
                             )
                             .await;
@@ -266,7 +264,6 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                                 TransferDirection::Incoming,
                                 transfer_id,
                                 TransferState::Failed { reason },
-                                &ctx.event_tx,
                                 &ctx.progress_tx,
                             )
                             .await;
@@ -305,7 +302,6 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                                         TransferDirection::Incoming,
                                         transfer_id,
                                         TransferState::Cancelled { reason },
-                                        &ctx.event_tx,
                                         &ctx.progress_tx,
                                     )
                                     .await;
@@ -405,7 +401,6 @@ async fn handle_incoming_packet(
                                 file_name,
                                 total_bytes: file_size,
                             },
-                            event_tx,
                             progress_tx,
                         )
                         .await;
@@ -427,7 +422,6 @@ async fn handle_incoming_packet(
                             TransferState::Failed {
                                 reason: error.to_string(),
                             },
-                            event_tx,
                             progress_tx,
                         )
                         .await;
@@ -457,7 +451,6 @@ async fn handle_incoming_packet(
                             bps: None,
                             eta_ms: None,
                         },
-                        event_tx,
                         progress_tx,
                     )
                     .await;
@@ -478,7 +471,6 @@ async fn handle_incoming_packet(
                         TransferState::Failed {
                             reason: error.to_string(),
                         },
-                        event_tx,
                         progress_tx,
                     )
                     .await;
@@ -496,7 +488,6 @@ async fn handle_incoming_packet(
                         TransferState::Finished {
                             path: Some(downloaded.path),
                         },
-                        event_tx,
                         progress_tx,
                     )
                     .await;
@@ -517,7 +508,6 @@ async fn handle_incoming_packet(
                         TransferState::Failed {
                             reason: error.to_string(),
                         },
-                        event_tx,
                         progress_tx,
                     )
                     .await;
@@ -536,7 +526,6 @@ async fn handle_incoming_packet(
                         TransferState::Cancelled {
                             reason: Some("cancelled by peer".to_string()),
                         },
-                        event_tx,
                         progress_tx,
                     )
                     .await;
@@ -553,7 +542,6 @@ async fn emit_transfer_update(
     direction: TransferDirection,
     transfer_id: u32,
     state: TransferState,
-    event_tx: &mpsc::Sender<SyncEvent>,
     progress_tx: &broadcast::Sender<TransferUpdate>,
 ) {
     let update = TransferUpdate {
@@ -563,11 +551,7 @@ async fn emit_transfer_update(
         state,
     };
 
-    if matches!(update.state, TransferState::Progress { .. }) {
-        let _ = progress_tx.send(update);
-    } else {
-        let _ = event_tx.send(SyncEvent::TransferUpdate(update)).await;
-    }
+    let _ = progress_tx.send(update);
 }
 
 #[cfg(test)]

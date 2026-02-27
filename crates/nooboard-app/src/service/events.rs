@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use tokio::sync::{Mutex, broadcast};
 
+use crate::AppResult;
 use crate::sync_runtime::SyncRuntime;
-use crate::{AppError, AppResult};
 
 use super::types::AppEvent;
 
@@ -47,33 +47,39 @@ impl SubscriptionHub {
 
         let events_tx = self.events_tx.clone();
         tokio::spawn(async move {
+            let mut sync_closed = false;
+            let mut transfer_closed = false;
+
             loop {
-                match sync_rx.recv().await {
-                    Ok(event) => {
-                        let mapped = AppEvent::try_from(event);
-                        match mapped {
+                if sync_closed && transfer_closed {
+                    break;
+                }
+
+                tokio::select! {
+                    result = sync_rx.recv(), if !sync_closed => {
+                        match result {
                             Ok(event) => {
-                                let _ = events_tx.send(event);
+                                if let Ok(mapped) = AppEvent::try_from(event) {
+                                    let _ = events_tx.send(mapped);
+                                }
                             }
-                            Err(AppError::InvalidEventId { .. }) => continue,
-                            Err(_) => continue,
+                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(broadcast::error::RecvError::Closed) => {
+                                sync_closed = true;
+                            }
                         }
                     }
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(broadcast::error::RecvError::Closed) => break,
-                }
-            }
-        });
-
-        let events_tx = self.events_tx.clone();
-        tokio::spawn(async move {
-            loop {
-                match transfer_rx.recv().await {
-                    Ok(update) => {
-                        let _ = events_tx.send(update.into());
+                    result = transfer_rx.recv(), if !transfer_closed => {
+                        match result {
+                            Ok(update) => {
+                                let _ = events_tx.send(update.into());
+                            }
+                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(broadcast::error::RecvError::Closed) => {
+                                transfer_closed = true;
+                            }
+                        }
                     }
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(broadcast::error::RecvError::Closed) => break,
                 }
             }
         });

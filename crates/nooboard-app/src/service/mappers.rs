@@ -127,9 +127,6 @@ impl TryFrom<SyncEngineEvent> for SyncEvent {
                 addr,
                 error,
             }),
-            SyncEngineEvent::TransferUpdate(_) => {
-                unreachable!("transfer updates are bridged separately")
-            }
         }
     }
 }

@@ -47,11 +47,10 @@ impl AppConfig {
     pub fn regenerate_node_id(config_path: impl AsRef<Path>) -> AppResult<String> {
         let config_path = config_path.as_ref();
         let raw = fs::read_to_string(config_path)?;
-        let mut config: Self =
-            toml::from_str(&raw).map_err(|source| AppError::ConfigParse {
-                path: config_path.to_path_buf(),
-                source,
-            })?;
+        let mut config: Self = toml::from_str(&raw).map_err(|source| AppError::ConfigParse {
+            path: config_path.to_path_buf(),
+            source,
+        })?;
 
         let base_dir = config_path.parent().unwrap_or_else(|| Path::new("."));
         config.resolve_relative_paths(base_dir);

@@ -14,13 +14,15 @@ use super::types::{
     AppEvent, AppSyncStatus, BroadcastConfig, ConnectedPeer, EventId, FileDecisionRequest,
     HistoryCursor, HistoryPage, HistoryRecord, ListHistoryRequest, LocalClipboardChangeRequest,
     LocalClipboardChangeResult, NetworkPatch, RebroadcastHistoryRequest, RemoteTextRequest,
-    SendFileRequest, find_recent_record, now_millis_i64,
+    SendFileRequest, StorageConfigView, StoragePatch, find_recent_record, now_millis_i64,
 };
 
 mod clipboard_history;
+mod config_patch_network;
+mod config_patch_storage;
+mod config_transcation;
 mod engine;
 mod files;
-mod network;
 mod subscriptions;
 
 #[allow(async_fn_in_trait)]
@@ -47,6 +49,7 @@ pub trait AppService {
     async fn subscribe_events(&self) -> AppResult<broadcast::Receiver<AppEvent>>;
 
     async fn apply_network_patch(&self, patch: NetworkPatch) -> AppResult<BroadcastConfig>;
+    async fn apply_storage_patch(&self, patch: StoragePatch) -> AppResult<StorageConfigView>;
 }
 
 pub struct AppServiceImpl {
@@ -143,5 +146,9 @@ impl AppService for AppServiceImpl {
 
     async fn apply_network_patch(&self, patch: NetworkPatch) -> AppResult<BroadcastConfig> {
         self.apply_network_patch_usecase(patch).await
+    }
+
+    async fn apply_storage_patch(&self, patch: StoragePatch) -> AppResult<StorageConfigView> {
+        self.apply_storage_patch_usecase(patch).await
     }
 }

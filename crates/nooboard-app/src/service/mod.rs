@@ -8,6 +8,6 @@ pub use types::{
     AppEvent, AppSyncStatus, BroadcastConfig, ConnectedPeer, EventId, FileDecisionRequest,
     HistoryCursor, HistoryPage, HistoryRecord, ListHistoryRequest, LocalClipboardChangeRequest,
     LocalClipboardChangeResult, NetworkPatch, NodeId, PeerConnectionState,
-    RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest, SyncEvent, Targets,
-    TransferDirection, TransferState, TransferUpdate,
+    RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest, StorageConfigView, StoragePatch,
+    SyncEvent, Targets, TransferDirection, TransferState, TransferUpdate,
 };

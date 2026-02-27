@@ -137,15 +137,19 @@ async fn file_transfer_accept_path_works() -> Result<(), Box<dyn std::error::Err
     let mut downloaded = None;
     let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
-        let remain = deadline.duration_since(Instant::now());
-        let event = timeout(remain, handle_b.event_rx.recv()).await?;
-        if let Some(event) = event {
-            match event {
-                SyncEvent::FileDecisionRequired {
+        let remain = deadline.saturating_duration_since(Instant::now());
+        if remain.is_zero() {
+            break;
+        }
+
+        tokio::select! {
+            maybe_event = timeout(remain, handle_b.event_rx.recv()) => {
+                let event = maybe_event?;
+                if let Some(SyncEvent::FileDecisionRequired {
                     peer_node_id,
                     transfer_id,
                     ..
-                } => {
+                }) = event {
                     handle_b
                         .decision_tx
                         .send(nooboard_sync::FileDecisionInput {
@@ -156,17 +160,19 @@ async fn file_transfer_accept_path_works() -> Result<(), Box<dyn std::error::Err
                         })
                         .await?;
                 }
-                SyncEvent::TransferUpdate(update) => {
-                    if let TransferState::Finished { path: Some(path) } = update.state {
-                        downloaded = Some(path);
-                        break;
-                    }
-                }
-                SyncEvent::ConnectionError { .. } => {}
-                SyncEvent::TextReceived { .. } => {}
             }
-        } else {
-            break;
+            update = timeout(remain, handle_b.progress_rx.recv()) => {
+                match update? {
+                    Ok(update) => {
+                        if let TransferState::Finished { path: Some(path) } = update.state {
+                            downloaded = Some(path);
+                            break;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
         }
     }
 
