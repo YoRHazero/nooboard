@@ -455,3 +455,54 @@ async fn concurrent_network_patches_preserve_consistent_snapshot()
     assert_eq!(peers, vec![peer_a, peer_b]);
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn network_patch_returns_config_rollback_failed_when_sync_rollback_fails()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = TempDir::new()?;
+    let db_a = root.path().join("db-a");
+    let (service, _dir, config_path) = new_service(&db_a)?;
+    service
+        .set_sync_desired_state(SyncDesiredState::Running)
+        .await?;
+
+    service
+        .store_remote_text(RemoteTextRequest {
+            event_id: EventId::new(),
+            content: "before-failure".to_string(),
+            device_id: "remote-a".to_string(),
+        })
+        .await?;
+
+    let loaded = AppConfig::load(&config_path)?;
+    let download_dir = loaded.sync.file.download_dir;
+    let download_dir_backup = root.path().join("downloads-backup");
+    std::fs::rename(&download_dir, &download_dir_backup)?;
+    std::fs::write(&download_dir, b"occupied-download-dir")?;
+
+    let result = service
+        .apply_config_patch(AppPatch::Network(NetworkPatch::SetMdnsEnabled(false)))
+        .await;
+
+    match result {
+        Err(AppError::ConfigRollbackFailed {
+            restart_error,
+            rollback_error,
+        }) => {
+            assert!(!restart_error.is_empty());
+            assert!(
+                rollback_error.contains("sync rollback failed"),
+                "rollback_error={rollback_error}"
+            );
+        }
+        other => panic!("expected ConfigRollbackFailed, got: {other:?}"),
+    }
+
+    let persisted = AppConfig::load(config_path)?;
+    assert_eq!(persisted.storage.db_root, db_a);
+
+    let _ = service
+        .set_sync_desired_state(SyncDesiredState::Stopped)
+        .await;
+    Ok(())
+}
