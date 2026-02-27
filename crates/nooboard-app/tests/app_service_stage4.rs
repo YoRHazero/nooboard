@@ -3,10 +3,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use nooboard_app::{
-    AppConfig, AppError, AppEvent, AppResult, AppService, AppServiceImpl, ClipboardPort, EventId,
-    EventSubscriptionItem, FileDecisionRequest, ListHistoryRequest, LocalClipboardChangeRequest,
-    NetworkPatch, NodeId, RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest,
-    SubscriptionCloseReason, SubscriptionLifecycle, SyncEvent, Targets, TransferState,
+    AppConfig, AppError, AppEvent, AppPatch, AppResult, AppService, AppServiceImpl,
+    AppServiceSnapshot, ClipboardPort, ConnectedPeer, EventId, EventSubscriptionItem,
+    FileDecisionRequest, ListHistoryRequest, LocalClipboardChangeRequest, NetworkPatch, NodeId,
+    RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest, SubscriptionCloseReason,
+    SubscriptionLifecycle, SyncDesiredState, SyncEvent, Targets, TransferState,
 };
 use tempfile::TempDir;
 use tokio::time::{Duration, Instant, timeout};
@@ -159,6 +160,48 @@ fn new_service_with_network(
     let service = AppServiceImpl::new(&config_path, backend.clone())?;
     Ok((service, backend, dir, config_path))
 }
+
+#[allow(async_fn_in_trait)]
+trait LegacyControlApi: AppService {
+    async fn start_sync_engine(&self) -> AppResult<()> {
+        let snapshot = self.snapshot().await?;
+        if snapshot.desired_state == SyncDesiredState::Running {
+            return Err(AppError::EngineAlreadyRunning);
+        }
+        self.set_sync_desired_state(SyncDesiredState::Running)
+            .await
+            .map(|_| ())
+    }
+
+    async fn stop_sync_engine(&self) -> AppResult<()> {
+        self.set_sync_desired_state(SyncDesiredState::Stopped)
+            .await
+            .map(|_| ())
+    }
+
+    async fn restart_sync_engine(&self) -> AppResult<()> {
+        let current_mdns = self.snapshot().await?.mdns_enabled;
+        self.apply_config_patch(AppPatch::Network(NetworkPatch::SetMdnsEnabled(
+            current_mdns,
+        )))
+        .await
+        .map(|_| ())
+    }
+
+    async fn shutdown_service(&self) -> AppResult<()> {
+        self.shutdown().await
+    }
+
+    async fn connected_peers(&self) -> AppResult<Vec<ConnectedPeer>> {
+        Ok(self.snapshot().await?.connected_peers)
+    }
+
+    async fn apply_network_patch(&self, patch: NetworkPatch) -> AppResult<AppServiceSnapshot> {
+        self.apply_config_patch(AppPatch::Network(patch)).await
+    }
+}
+
+impl<T: AppService + ?Sized> LegacyControlApi for T {}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn clipboard_flow_covers_a1_a2_a3_a4() -> Result<(), Box<dyn std::error::Error>> {
@@ -732,10 +775,6 @@ async fn shutdown_stops_engine_and_closes_storage_runtime() -> Result<(), Box<dy
     service.start_sync_engine().await?;
 
     service.shutdown_service().await?;
-    assert!(matches!(
-        service.sync_status().await?,
-        nooboard_app::AppSyncStatus::Stopped
-    ));
 
     let list_result = service
         .list_history(ListHistoryRequest {

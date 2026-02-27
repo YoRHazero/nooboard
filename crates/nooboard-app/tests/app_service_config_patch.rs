@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use nooboard_app::{
-    AppConfig, AppError, AppResult, AppService, AppServiceImpl, AppSyncStatus, ClipboardPort,
-    EventId, ListHistoryRequest, NetworkPatch, RemoteTextRequest, StoragePatch,
+    AppConfig, AppError, AppPatch, AppResult, AppService, AppServiceImpl, AppServiceSnapshot,
+    AppSyncStatus, ClipboardPort, EventId, ListHistoryRequest, NetworkPatch, RemoteTextRequest,
+    StorageConfigView, StoragePatch, SyncDesiredState,
 };
 use tempfile::TempDir;
 
@@ -102,6 +103,51 @@ fn new_service(
     let service = AppServiceImpl::new(&config_path, backend)?;
     Ok((service, dir, config_path))
 }
+
+#[allow(async_fn_in_trait)]
+trait LegacyControlApi: AppService {
+    async fn start_sync_engine(&self) -> AppResult<()> {
+        let snapshot = self.snapshot().await?;
+        if snapshot.desired_state == SyncDesiredState::Running {
+            return Err(AppError::EngineAlreadyRunning);
+        }
+        self.set_sync_desired_state(SyncDesiredState::Running)
+            .await
+            .map(|_| ())
+    }
+
+    async fn stop_sync_engine(&self) -> AppResult<()> {
+        self.set_sync_desired_state(SyncDesiredState::Stopped)
+            .await
+            .map(|_| ())
+    }
+
+    async fn restart_sync_engine(&self) -> AppResult<()> {
+        let current_mdns = self.snapshot().await?.mdns_enabled;
+        self.apply_config_patch(AppPatch::Network(NetworkPatch::SetMdnsEnabled(
+            current_mdns,
+        )))
+        .await
+        .map(|_| ())
+    }
+
+    async fn sync_status(&self) -> AppResult<AppSyncStatus> {
+        Ok(self.snapshot().await?.actual_sync_status)
+    }
+
+    async fn apply_network_patch(&self, patch: NetworkPatch) -> AppResult<AppServiceSnapshot> {
+        self.apply_config_patch(AppPatch::Network(patch)).await
+    }
+
+    async fn apply_storage_patch(&self, patch: StoragePatch) -> AppResult<StorageConfigView> {
+        Ok(self
+            .apply_config_patch(AppPatch::Storage(patch))
+            .await?
+            .storage)
+    }
+}
+
+impl<T: AppService + ?Sized> LegacyControlApi for T {}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn storage_patch_switches_active_database() -> Result<(), Box<dyn std::error::Error>> {
@@ -276,7 +322,7 @@ async fn network_patch_does_not_reconfigure_storage_runtime()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn restart_engine_rolls_back_storage_when_sync_restart_fails()
+async fn restart_engine_ignores_external_file_edits_without_patch()
 -> Result<(), Box<dyn std::error::Error>> {
     let root = TempDir::new()?;
     let db_a = root.path().join("db-a");
@@ -302,7 +348,7 @@ async fn restart_engine_rolls_back_storage_when_sync_restart_fails()
 
     let restart_result = service.restart_sync_engine().await;
     assert!(
-        matches!(restart_result, Err(AppError::Sync(_))),
+        matches!(restart_result, Ok(())),
         "unexpected restart result: {restart_result:?}"
     );
 
