@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use nooboard_app::{
-    AppConfig, AppError, AppResult, AppService, AppServiceImpl, ClipboardPort, EventId,
+    AppConfig, AppError, AppResult, AppService, AppServiceImpl, AppSyncStatus, ClipboardPort, EventId,
     ListHistoryRequest, NetworkPatch, RemoteTextRequest, StoragePatch,
 };
 use tempfile::TempDir;
@@ -217,5 +217,64 @@ async fn network_patch_does_not_reconfigure_storage_runtime()
         .await?;
     assert_eq!(records.records.len(), 1);
     assert_eq!(records.records[0].content, "from-a");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn restart_engine_rolls_back_storage_when_sync_restart_fails()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = TempDir::new()?;
+    let db_a = root.path().join("db-a");
+    let db_b = root.path().join("db-b");
+    let (service, _dir, config_path) = new_service(&db_a)?;
+
+    service.start_engine().await?;
+    service
+        .store_remote_text(RemoteTextRequest {
+            event_id: EventId::new(),
+            content: "from-a".to_string(),
+            device_id: "remote-a".to_string(),
+        })
+        .await?;
+
+    let blocked_download_dir = root.path().join("blocked-download-dir");
+    std::fs::write(&blocked_download_dir, b"occupied-by-file")?;
+
+    let mut external_config = AppConfig::load(&config_path)?;
+    external_config.storage.db_root = db_b;
+    external_config.sync.file.download_dir = blocked_download_dir;
+    external_config.save_atomically(&config_path)?;
+
+    let restart_result = service.restart_engine().await;
+    assert!(
+        matches!(restart_result, Err(AppError::Sync(_))),
+        "unexpected restart result: {restart_result:?}"
+    );
+
+    service
+        .store_remote_text(RemoteTextRequest {
+            event_id: EventId::new(),
+            content: "after-failed-restart".to_string(),
+            device_id: "remote-b".to_string(),
+        })
+        .await?;
+
+    let records = service
+        .list_history(ListHistoryRequest {
+            limit: 10,
+            cursor: None,
+        })
+        .await?;
+    let contents: Vec<&str> = records.records.iter().map(|record| record.content.as_str()).collect();
+    assert!(contents.contains(&"from-a"));
+    assert!(contents.contains(&"after-failed-restart"));
+
+    let status = service.sync_status().await?;
+    assert!(matches!(
+        status,
+        AppSyncStatus::Starting | AppSyncStatus::Running
+    ));
+
+    service.stop_engine().await?;
     Ok(())
 }
