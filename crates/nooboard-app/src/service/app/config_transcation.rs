@@ -70,6 +70,7 @@ impl AppServiceImpl {
         self.subscriptions
             .activate(Arc::clone(&self.sync_runtime))
             .await?;
+        self.start_outbox_dispatcher_if_needed().await?;
 
         *self.config.write().await = updated_config.clone();
         Ok(updated_config)
@@ -106,48 +107,51 @@ impl AppServiceImpl {
         old_config: &AppConfig,
         restart_error: &AppError,
     ) -> Option<AppError> {
-        if let Err(rollback_write_error) = old_config.save_atomically(&self.config_path) {
-            return Some(AppError::ConfigRollbackFailed {
-                restart_error: restart_error.to_string(),
-                rollback_error: rollback_write_error.to_string(),
-            });
-        }
+        let mut rollback_errors = Vec::new();
 
-        let rollback_sync_config = match old_config.to_sync_config() {
-            Ok(config) => config,
-            Err(error) => {
-                return Some(AppError::ConfigRollbackFailed {
-                    restart_error: restart_error.to_string(),
-                    rollback_error: error.to_string(),
-                });
+        match old_config.to_sync_config() {
+            Ok(rollback_sync_config) => {
+                let rollback_restart = {
+                    let mut runtime = self.sync_runtime.lock().await;
+                    runtime.restart(rollback_sync_config).await
+                };
+                if let Err(rollback_restart_error) = rollback_restart {
+                    rollback_errors.push(format!("sync rollback failed: {rollback_restart_error}"));
+                } else if let Err(rollback_subscribe_error) = self
+                    .subscriptions
+                    .activate(Arc::clone(&self.sync_runtime))
+                    .await
+                {
+                    rollback_errors.push(format!(
+                        "subscription rollback failed: {rollback_subscribe_error}"
+                    ));
+                } else if let Err(dispatcher_error) = self.start_outbox_dispatcher_if_needed().await
+                {
+                    rollback_errors.push(format!(
+                        "outbox dispatcher rollback failed: {dispatcher_error}"
+                    ));
+                }
             }
-        };
-
-        let rollback_restart = {
-            let mut runtime = self.sync_runtime.lock().await;
-            runtime.restart(rollback_sync_config).await
-        };
-
-        if let Err(rollback_restart_error) = rollback_restart {
-            return Some(AppError::ConfigRollbackFailed {
-                restart_error: restart_error.to_string(),
-                rollback_error: rollback_restart_error.to_string(),
-            });
+            Err(error) => {
+                rollback_errors.push(format!("rollback sync config invalid: {error}"));
+            }
         }
 
-        if let Err(rollback_subscribe_error) = self
-            .subscriptions
-            .activate(Arc::clone(&self.sync_runtime))
-            .await
-        {
-            return Some(AppError::ConfigRollbackFailed {
-                restart_error: restart_error.to_string(),
-                rollback_error: rollback_subscribe_error.to_string(),
-            });
+        if let Err(rollback_write_error) = old_config.save_atomically(&self.config_path) {
+            rollback_errors.push(format!(
+                "config rollback write failed: {rollback_write_error}"
+            ));
         }
 
-        *self.config.write().await = old_config.clone();
-        None
+        if rollback_errors.is_empty() {
+            *self.config.write().await = old_config.clone();
+            None
+        } else {
+            Some(AppError::ConfigRollbackFailed {
+                restart_error: restart_error.to_string(),
+                rollback_error: rollback_errors.join("; "),
+            })
+        }
     }
 
     async fn rollback_storage_reconfigure_failure(
@@ -155,25 +159,32 @@ impl AppServiceImpl {
         old_config: &AppConfig,
         apply_error: &AppError,
     ) -> Option<AppError> {
-        if let Err(rollback_write_error) = old_config.save_atomically(&self.config_path) {
-            return Some(AppError::ConfigRollbackFailed {
-                restart_error: apply_error.to_string(),
-                rollback_error: rollback_write_error.to_string(),
-            });
-        }
+        let mut rollback_errors = Vec::new();
 
         if let Err(rollback_reconfigure_error) = self
             .storage_runtime
             .reconfigure(old_config.to_storage_config())
             .await
         {
-            return Some(AppError::ConfigRollbackFailed {
-                restart_error: apply_error.to_string(),
-                rollback_error: rollback_reconfigure_error.to_string(),
-            });
+            rollback_errors.push(format!(
+                "storage rollback failed: {rollback_reconfigure_error}"
+            ));
         }
 
-        *self.config.write().await = old_config.clone();
-        None
+        if let Err(rollback_write_error) = old_config.save_atomically(&self.config_path) {
+            rollback_errors.push(format!(
+                "config rollback write failed: {rollback_write_error}"
+            ));
+        }
+
+        if rollback_errors.is_empty() {
+            *self.config.write().await = old_config.clone();
+            None
+        } else {
+            Some(AppError::ConfigRollbackFailed {
+                restart_error: apply_error.to_string(),
+                rollback_error: rollback_errors.join("; "),
+            })
+        }
     }
 }

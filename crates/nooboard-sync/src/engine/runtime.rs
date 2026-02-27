@@ -53,9 +53,8 @@ pub async fn start_sync_engine_with_discovery(
         SyncStatus::Disabled
     });
     let (shutdown_tx, _) = broadcast::channel(8);
-
-    if config.enabled {
-        tokio::spawn(run_engine(
+    let engine_task = if config.enabled {
+        Some(tokio::spawn(run_engine(
             config,
             text_rx,
             file_rx,
@@ -67,8 +66,10 @@ pub async fn start_sync_engine_with_discovery(
             status_tx,
             shutdown_tx.clone(),
             discovery_rx,
-        ));
-    }
+        )))
+    } else {
+        None
+    };
 
     Ok(SyncEngineHandle {
         text_tx,
@@ -80,6 +81,7 @@ pub async fn start_sync_engine_with_discovery(
         peers_rx,
         status_rx,
         shutdown_tx,
+        engine_task,
     })
 }
 
@@ -211,13 +213,13 @@ async fn run_engine_inner(
             }
             maybe_text = text_rx.recv() => {
                 match maybe_text {
-                    Some(request) => registry.send_text(request).await,
+                    Some(request) => registry.send_text(request),
                     None => break,
                 }
             }
             maybe_path = file_rx.recv() => {
                 match maybe_path {
-                    Some(request) => registry.send_file(request).await,
+                    Some(request) => registry.send_file(request),
                     None => break,
                 }
             }
@@ -226,7 +228,7 @@ async fn run_engine_inner(
                     Some(decision) => {
                         let peer_node_id = decision.peer_node_id.clone();
                         let transfer_id = decision.transfer_id;
-                        if let Err(error) = registry.forward_file_decision(decision).await {
+                        if let Err(error) = registry.forward_file_decision(decision) {
                             warn!(
                                 peer=%peer_node_id,
                                 transfer_id,
@@ -246,7 +248,7 @@ async fn run_engine_inner(
             maybe_control_command = control_rx.recv() => {
                 match maybe_control_command {
                     Some(command) => {
-                        let changed = handle_sync_control_command(command, &mut registry).await;
+                        let changed = handle_sync_control_command(command, &mut registry);
                         if changed {
                             publish_peer_snapshot(&registry, peers_tx);
                         }
@@ -276,7 +278,7 @@ async fn run_engine_inner(
         }
     }
 
-    registry.shutdown_all().await;
+    registry.shutdown_all();
     registry.clear_peers();
     publish_peer_snapshot(&registry, peers_tx);
 
@@ -289,13 +291,10 @@ async fn run_engine_inner(
     Ok(())
 }
 
-async fn handle_sync_control_command(
-    command: SyncControlCommand,
-    registry: &mut PeerRegistry,
-) -> bool {
+fn handle_sync_control_command(command: SyncControlCommand, registry: &mut PeerRegistry) -> bool {
     match command {
         SyncControlCommand::DisconnectPeer { peer_node_id } => {
-            if let Some(addr) = registry.disconnect_peer(&peer_node_id).await {
+            if let Some(addr) = registry.disconnect_peer(&peer_node_id) {
                 info!(peer=%peer_node_id, addr=%addr, "disconnect peer requested by control channel");
                 true
             } else {
@@ -344,7 +343,7 @@ async fn handle_engine_control(
                 }
 
                 if let Some(command_tx) = registry.peer_command_tx(&peer_node_id) {
-                    let _ = command_tx.send(SessionCommand::Shutdown).await;
+                    let _ = command_tx.try_send(SessionCommand::Shutdown);
                 }
             }
 

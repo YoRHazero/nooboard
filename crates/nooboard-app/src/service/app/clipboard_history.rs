@@ -16,32 +16,31 @@ impl AppServiceImpl {
         let config = self.config.read().await.clone();
         let event_id = EventId::new();
         let now_ms = now_millis_i64();
-
-        let _ = self
-            .storage_runtime
-            .append_text(
-                &request.text,
-                Some(event_id.as_uuid()),
-                Some(config.identity.device_id.as_str()),
-                now_ms,
-                now_ms,
-            )
-            .await?;
-
         let broadcast_attempted = config.sync.network.enabled && request.targets.should_send();
         if broadcast_attempted {
-            let sync_request = SendTextRequest {
-                event_id: event_id.to_string(),
-                content: request.text,
-                targets: request.targets.to_sync_targets(),
-            };
-            let text_tx = {
-                let runtime = self.sync_runtime.lock().await;
-                runtime.text_sender()?
-            };
-            text_tx.send(sync_request).await.map_err(|error| {
-                AppError::ChannelClosed(format!("sync text_tx closed: {error}"))
-            })?;
+            let _ = self
+                .storage_runtime
+                .append_text_with_outbox(
+                    &request.text,
+                    event_id.as_uuid(),
+                    Some(config.identity.device_id.as_str()),
+                    now_ms,
+                    now_ms,
+                    request.targets.to_sync_targets(),
+                    now_ms,
+                )
+                .await?;
+        } else {
+            let _ = self
+                .storage_runtime
+                .append_text(
+                    &request.text,
+                    Some(event_id.as_uuid()),
+                    Some(config.identity.device_id.as_str()),
+                    now_ms,
+                    now_ms,
+                )
+                .await?;
         }
 
         Ok(LocalClipboardChangeResult {

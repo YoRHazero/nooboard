@@ -1,7 +1,8 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, watch};
+use tokio::task::JoinHandle;
 
 use crate::AppResult;
 use crate::clipboard_runtime::{ClipboardPort, ClipboardRuntime};
@@ -24,13 +25,15 @@ mod config_patch_storage;
 mod config_transcation;
 mod engine;
 mod files;
+mod outbox_dispatcher;
 mod subscriptions;
 
 #[allow(async_fn_in_trait)]
 pub trait AppService {
-    async fn start_engine(&self) -> AppResult<()>;
-    async fn stop_engine(&self) -> AppResult<()>;
-    async fn restart_engine(&self) -> AppResult<()>;
+    async fn start_sync_engine(&self) -> AppResult<()>;
+    async fn stop_sync_engine(&self) -> AppResult<()>;
+    async fn restart_sync_engine(&self) -> AppResult<()>;
+    async fn shutdown_service(&self) -> AppResult<()>;
     async fn sync_status(&self) -> AppResult<AppSyncStatus>;
     async fn connected_peers(&self) -> AppResult<Vec<ConnectedPeer>>;
 
@@ -61,6 +64,12 @@ pub struct AppServiceImpl {
     sync_runtime: Arc<Mutex<SyncRuntime>>,
     config_update_lock: Arc<Mutex<()>>,
     subscriptions: Arc<SubscriptionHub>,
+    outbox_dispatcher: Arc<Mutex<Option<OutboxDispatcherHandle>>>,
+}
+
+struct OutboxDispatcherHandle {
+    shutdown_tx: watch::Sender<bool>,
+    task: JoinHandle<()>,
 }
 
 impl AppServiceImpl {
@@ -80,21 +89,26 @@ impl AppServiceImpl {
             sync_runtime: Arc::new(Mutex::new(SyncRuntime::new())),
             config_update_lock: Arc::new(Mutex::new(())),
             subscriptions: Arc::new(SubscriptionHub::new()),
+            outbox_dispatcher: Arc::new(Mutex::new(None)),
         })
     }
 }
 
 impl AppService for AppServiceImpl {
-    async fn start_engine(&self) -> AppResult<()> {
-        self.start_engine_usecase().await
+    async fn start_sync_engine(&self) -> AppResult<()> {
+        self.start_sync_engine_usecase().await
     }
 
-    async fn stop_engine(&self) -> AppResult<()> {
-        self.stop_engine_usecase().await
+    async fn stop_sync_engine(&self) -> AppResult<()> {
+        self.stop_sync_engine_usecase().await
     }
 
-    async fn restart_engine(&self) -> AppResult<()> {
-        self.restart_engine_usecase().await
+    async fn restart_sync_engine(&self) -> AppResult<()> {
+        self.restart_sync_engine_usecase().await
+    }
+
+    async fn shutdown_service(&self) -> AppResult<()> {
+        self.shutdown_service_usecase().await
     }
 
     async fn sync_status(&self) -> AppResult<AppSyncStatus> {

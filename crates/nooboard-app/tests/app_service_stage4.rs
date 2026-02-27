@@ -163,7 +163,7 @@ fn new_service_with_network(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn clipboard_flow_covers_a1_a2_a3_a4() -> Result<(), Box<dyn std::error::Error>> {
     let (service, backend, _dir, _config_path) = new_service(50)?;
-    service.start_engine().await?;
+    service.start_sync_engine().await?;
 
     let event_id = service
         .apply_local_clipboard_change(LocalClipboardChangeRequest {
@@ -193,7 +193,7 @@ async fn clipboard_flow_covers_a1_a2_a3_a4() -> Result<(), Box<dyn std::error::E
         })
         .await?;
 
-    service.stop_engine().await?;
+    service.stop_sync_engine().await?;
     Ok(())
 }
 
@@ -201,7 +201,7 @@ async fn clipboard_flow_covers_a1_a2_a3_a4() -> Result<(), Box<dyn std::error::E
 async fn local_clipboard_change_succeeds_when_network_disabled()
 -> Result<(), Box<dyn std::error::Error>> {
     let (service, _backend, _dir, _config_path) = new_service(50)?;
-    service.start_engine().await?;
+    service.start_sync_engine().await?;
     service
         .apply_network_patch(NetworkPatch::SetNetworkEnabled(false))
         .await?;
@@ -224,14 +224,85 @@ async fn local_clipboard_change_succeeds_when_network_disabled()
     assert_eq!(history.records[0].event_id, result.event_id);
     assert_eq!(history.records[0].content, "offline-local");
 
-    service.stop_engine().await?;
+    service.stop_sync_engine().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn queued_local_change_is_dispatched_after_engine_start()
+-> Result<(), Box<dyn std::error::Error>> {
+    let port_a = free_port();
+    let port_b = free_port();
+    let listen_a: SocketAddr = format!("127.0.0.1:{port_a}").parse()?;
+    let listen_b: SocketAddr = format!("127.0.0.1:{port_b}").parse()?;
+
+    let (service_a, _backend_a, _dir_a, _config_a) =
+        new_service_with_network(50, listen_a, vec![listen_b])?;
+    let (service_b, _backend_b, _dir_b, _config_b) =
+        new_service_with_network(50, listen_b, vec![listen_a])?;
+
+    service_b.start_sync_engine().await?;
+    let mut receiver_b = service_b.subscribe_events().await?;
+
+    let marker = "queued-before-start";
+    let result = service_a
+        .apply_local_clipboard_change(LocalClipboardChangeRequest {
+            text: marker.to_string(),
+            targets: Targets::all(),
+        })
+        .await?;
+    assert!(result.broadcast_attempted);
+
+    service_a.start_sync_engine().await?;
+
+    let connect_deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < connect_deadline {
+        if !service_a.connected_peers().await?.is_empty()
+            && !service_b.connected_peers().await?.is_empty()
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(
+        !service_a.connected_peers().await?.is_empty(),
+        "service A must connect to service B before outbox dispatch"
+    );
+    assert!(
+        !service_b.connected_peers().await?.is_empty(),
+        "service B must connect to service A before outbox dispatch"
+    );
+
+    let receive_deadline = Instant::now() + Duration::from_secs(10);
+    let mut received = false;
+    while Instant::now() < receive_deadline {
+        let remain = receive_deadline.saturating_duration_since(Instant::now());
+        if remain.is_zero() {
+            break;
+        }
+
+        let item = timeout(remain, receiver_b.recv()).await??;
+        let EventSubscriptionItem::Event { event, .. } = item else {
+            continue;
+        };
+        if let AppEvent::Sync(SyncEvent::TextReceived { content, .. }) = event
+            && content == marker
+        {
+            received = true;
+            break;
+        }
+    }
+    assert!(received, "queued local clipboard change must be dispatched");
+
+    service_a.stop_sync_engine().await?;
+    service_b.stop_sync_engine().await?;
     Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn disabled_network_fails_send_usecases_fast() -> Result<(), Box<dyn std::error::Error>> {
     let (service, _backend, dir, _config_path) = new_service(50)?;
-    service.start_engine().await?;
+    service.start_sync_engine().await?;
 
     let event_id = EventId::new();
     service
@@ -274,7 +345,7 @@ async fn disabled_network_fails_send_usecases_fast() -> Result<(), Box<dyn std::
         .await;
     assert!(matches!(rebroadcast_result, Err(AppError::SyncDisabled)));
 
-    service.stop_engine().await?;
+    service.stop_sync_engine().await?;
     Ok(())
 }
 
@@ -381,7 +452,7 @@ async fn file_api_supports_normal_and_error_paths() -> Result<(), Box<dyn std::e
         Err(AppError::EngineNotRunning)
     ));
 
-    service.start_engine().await?;
+    service.start_sync_engine().await?;
     service
         .send_file(SendFileRequest {
             path: file_path.clone(),
@@ -406,7 +477,7 @@ async fn file_api_supports_normal_and_error_paths() -> Result<(), Box<dyn std::e
     ));
     assert!(events.try_recv().is_err());
 
-    service.stop_engine().await?;
+    service.stop_sync_engine().await?;
 
     let result_after_stop = service
         .send_file(SendFileRequest {
@@ -424,7 +495,7 @@ async fn broadcast_config_transaction_covers_normal_and_error_paths()
     let (service, _backend, _dir, config_path) = new_service(50)?;
     let service = Arc::new(service);
 
-    service.start_engine().await?;
+    service.start_sync_engine().await?;
     let result = service
         .apply_network_patch(NetworkPatch::SetMdnsEnabled(false))
         .await?;
@@ -472,7 +543,7 @@ async fn broadcast_config_transaction_covers_normal_and_error_paths()
     assert!(!persisted.sync.network.mdns_enabled);
     assert_eq!(persisted.sync.network.manual_peers, vec![peer_b]);
 
-    service.stop_engine().await?;
+    service.stop_sync_engine().await?;
     Ok(())
 }
 
@@ -489,8 +560,8 @@ async fn transfer_events_do_not_break_sync_event_bridge() -> Result<(), Box<dyn 
     let (service_b, _backend_b, _dir_b, _config_b) =
         new_service_with_network(50, listen_b, vec![listen_a])?;
 
-    service_a.start_engine().await?;
-    service_b.start_engine().await?;
+    service_a.start_sync_engine().await?;
+    service_b.start_sync_engine().await?;
 
     let mut receiver_b = service_b.subscribe_events().await?;
 
@@ -591,15 +662,15 @@ async fn transfer_events_do_not_break_sync_event_bridge() -> Result<(), Box<dyn 
         "text events must still flow after transfer updates"
     );
 
-    service_a.stop_engine().await?;
-    service_b.stop_engine().await?;
+    service_a.stop_sync_engine().await?;
+    service_b.stop_sync_engine().await?;
     Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn repeated_subscribe_uses_shared_hub() -> Result<(), Box<dyn std::error::Error>> {
     let (service, _backend, _dir, _config_path) = new_service(50)?;
-    service.start_engine().await?;
+    service.start_sync_engine().await?;
 
     for _ in 0..100 {
         let receiver = service.subscribe_events().await?;
@@ -622,14 +693,14 @@ async fn repeated_subscribe_uses_shared_hub() -> Result<(), Box<dyn std::error::
     ));
     assert!(receiver.try_recv().is_err());
 
-    service.stop_engine().await?;
+    service.stop_sync_engine().await?;
     Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stop_emits_terminal_closed_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
     let (service, _backend, _dir, _config_path) = new_service(50)?;
-    service.start_engine().await?;
+    service.start_sync_engine().await?;
 
     let mut subscription = service.subscribe_events().await?;
     let session_id = subscription.session_id();
@@ -638,7 +709,7 @@ async fn stop_emits_terminal_closed_lifecycle() -> Result<(), Box<dyn std::error
         EventSubscriptionItem::Lifecycle(SubscriptionLifecycle::Opened { session_id })
     );
 
-    service.stop_engine().await?;
+    service.stop_sync_engine().await?;
 
     assert_eq!(
         timeout(Duration::from_secs(2), subscription.recv()).await??,
@@ -651,6 +722,28 @@ async fn stop_emits_terminal_closed_lifecycle() -> Result<(), Box<dyn std::error
         timeout(Duration::from_secs(2), subscription.recv()).await,
         Ok(Err(tokio::sync::broadcast::error::RecvError::Closed))
     ));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shutdown_stops_engine_and_closes_storage_runtime() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (service, _backend, _dir, _config_path) = new_service(50)?;
+    service.start_sync_engine().await?;
+
+    service.shutdown_service().await?;
+    assert!(matches!(
+        service.sync_status().await?,
+        nooboard_app::AppSyncStatus::Stopped
+    ));
+
+    let list_result = service
+        .list_history(ListHistoryRequest {
+            limit: 10,
+            cursor: None,
+        })
+        .await;
+    assert!(matches!(list_result, Err(AppError::ChannelClosed(_))));
     Ok(())
 }
 
@@ -667,8 +760,8 @@ async fn restart_rebinds_old_stream_and_keeps_new_stream_usable()
     let (service_b, _backend_b, _dir_b, _config_b) =
         new_service_with_network(50, listen_b, vec![listen_a])?;
 
-    service_a.start_engine().await?;
-    service_b.start_engine().await?;
+    service_a.start_sync_engine().await?;
+    service_b.start_sync_engine().await?;
 
     let mut old_stream = service_b.subscribe_events().await?;
     let old_session_id = old_stream.session_id();
@@ -697,7 +790,7 @@ async fn restart_rebinds_old_stream_and_keeps_new_stream_usable()
         "service B must connect to service A before restart"
     );
 
-    service_b.restart_engine().await?;
+    service_b.restart_sync_engine().await?;
 
     let mut saw_rebinding = false;
     let mut saw_closed = false;
@@ -794,7 +887,7 @@ async fn restart_rebinds_old_stream_and_keeps_new_stream_usable()
     }
     assert!(saw_text, "new stream must continue receiving sync events");
 
-    service_a.stop_engine().await?;
-    service_b.stop_engine().await?;
+    service_a.stop_sync_engine().await?;
+    service_b.stop_sync_engine().await?;
     Ok(())
 }

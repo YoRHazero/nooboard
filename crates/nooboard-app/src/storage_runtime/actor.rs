@@ -53,6 +53,30 @@ pub(super) fn run_actor(
                     .map_err(Into::into);
                 let _ = reply.send(result);
             }
+            StorageCommand::AppendTextWithOutbox {
+                text,
+                event_id,
+                origin_device_id,
+                created_at_ms,
+                applied_at_ms,
+                targets,
+                enqueue_at_ms,
+                reply,
+            } => {
+                let result = state
+                    .repository
+                    .append_text_with_outbox(
+                        &text,
+                        event_id,
+                        origin_device_id.as_deref(),
+                        created_at_ms,
+                        applied_at_ms,
+                        targets.as_deref(),
+                        enqueue_at_ms,
+                    )
+                    .map_err(Into::into);
+                let _ = reply.send(result);
+            }
             StorageCommand::ListHistory {
                 limit,
                 cursor,
@@ -61,6 +85,53 @@ pub(super) fn run_actor(
                 let result = state
                     .repository
                     .list_history(limit, cursor)
+                    .map_err(Into::into);
+                let _ = reply.send(result);
+            }
+            StorageCommand::ListDueOutbox {
+                now_ms,
+                limit,
+                reply,
+            } => {
+                let result = state
+                    .repository
+                    .list_due_outbox(now_ms, limit)
+                    .map_err(Into::into);
+                let _ = reply.send(result);
+            }
+            StorageCommand::TryLeaseOutbox {
+                id,
+                lease_until_ms,
+                now_ms,
+                reply,
+            } => {
+                let result = state
+                    .repository
+                    .try_lease_outbox_message(id, lease_until_ms, now_ms)
+                    .map_err(Into::into);
+                let _ = reply.send(result);
+            }
+            StorageCommand::MarkOutboxSent {
+                id,
+                sent_at_ms,
+                reply,
+            } => {
+                let result = state
+                    .repository
+                    .mark_outbox_sent(id, sent_at_ms)
+                    .map_err(Into::into);
+                let _ = reply.send(result);
+            }
+            StorageCommand::MarkOutboxRetry {
+                id,
+                next_attempt_at_ms,
+                error,
+                now_ms,
+                reply,
+            } => {
+                let result = state
+                    .repository
+                    .mark_outbox_retry(id, next_attempt_at_ms, &error, now_ms)
                     .map_err(Into::into);
                 let _ = reply.send(result);
             }

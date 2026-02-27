@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use tokio::sync::{broadcast, mpsc, watch};
+use tokio::task::JoinHandle;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncStatus {
@@ -121,4 +122,5 @@ pub struct SyncEngineHandle {
     pub peers_rx: watch::Receiver<Vec<ConnectedPeerInfo>>,
     pub status_rx: watch::Receiver<SyncStatus>,
     pub shutdown_tx: broadcast::Sender<()>,
+    pub engine_task: Option<JoinHandle<()>>,
 }

@@ -6,13 +6,13 @@ use crate::{AppError, AppResult};
 use super::{AppServiceImpl, AppSyncStatus, ConnectedPeer, SubscriptionCloseReason};
 
 impl AppServiceImpl {
-    pub(super) async fn start_engine_usecase(&self) -> AppResult<()> {
+    pub(super) async fn start_sync_engine_usecase(&self) -> AppResult<()> {
         let already_running = {
             let runtime = self.sync_runtime.lock().await;
             runtime.has_engine()
         };
         if already_running {
-            return self.restart_engine_usecase().await;
+            return Err(AppError::EngineAlreadyRunning);
         }
 
         let config = self.reload_config_from_disk().await?;
@@ -23,10 +23,12 @@ impl AppServiceImpl {
         }
         self.subscriptions
             .activate(Arc::clone(&self.sync_runtime))
-            .await
+            .await?;
+        self.start_outbox_dispatcher_if_needed().await
     }
 
-    pub(super) async fn stop_engine_usecase(&self) -> AppResult<()> {
+    pub(super) async fn stop_sync_engine_usecase(&self) -> AppResult<()> {
+        self.stop_outbox_dispatcher().await;
         self.subscriptions
             .deactivate(SubscriptionCloseReason::EngineStopped)
             .await;
@@ -34,7 +36,17 @@ impl AppServiceImpl {
         runtime.stop().await
     }
 
-    pub(super) async fn restart_engine_usecase(&self) -> AppResult<()> {
+    pub(super) async fn shutdown_service_usecase(&self) -> AppResult<()> {
+        let stop_result = self.stop_sync_engine_usecase().await;
+        let storage_result = self.storage_runtime.shutdown().await;
+
+        if let Err(error) = stop_result {
+            return Err(error);
+        }
+        storage_result
+    }
+
+    pub(super) async fn restart_sync_engine_usecase(&self) -> AppResult<()> {
         let _config_guard = self.config_update_lock.lock().await;
         let old_config = self.config.read().await.clone();
         let updated_config = AppConfig::load(&self.config_path)?;
@@ -68,6 +80,7 @@ impl AppServiceImpl {
         self.subscriptions
             .activate(Arc::clone(&self.sync_runtime))
             .await?;
+        self.start_outbox_dispatcher_if_needed().await?;
 
         *self.config.write().await = updated_config;
         Ok(())
@@ -120,6 +133,10 @@ impl AppServiceImpl {
             .await
         {
             rollback_errors.push(format!("subscription rollback failed: {subscribe_error}"));
+        } else if let Err(dispatcher_error) = self.start_outbox_dispatcher_if_needed().await {
+            rollback_errors.push(format!(
+                "outbox dispatcher rollback failed: {dispatcher_error}"
+            ));
         }
 
         if rollback_errors.is_empty() {

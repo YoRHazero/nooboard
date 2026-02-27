@@ -28,6 +28,8 @@ pub enum AppError {
     InvalidConfig(String),
     #[error("sync engine is not running")]
     EngineNotRunning,
+    #[error("sync engine is already running")]
+    EngineAlreadyRunning,
     #[error("sync network is disabled")]
     SyncDisabled,
     #[error("sync channel closed: {0}")]

@@ -82,7 +82,7 @@ impl PeerRegistry {
         self.connecting_addrs.contains(addr) || self.peers.values().any(|peer| peer.addr == *addr)
     }
 
-    pub(super) async fn send_text(&self, request: SendTextRequest) {
+    pub(super) fn send_text(&self, request: SendTextRequest) {
         let SendTextRequest {
             event_id,
             content,
@@ -96,11 +96,13 @@ impl PeerRegistry {
 
         match targets {
             None => {
-                for peer in self.peers.values() {
-                    let _ = peer
-                        .command_tx
-                        .send(SessionCommand::SendText(session_request.clone()))
-                        .await;
+                for (peer_node_id, peer) in &self.peers {
+                    let _ = try_send_session_command(
+                        &peer.command_tx,
+                        SessionCommand::SendText(session_request.clone()),
+                        peer_node_id,
+                        "send text",
+                    );
                 }
             }
             Some(targets) => {
@@ -110,17 +112,19 @@ impl PeerRegistry {
                         continue;
                     }
                     if let Some(peer) = self.peers.get(&target) {
-                        let _ = peer
-                            .command_tx
-                            .send(SessionCommand::SendText(session_request.clone()))
-                            .await;
+                        let _ = try_send_session_command(
+                            &peer.command_tx,
+                            SessionCommand::SendText(session_request.clone()),
+                            &target,
+                            "send text",
+                        );
                     }
                 }
             }
         }
     }
 
-    pub(super) async fn send_file(&self, request: SendFileRequest) {
+    pub(super) fn send_file(&self, request: SendFileRequest) {
         let SendFileRequest { path, targets } = request;
         let session_request = SendFileRequest {
             path,
@@ -129,11 +133,13 @@ impl PeerRegistry {
 
         match targets {
             None => {
-                for peer in self.peers.values() {
-                    let _ = peer
-                        .command_tx
-                        .send(SessionCommand::SendFile(session_request.clone()))
-                        .await;
+                for (peer_node_id, peer) in &self.peers {
+                    let _ = try_send_session_command(
+                        &peer.command_tx,
+                        SessionCommand::SendFile(session_request.clone()),
+                        peer_node_id,
+                        "send file",
+                    );
                 }
             }
             Some(targets) => {
@@ -143,34 +149,33 @@ impl PeerRegistry {
                         continue;
                     }
                     if let Some(peer) = self.peers.get(&target) {
-                        let _ = peer
-                            .command_tx
-                            .send(SessionCommand::SendFile(session_request.clone()))
-                            .await;
+                        let _ = try_send_session_command(
+                            &peer.command_tx,
+                            SessionCommand::SendFile(session_request.clone()),
+                            &target,
+                            "send file",
+                        );
                     }
                 }
             }
         }
     }
 
-    pub(super) async fn forward_file_decision(
+    pub(super) fn forward_file_decision(
         &self,
         decision: FileDecisionInput,
     ) -> Result<(), ConnectionError> {
         if let Some(peer) = self.peers.get(&decision.peer_node_id) {
-            peer.command_tx
-                .send(SessionCommand::FileDecision {
+            try_send_session_command(
+                &peer.command_tx,
+                SessionCommand::FileDecision {
                     transfer_id: decision.transfer_id,
                     accept: decision.accept,
                     reason: decision.reason,
-                })
-                .await
-                .map_err(|error| {
-                    ConnectionError::State(format!(
-                        "failed to forward FileDecision to peer {} transfer {}: {}",
-                        decision.peer_node_id, decision.transfer_id, error
-                    ))
-                })?;
+                },
+                &decision.peer_node_id,
+                "forward file decision",
+            )?;
             Ok(())
         } else {
             Err(ConnectionError::State(format!(
@@ -180,16 +185,26 @@ impl PeerRegistry {
         }
     }
 
-    pub(super) async fn disconnect_peer(&mut self, peer_node_id: &str) -> Option<SocketAddr> {
+    pub(super) fn disconnect_peer(&mut self, peer_node_id: &str) -> Option<SocketAddr> {
         let peer = self.peers.remove(peer_node_id)?;
         let addr = peer.addr;
-        let _ = peer.command_tx.send(SessionCommand::Shutdown).await;
+        let _ = try_send_session_command(
+            &peer.command_tx,
+            SessionCommand::Shutdown,
+            peer_node_id,
+            "disconnect peer",
+        );
         Some(addr)
     }
 
-    pub(super) async fn shutdown_all(&self) {
-        for peer in self.peers.values() {
-            let _ = peer.command_tx.send(SessionCommand::Shutdown).await;
+    pub(super) fn shutdown_all(&self) {
+        for (peer_node_id, peer) in &self.peers {
+            let _ = try_send_session_command(
+                &peer.command_tx,
+                SessionCommand::Shutdown,
+                peer_node_id,
+                "shutdown engine",
+            );
         }
     }
 
@@ -261,6 +276,22 @@ impl PeerRegistry {
     }
 }
 
+fn try_send_session_command(
+    command_tx: &mpsc::Sender<SessionCommand>,
+    command: SessionCommand,
+    peer_node_id: &str,
+    op: &'static str,
+) -> Result<(), ConnectionError> {
+    command_tx.try_send(command).map_err(|error| match error {
+        mpsc::error::TrySendError::Full(_) => ConnectionError::State(format!(
+            "peer {peer_node_id} session queue is full while {op}"
+        )),
+        mpsc::error::TrySendError::Closed(_) => ConnectionError::State(format!(
+            "peer {peer_node_id} session queue is closed while {op}"
+        )),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -292,14 +323,12 @@ mod tests {
     #[tokio::test]
     async fn forward_file_decision_returns_error_when_peer_missing() {
         let registry = PeerRegistry::new();
-        let result = registry
-            .forward_file_decision(FileDecisionInput {
-                peer_node_id: "missing-peer".to_string(),
-                transfer_id: 1,
-                accept: true,
-                reason: None,
-            })
-            .await;
+        let result = registry.forward_file_decision(FileDecisionInput {
+            peer_node_id: "missing-peer".to_string(),
+            transfer_id: 1,
+            accept: true,
+            reason: None,
+        });
 
         assert!(matches!(result, Err(ConnectionError::State(_))));
     }
@@ -324,14 +353,12 @@ mod tests {
             },
         );
 
-        let result = registry
-            .forward_file_decision(FileDecisionInput {
-                peer_node_id: "node-b".to_string(),
-                transfer_id: 7,
-                accept: false,
-                reason: Some("reject".to_string()),
-            })
-            .await;
+        let result = registry.forward_file_decision(FileDecisionInput {
+            peer_node_id: "node-b".to_string(),
+            transfer_id: 7,
+            accept: false,
+            reason: Some("reject".to_string()),
+        });
 
         assert!(matches!(result, Err(ConnectionError::State(_))));
     }
@@ -386,17 +413,15 @@ mod tests {
         let mut receiver_b = insert_peer_for_test(&mut registry, "node-b");
         let mut receiver_c = insert_peer_for_test(&mut registry, "node-c");
 
-        registry
-            .send_text(SendTextRequest {
-                event_id: "evt-1".to_string(),
-                content: "hello".to_string(),
-                targets: Some(vec![
-                    "node-c".to_string(),
-                    "missing-node".to_string(),
-                    "node-c".to_string(),
-                ]),
-            })
-            .await;
+        registry.send_text(SendTextRequest {
+            event_id: "evt-1".to_string(),
+            content: "hello".to_string(),
+            targets: Some(vec![
+                "node-c".to_string(),
+                "missing-node".to_string(),
+                "node-c".to_string(),
+            ]),
+        });
 
         let received = timeout(Duration::from_millis(100), receiver_c.recv())
             .await
@@ -425,12 +450,10 @@ mod tests {
         let mut receiver_b = insert_peer_for_test(&mut registry, "node-b");
         let mut receiver_c = insert_peer_for_test(&mut registry, "node-c");
 
-        registry
-            .send_file(SendFileRequest {
-                path: std::path::PathBuf::from("/tmp/demo.txt"),
-                targets: Some(vec!["node-b".to_string()]),
-            })
-            .await;
+        registry.send_file(SendFileRequest {
+            path: std::path::PathBuf::from("/tmp/demo.txt"),
+            targets: Some(vec!["node-b".to_string()]),
+        });
 
         let received = timeout(Duration::from_millis(100), receiver_b.recv())
             .await

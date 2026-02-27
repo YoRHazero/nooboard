@@ -32,6 +32,7 @@ impl SyncRuntime {
             peers_rx,
             status_rx,
             shutdown_tx,
+            engine_task,
         } = handle;
 
         let mut startup_status_rx = status_rx.clone();
@@ -47,6 +48,7 @@ impl SyncRuntime {
             peers_rx,
             status_rx,
             shutdown_tx,
+            engine_task,
             event_task,
             transfer_task,
         };
@@ -94,6 +96,15 @@ impl SyncRuntime {
 async fn shutdown_engine(mut engine: RunningEngine) {
     let _ = engine.shutdown_tx.send(());
     wait_for_engine_termination(&mut engine.status_rx, ENGINE_STOP_WAIT_TIMEOUT).await;
+    if let Some(mut engine_task) = engine.engine_task.take() {
+        if timeout(ENGINE_STOP_WAIT_TIMEOUT, &mut engine_task)
+            .await
+            .is_err()
+        {
+            engine_task.abort();
+            let _ = engine_task.await;
+        }
+    }
     abort_bridge_task(engine.event_task).await;
     abort_bridge_task(engine.transfer_task).await;
 }

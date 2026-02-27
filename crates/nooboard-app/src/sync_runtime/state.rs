@@ -34,6 +34,7 @@ pub(super) struct RunningEngine {
     pub(super) peers_rx: watch::Receiver<Vec<ConnectedPeerInfo>>,
     pub(super) status_rx: watch::Receiver<SyncStatus>,
     pub(super) shutdown_tx: broadcast::Sender<()>,
+    pub(super) engine_task: Option<JoinHandle<()>>,
     pub(super) event_task: JoinHandle<()>,
     pub(super) transfer_task: JoinHandle<()>,
 }
