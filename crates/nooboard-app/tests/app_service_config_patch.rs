@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use nooboard_app::{
-    AppConfig, AppError, AppPatch, AppResult, AppService, AppServiceImpl, AppServiceSnapshot,
-    AppSyncStatus, ClipboardPort, EventId, ListHistoryRequest, NetworkPatch, RemoteTextRequest,
-    StorageConfigView, StoragePatch, SyncDesiredState,
+    AppConfig, AppError, AppPatch, AppResult, AppService, AppServiceImpl, AppSyncStatus,
+    ClipboardPort, EventId, ListHistoryRequest, NetworkPatch, RemoteTextRequest, StoragePatch,
+    SyncDesiredState,
 };
 use tempfile::TempDir;
 
@@ -104,51 +104,6 @@ fn new_service(
     Ok((service, dir, config_path))
 }
 
-#[allow(async_fn_in_trait)]
-trait LegacyControlApi: AppService {
-    async fn start_sync_engine(&self) -> AppResult<()> {
-        let snapshot = self.snapshot().await?;
-        if snapshot.desired_state == SyncDesiredState::Running {
-            return Err(AppError::EngineAlreadyRunning);
-        }
-        self.set_sync_desired_state(SyncDesiredState::Running)
-            .await
-            .map(|_| ())
-    }
-
-    async fn stop_sync_engine(&self) -> AppResult<()> {
-        self.set_sync_desired_state(SyncDesiredState::Stopped)
-            .await
-            .map(|_| ())
-    }
-
-    async fn restart_sync_engine(&self) -> AppResult<()> {
-        let current_mdns = self.snapshot().await?.mdns_enabled;
-        self.apply_config_patch(AppPatch::Network(NetworkPatch::SetMdnsEnabled(
-            current_mdns,
-        )))
-        .await
-        .map(|_| ())
-    }
-
-    async fn sync_status(&self) -> AppResult<AppSyncStatus> {
-        Ok(self.snapshot().await?.actual_sync_status)
-    }
-
-    async fn apply_network_patch(&self, patch: NetworkPatch) -> AppResult<AppServiceSnapshot> {
-        self.apply_config_patch(AppPatch::Network(patch)).await
-    }
-
-    async fn apply_storage_patch(&self, patch: StoragePatch) -> AppResult<StorageConfigView> {
-        Ok(self
-            .apply_config_patch(AppPatch::Storage(patch))
-            .await?
-            .storage)
-    }
-}
-
-impl<T: AppService + ?Sized> LegacyControlApi for T {}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn storage_patch_switches_active_database() -> Result<(), Box<dyn std::error::Error>> {
     let root = TempDir::new()?;
@@ -173,12 +128,12 @@ async fn storage_patch_switches_active_database() -> Result<(), Box<dyn std::err
     assert_eq!(before.records[0].content, "from-a");
 
     let applied = service
-        .apply_storage_patch(StoragePatch {
+        .apply_config_patch(AppPatch::Storage(StoragePatch {
             db_root: Some(db_b.clone()),
             ..StoragePatch::default()
-        })
+        }))
         .await?;
-    assert_eq!(applied.db_root, db_b);
+    assert_eq!(applied.storage.db_root, db_b);
 
     let after_switch = service
         .list_history(ListHistoryRequest {
@@ -217,11 +172,11 @@ async fn storage_patch_invalid_values_are_rejected_without_persisting()
     let (service, _dir, config_path) = new_service(&db_root)?;
 
     let result = service
-        .apply_storage_patch(StoragePatch {
+        .apply_config_patch(AppPatch::Storage(StoragePatch {
             history_window_days: Some(30),
             dedup_window_days: Some(7),
             ..StoragePatch::default()
-        })
+        }))
         .await;
     assert!(matches!(result, Err(AppError::InvalidConfig(_))));
 
@@ -245,12 +200,12 @@ async fn storage_patch_resolves_relative_db_root_from_config_dir()
         .join(&relative_db_root);
 
     let applied = service
-        .apply_storage_patch(StoragePatch {
+        .apply_config_patch(AppPatch::Storage(StoragePatch {
             db_root: Some(relative_db_root),
             ..StoragePatch::default()
-        })
+        }))
         .await?;
-    assert_eq!(applied.db_root, expected_db_root);
+    assert_eq!(applied.storage.db_root, expected_db_root);
 
     service
         .store_remote_text(RemoteTextRequest {
@@ -269,7 +224,12 @@ async fn storage_patch_resolves_relative_db_root_from_config_dir()
     assert_eq!(before_restart.records.len(), 1);
     assert_eq!(before_restart.records[0].content, "from-relative");
 
-    service.restart_sync_engine().await?;
+    let current_mdns = service.snapshot().await?.mdns_enabled;
+    service
+        .apply_config_patch(AppPatch::Network(NetworkPatch::SetMdnsEnabled(
+            current_mdns,
+        )))
+        .await?;
     let after_restart = service
         .list_history(ListHistoryRequest {
             limit: 10,
@@ -282,7 +242,9 @@ async fn storage_patch_resolves_relative_db_root_from_config_dir()
     let persisted = AppConfig::load(config_path)?;
     assert_eq!(persisted.storage.db_root, expected_db_root);
 
-    service.stop_sync_engine().await?;
+    service
+        .set_sync_desired_state(SyncDesiredState::Stopped)
+        .await?;
     Ok(())
 }
 
@@ -307,7 +269,7 @@ async fn network_patch_does_not_reconfigure_storage_runtime()
     external_config.save_atomically(&config_path)?;
 
     let _ = service
-        .apply_network_patch(NetworkPatch::SetMdnsEnabled(false))
+        .apply_config_patch(AppPatch::Network(NetworkPatch::SetMdnsEnabled(false)))
         .await?;
 
     let records = service
@@ -329,7 +291,9 @@ async fn restart_engine_ignores_external_file_edits_without_patch()
     let db_b = root.path().join("db-b");
     let (service, _dir, config_path) = new_service(&db_a)?;
 
-    service.start_sync_engine().await?;
+    service
+        .set_sync_desired_state(SyncDesiredState::Running)
+        .await?;
     service
         .store_remote_text(RemoteTextRequest {
             event_id: EventId::new(),
@@ -346,9 +310,14 @@ async fn restart_engine_ignores_external_file_edits_without_patch()
     external_config.sync.file.download_dir = blocked_download_dir;
     external_config.save_atomically(&config_path)?;
 
-    let restart_result = service.restart_sync_engine().await;
+    let current_mdns = service.snapshot().await?.mdns_enabled;
+    let restart_result = service
+        .apply_config_patch(AppPatch::Network(NetworkPatch::SetMdnsEnabled(
+            current_mdns,
+        )))
+        .await;
     assert!(
-        matches!(restart_result, Ok(())),
+        matches!(restart_result, Ok(_)),
         "unexpected restart result: {restart_result:?}"
     );
 
@@ -374,27 +343,34 @@ async fn restart_engine_ignores_external_file_edits_without_patch()
     assert!(contents.contains(&"from-a"));
     assert!(contents.contains(&"after-failed-restart"));
 
-    let status = service.sync_status().await?;
+    let status = service.snapshot().await?.actual_sync_status;
     assert!(matches!(
         status,
         AppSyncStatus::Starting | AppSyncStatus::Running
     ));
 
-    service.stop_sync_engine().await?;
+    service
+        .set_sync_desired_state(SyncDesiredState::Stopped)
+        .await?;
     Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn start_sync_engine_returns_already_running_without_restarting()
--> Result<(), Box<dyn std::error::Error>> {
+async fn set_sync_desired_state_running_is_idempotent() -> Result<(), Box<dyn std::error::Error>> {
     let root = TempDir::new()?;
     let db_a = root.path().join("db-a");
     let (service, _dir, _config_path) = new_service(&db_a)?;
 
-    service.start_sync_engine().await?;
+    service
+        .set_sync_desired_state(SyncDesiredState::Running)
+        .await?;
 
-    let start_result = service.start_sync_engine().await;
-    assert!(matches!(start_result, Err(AppError::EngineAlreadyRunning)));
+    let start_result = service
+        .set_sync_desired_state(SyncDesiredState::Running)
+        .await;
+    assert!(start_result.is_ok());
+    let snapshot = start_result?;
+    assert_eq!(snapshot.desired_state, SyncDesiredState::Running);
 
     service
         .store_remote_text(RemoteTextRequest {
@@ -416,12 +392,66 @@ async fn start_sync_engine_returns_already_running_without_restarting()
             .any(|record| record.content == "after-already-running")
     );
 
-    let status = service.sync_status().await?;
+    let status = service.snapshot().await?.actual_sync_status;
     assert!(matches!(
         status,
         AppSyncStatus::Starting | AppSyncStatus::Running
     ));
 
-    service.stop_sync_engine().await?;
+    service
+        .set_sync_desired_state(SyncDesiredState::Stopped)
+        .await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn set_sync_desired_state_stopped_is_idempotent() -> Result<(), Box<dyn std::error::Error>> {
+    let root = TempDir::new()?;
+    let db_a = root.path().join("db-a");
+    let (service, _dir, _config_path) = new_service(&db_a)?;
+
+    let first = service
+        .set_sync_desired_state(SyncDesiredState::Stopped)
+        .await?;
+    let second = service
+        .set_sync_desired_state(SyncDesiredState::Stopped)
+        .await?;
+
+    assert_eq!(first.desired_state, SyncDesiredState::Stopped);
+    assert_eq!(second.desired_state, SyncDesiredState::Stopped);
+    assert!(matches!(second.actual_sync_status, AppSyncStatus::Stopped));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn concurrent_network_patches_preserve_consistent_snapshot()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = TempDir::new()?;
+    let db_a = root.path().join("db-a");
+    let (service, _dir, _config_path) = new_service(&db_a)?;
+    let service = Arc::new(service);
+
+    let peer_a: SocketAddr = "127.0.0.1:19001".parse()?;
+    let peer_b: SocketAddr = "127.0.0.1:19002".parse()?;
+
+    let service_a = Arc::clone(&service);
+    let task_a = tokio::spawn(async move {
+        service_a
+            .apply_config_patch(AppPatch::Network(NetworkPatch::AddManualPeer(peer_a)))
+            .await
+    });
+    let service_b = Arc::clone(&service);
+    let task_b = tokio::spawn(async move {
+        service_b
+            .apply_config_patch(AppPatch::Network(NetworkPatch::AddManualPeer(peer_b)))
+            .await
+    });
+
+    task_a.await??;
+    task_b.await??;
+
+    let mut peers = service.snapshot().await?.manual_peers;
+    peers.sort();
+    assert_eq!(peers, vec![peer_a, peer_b]);
     Ok(())
 }

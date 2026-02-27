@@ -1,218 +1,158 @@
-# nooboard-app 当前代码文档（供下一阶段开发参考）
+# nooboard-app 当前状态与 API 文档
 
 更新时间：2026-02-27
 
-## 1. 目标与职责
+## 1. crate 职责
 
-`nooboard-app` 是 GUI 层的唯一业务入口，负责编排：
-- `nooboard-storage`：历史存储、分页查询、重配置
-- `nooboard-sync`：网络生命周期、文本广播、文件传输、事件流
-- `nooboard-platform`：剪贴板读写
+`nooboard-app` 是应用层编排边界（当前仍以 `app` 为顶层语义），负责：
 
-GUI 不直接依赖 storage/sync/platform 的内部 API，通过 `AppService` 完成所有调用。
+- 统一对外暴露控制 API（`AppService`）
+- 控制面串行状态机（单 mailbox actor）
+- 编排 `nooboard-sync` 生命周期与事件订阅
+- 编排 `nooboard-storage` 历史/配置重配置/outbox 数据面接口
+- 编排剪贴板读写 (`ClipboardPort`)
 
-## 2. 模块结构
+当前仓库内不存在 `app` 的外部调用者约束，因此 API 已按新语义硬切换。
 
-### 2.1 顶层
+## 2. 架构概览
 
-- `src/lib.rs`：统一导出 `AppService`、DTO、错误类型
-- `src/error.rs`：`AppError` / `AppResult`
-- `src/clipboard_runtime.rs`：剪贴板端口抽象 `ClipboardPort`
+### 2.1 顶层模块
 
-### 2.2 配置层（`src/config/`）
+- `crates/nooboard-app/src/lib.rs`
+- `crates/nooboard-app/src/error.rs`
+- `crates/nooboard-app/src/config/*`
+- `crates/nooboard-app/src/service/*`
+- `crates/nooboard-app/src/sync_runtime/*`
+- `crates/nooboard-app/src/storage_runtime/*`
 
-- `schema.rs`：配置 Schema（meta/identity/app/storage/sync）
-- `io.rs`：加载、原子写回（tmp + rename）、相对路径解析
-- `mapping.rs`：`AppConfig -> StorageConfig/SyncConfig` 映射
-- `validate.rs`：业务校验（版本、手动 peer 去重、生命周期约束等）
-- `node_id.rs`：`noob_id_file` 读取/初始化/重生成
-- `defaults.rs`：默认值常量
+### 2.2 service/app 结构
 
-### 2.3 服务层（`src/service/`）
+- `service/app/mod.rs`：
+  - `AppService` trait（对外 API）
+  - `AppServiceImpl` facade/client（仅发命令 + 收回复）
+- `service/app/control/*`：控制面内聚实现
+  - `command.rs`：actor 命令定义（mpsc + oneshot）
+  - `state.rs`：控制状态聚合
+  - `actor.rs`：单 mailbox 主循环
+  - `engine_reconcile.rs`：desired/actual 生命周期收敛
+  - `config_patch.rs`：patch 应用 + 持久化 + 回滚聚合
+  - `outbox.rs`：内部 tick 驱动 outbox 调度
+  - `clipboard_history.rs` / `files.rs` / `subscriptions.rs`：业务子域命令处理
 
-- `app/mod.rs`：`AppService` trait + `AppServiceImpl`
-- `app/engine.rs`：start/stop/restart/status/connected_peers
-- `app/clipboard_history.rs`：A1~A6 语义（本地写入、历史复用、远端解耦）
-- `app/files.rs`：文件发送与决策
-- `app/subscriptions.rs`：事件订阅入口
-- `app/config_patch_network.rs`：网络配置 patch
-- `app/config_patch_storage.rs`：存储配置 patch
-- `app/config_transcation.rs`：配置事务骨架（当前文件名保持现状）
-- `events.rs`：`SubscriptionHub`，聚合 sync/transfer 两路事件
-- `mappers.rs`：sync/storage 类型到 app DTO 的映射
-- `types/`：按领域拆分的对外 DTO
+### 2.3 关键设计原则
 
-### 2.4 Runtime 层
+- 控制面串行：所有控制命令在同一 actor 内顺序执行
+- 对外暴露意图：调用方提交 desired state / patch，不暴露重启细节
+- Facade 轻量：`AppServiceImpl` 不再承担锁编排职责
+- 高内聚：控制面逻辑集中在 `service/app/control`，避免横向散落
 
-- `src/sync_runtime/`：sync 引擎句柄生命周期、桥接、命令发送
-- `src/storage_runtime/`：storage actor 线程、命令队列、重配置
+## 3. 对外 API（当前基线）
 
-### 2.5 测试
+`AppService` 的控制 API：
 
-- `tests/app_service_stage4.rs`：核心业务链路（剪贴板、文件、订阅、网络 patch）
-- `tests/app_service_config_patch.rs`：配置 patch 专项（network/storage）
+1. `shutdown() -> AppResult<()>`
+2. `set_sync_desired_state(SyncDesiredState) -> AppResult<AppServiceSnapshot>`
+3. `apply_config_patch(AppPatch) -> AppResult<AppServiceSnapshot>`
+4. `snapshot() -> AppResult<AppServiceSnapshot>`
 
-## 3. AppService 接口基线
+`SyncDesiredState`：
 
-`AppService` 当前公开接口分为五组：
+- `Running`
+- `Stopped`
 
-1. 生命周期与状态  
-- `start_engine` / `stop_engine` / `restart_engine`
-- `sync_status`
+`AppPatch`：
+
+- `Network(NetworkPatch)`
+- `Storage(StoragePatch)`
+
+其余业务 API（剪贴板/历史/文件/订阅）仍由 `AppService` 统一暴露。
+
+## 4. 关键 DTO
+
+### 4.1 `AppServiceSnapshot`
+
+`snapshot()` 与控制 API 返回的聚合视图，当前包含：
+
+- `desired_state`
+- `actual_sync_status`
 - `connected_peers`
+- `network_enabled`
+- `mdns_enabled`
+- `manual_peers`
+- `storage` (`StorageConfigView`)
 
-2. 剪贴板与历史  
-- `apply_local_clipboard_change`
-- `apply_history_entry_to_clipboard`
-- `list_history`
-- `rebroadcast_history_entry`
-- `store_remote_text`
-- `write_remote_text_to_clipboard`
+### 4.2 配置 patch
 
-3. 文件业务  
-- `send_file`
-- `respond_file_decision`
+`NetworkPatch`：
 
-4. 事件订阅  
-- `subscribe_events`（统一输出 `AppEvent`）
+- `SetMdnsEnabled(bool)`
+- `SetNetworkEnabled(bool)`
+- `AddManualPeer(SocketAddr)`
+- `RemoveManualPeer(SocketAddr)`
 
-5. 配置 patch  
-- `apply_network_patch(NetworkPatch) -> BroadcastConfig`
-- `apply_storage_patch(StoragePatch) -> StorageConfigView`
+`StoragePatch`（全字段 `Option<T>`）：
 
-## 4. 关键数据模型
+- `db_root`
+- `retain_old_versions`
+- `history_window_days`
+- `dedup_window_days`
+- `gc_every_inserts`
+- `gc_batch_size`
 
-### 4.1 标识与目标
+## 5. 控制面行为语义
 
-- `EventId`：UUID v7
-- `NodeId`：节点标识字符串
-- `Targets`：
-  - `All`
-  - `Nodes(Vec<NodeId>)`
-- `Targets` 内含标准化逻辑：trim + 去空 + 去重
+### 5.1 生命周期语义
 
-### 4.2 事件模型
+- `set_sync_desired_state(Running)`：
+  - desired state 更新为 `Running`
+  - reconcile 启动/保持 sync runtime
+- `set_sync_desired_state(Stopped)`：
+  - desired state 更新为 `Stopped`
+  - 订阅关闭并停止 sync runtime
+- `shutdown()`：
+  - 停止 outbox ticker
+  - 停止 sync runtime
+  - shutdown storage runtime
+  - 关闭 control actor mailbox
 
-- `AppEvent`：
-  - `Sync(SyncEvent)`
-  - `Transfer(TransferUpdate)`
-- `SyncEvent` 当前包含：
-  - `TextReceived`
-  - `FileDecisionRequired`
-  - `ConnectionError`
+### 5.2 patch 语义
 
-### 4.3 配置 patch 模型
+- `apply_config_patch` 在 actor 内串行执行：
+  1. clone 当前 config
+  2. 应用 patch
+  3. validate
+  4. 原子写回配置
+  5. reconfigure storage
+  6. reconcile engine（按 patch 类型触发）
+- 失败时执行回滚并聚合错误：
+  - 尽量执行全部 rollback 步骤
+  - 返回 `AppError::ConfigRollbackFailed`（若有回滚失败）
 
-- `NetworkPatch`
-  - `SetMdnsEnabled(bool)`
-  - `SetNetworkEnabled(bool)`
-  - `AddManualPeer(SocketAddr)`
-  - `RemoveManualPeer(SocketAddr)`
-- `StoragePatch`（部分更新，字段全为 `Option<T>`）
-  - `db_root`
-  - `retain_old_versions`
-  - `history_window_days`
-  - `dedup_window_days`
-  - `gc_every_inserts`
-  - `gc_batch_size`
+### 5.3 outbox 语义
 
-## 5. 运行时流程
+- 使用内部 `TickOutbox` 命令驱动
+- 周期 ticker 只负责向 actor 投递 tick，不直接执行业务
+- 实际 dispatch/lease/retry 全在 actor 状态机内串行执行
 
-### 5.1 Sync Runtime
+## 6. 当前测试状态
 
-- `SyncRuntime::start` 调用 `start_sync_engine`，保存 `SyncEngineHandle`
-- 内部保留两条桥接链路（实现细节，不是对外接口）：
-  - `event_rx -> event_tx`（sync 事件）
-  - `progress_rx -> transfer_tx`（transfer 进度事件）
-- `stop` 触发 shutdown 并等待状态落到终态，再中止 bridge 任务
+主要测试文件：
 
-### 5.2 Storage Runtime
+- `crates/nooboard-app/tests/app_service_stage4.rs`
+- `crates/nooboard-app/tests/app_service_config_patch.rs`
 
-- 采用单独 actor 线程执行存储命令
-- `append_text/list_history/reconfigure` 通过命令队列 + oneshot 回包
-- 支持运行中重配 storage 配置
+覆盖重点：
 
-### 5.3 事件订阅
+- 剪贴板/历史/文件/订阅主链路
+- desired state 幂等性
+- 并发网络 patch 一致性
+- patch 持久化与相对路径解析
+- shutdown 终止行为
+- outbox 在启动后补发链路
 
-- `SubscriptionHub` 首次订阅时启动聚合任务
-- 通过 `tokio::select!` 同时消费 sync/transfer 两路
-- 向外统一广播 `AppEvent`（`subscribe_events` 的唯一输出）
-- 对 lagged 事件采用跳过策略（继续消费新事件）
-- 结论：内部是“双通道桥接”，外部是“单订阅接口（`AppEvent`）”
+## 7. 建议验证命令
 
-## 6. 配置系统与事务
-
-### 6.1 配置加载与持久化
-
-- `AppConfig::load`：
-  - TOML 解析
-  - 相对路径绝对化
-  - node_id 文件读取/初始化
-  - 配置校验
-- `AppConfig::save_atomically`：
-  - 写临时文件
-  - rename 覆盖原文件
-
-### 6.2 配置事务骨架（`config_transcation.rs`）
-
-两条事务入口：
-- `execute_network_config_transcation`
-- `execute_storage_config_transcation`
-
-公共步骤：
-1. `config_update_lock` 串行化
-2. 读取旧配置
-3. 应用 patch
-4. `validate`
-5. 写回 + 应用运行时变更
-6. 失败回滚（配置文件 + 对应 runtime）
-
-网络应用函数：
-- `persist_and_restart_sync_with_rollback`
-
-存储应用函数：
-- `persist_and_reconfigure_storage_with_rollback`
-
-## 7. 当前业务语义要点
-
-1. 本地剪贴板变更  
-- 先写 storage，生成 `event_id`
-- 仅当 `sync.network.enabled == true` 且 `targets` 可发送时尝试广播
-
-2. 历史复用（按 recent-N）  
-- `apply_history_entry_to_clipboard` 与 `rebroadcast_history_entry`
-- 都基于 `recent_event_lookup_limit` 窗口内按 `event_id` 匹配
-
-3. 远端文本处理解耦  
-- `store_remote_text`：仅入库
-- `write_remote_text_to_clipboard`：仅写剪贴板
-
-4. 文件业务  
-- `send_file` 对空目标直接返回 `Ok(())`
-- `respond_file_decision` 透传到 sync runtime
-
-## 8. 下一阶段扩展建议（基于当前结构）
-
-1. 新增配置项时
-- 在 `config/schema.rs` 加字段
-- 在 `validate.rs` 补约束
-- 在 `mapping.rs` 补映射
-- 在 `types/network.rs` 增加 patch/view 字段（如需对外）
-- 在 `config_patch_*` 与 `config_transcation.rs` 接入应用流程
-
-2. 新增事件类型时
-- 在 `service/types/events.rs` 定义
-- 在 `mappers.rs` 做映射
-- 在 `tests/app_service_stage4.rs` 增加链路用例
-
-3. 新增业务 API 时
-- `service/app/mod.rs` 扩展 trait
-- 在 `service/app/*.rs` 落地 usecase
-- 优先复用现有 runtime，不直接穿透到 sync/storage 内部类型
-
-## 9. 验证命令
-
-推荐基线命令：
-1. `cargo check --workspace`
-2. `cargo test -p nooboard-app`
-3. `cargo test -p nooboard-sync --test p2p_file_transfer`
+1. `cargo fmt`
+2. `cargo check --workspace`
+3. `cargo test -p nooboard-app`
+4. `cargo test -p nooboard-sync --test p2p_file_transfer`
