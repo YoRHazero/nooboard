@@ -59,6 +59,11 @@ pub enum SubscriptionLifecycle {
         stream: EventStream,
         dropped: u64,
     },
+    RecoverableError {
+        session_id: u64,
+        stream: EventStream,
+        error: String,
+    },
     Fatal {
         session_id: u64,
         error: String,

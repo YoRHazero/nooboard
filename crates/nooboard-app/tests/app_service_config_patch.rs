@@ -337,3 +337,66 @@ async fn restart_engine_rolls_back_storage_when_sync_restart_fails()
     service.stop_engine().await?;
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn start_engine_on_running_service_reuses_restart_rollback_semantics()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = TempDir::new()?;
+    let db_a = root.path().join("db-a");
+    let db_b = root.path().join("db-b");
+    let (service, _dir, config_path) = new_service(&db_a)?;
+
+    service.start_engine().await?;
+    service
+        .store_remote_text(RemoteTextRequest {
+            event_id: EventId::new(),
+            content: "before-bad-start".to_string(),
+            device_id: "remote-a".to_string(),
+        })
+        .await?;
+
+    let blocked_download_dir = root.path().join("blocked-download-dir");
+    std::fs::write(&blocked_download_dir, b"occupied-by-file")?;
+
+    let mut external_config = AppConfig::load(&config_path)?;
+    external_config.storage.db_root = db_b;
+    external_config.sync.file.download_dir = blocked_download_dir;
+    external_config.save_atomically(&config_path)?;
+
+    let start_result = service.start_engine().await;
+    assert!(
+        matches!(start_result, Err(AppError::Sync(_))),
+        "unexpected start result: {start_result:?}"
+    );
+
+    service
+        .store_remote_text(RemoteTextRequest {
+            event_id: EventId::new(),
+            content: "after-failed-start".to_string(),
+            device_id: "remote-b".to_string(),
+        })
+        .await?;
+
+    let records = service
+        .list_history(ListHistoryRequest {
+            limit: 10,
+            cursor: None,
+        })
+        .await?;
+    let contents: Vec<&str> = records
+        .records
+        .iter()
+        .map(|record| record.content.as_str())
+        .collect();
+    assert!(contents.contains(&"before-bad-start"));
+    assert!(contents.contains(&"after-failed-start"));
+
+    let status = service.sync_status().await?;
+    assert!(matches!(
+        status,
+        AppSyncStatus::Starting | AppSyncStatus::Running
+    ));
+
+    service.stop_engine().await?;
+    Ok(())
+}

@@ -28,6 +28,8 @@ pub enum AppError {
     InvalidConfig(String),
     #[error("sync engine is not running")]
     EngineNotRunning,
+    #[error("sync network is disabled")]
+    SyncDisabled,
     #[error("sync channel closed: {0}")]
     ChannelClosed(String),
     #[error("history event `{event_id}` was not found in latest {limit} records")]

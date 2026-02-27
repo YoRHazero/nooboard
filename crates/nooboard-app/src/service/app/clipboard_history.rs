@@ -1,6 +1,6 @@
 use nooboard_sync::SendTextRequest;
 
-use crate::AppResult;
+use crate::{AppError, AppResult};
 
 use super::{
     AppServiceImpl, EventId, HistoryCursor, HistoryPage, HistoryRecord, ListHistoryRequest,
@@ -35,8 +35,13 @@ impl AppServiceImpl {
                 content: request.text,
                 targets: request.targets.to_sync_targets(),
             };
-            let runtime = self.sync_runtime.lock().await;
-            runtime.send_text(sync_request).await?;
+            let text_tx = {
+                let runtime = self.sync_runtime.lock().await;
+                runtime.text_sender()?
+            };
+            text_tx.send(sync_request).await.map_err(|error| {
+                AppError::ChannelClosed(format!("sync text_tx closed: {error}"))
+            })?;
         }
 
         Ok(LocalClipboardChangeResult {
@@ -90,6 +95,9 @@ impl AppServiceImpl {
         }
 
         let config = self.config.read().await.clone();
+        if !config.sync.network.enabled {
+            return Err(AppError::SyncDisabled);
+        }
         let recent_limit = config.recent_event_lookup_limit();
         let records = self
             .storage_runtime
@@ -102,8 +110,15 @@ impl AppServiceImpl {
             content: record.content,
             targets: request.targets.to_sync_targets(),
         };
-        let runtime = self.sync_runtime.lock().await;
-        runtime.send_text(sync_request).await
+        let text_tx = {
+            let runtime = self.sync_runtime.lock().await;
+            runtime.text_sender()?
+        };
+        text_tx
+            .send(sync_request)
+            .await
+            .map_err(|error| AppError::ChannelClosed(format!("sync text_tx closed: {error}")))?;
+        Ok(())
     }
 
     pub(super) async fn store_remote_text_usecase(

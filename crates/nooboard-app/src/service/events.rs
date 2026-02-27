@@ -209,13 +209,12 @@ async fn run_session_bridge(
                 match result {
                     Ok(event) => {
                         if let Err(error) = forward_sync_event(&events_tx, session_id, event) {
-                            emit_fatal(&events_tx, session_id, error);
-                            emit_closed(
+                            emit_recoverable_error(
                                 &events_tx,
                                 session_id,
-                                SubscriptionCloseReason::Fatal,
+                                EventStream::Sync,
+                                error,
                             );
-                            return BridgeOutcome::Terminated;
                         }
                     }
                     Err(broadcast::error::RecvError::Lagged(dropped)) => {
@@ -298,6 +297,21 @@ fn emit_lagged(
     ));
 }
 
+fn emit_recoverable_error(
+    events_tx: &broadcast::Sender<EventSubscriptionItem>,
+    session_id: u64,
+    stream: EventStream,
+    error: String,
+) {
+    let _ = events_tx.send(EventSubscriptionItem::Lifecycle(
+        SubscriptionLifecycle::RecoverableError {
+            session_id,
+            stream,
+            error,
+        },
+    ));
+}
+
 fn emit_fatal(
     events_tx: &broadcast::Sender<EventSubscriptionItem>,
     session_id: u64,
@@ -320,10 +334,13 @@ fn emit_closed(
 
 #[cfg(test)]
 mod tests {
+    use crate::service::types::SyncEvent;
+
     use tokio::sync::{broadcast, watch};
+    use uuid::Uuid;
 
     use super::{
-        BridgeOutcome, EventStream, EventSubscriptionItem, SubscriptionCloseReason,
+        AppEvent, BridgeOutcome, EventStream, EventSubscriptionItem, SubscriptionCloseReason,
         SubscriptionLifecycle, run_session_bridge,
     };
 
@@ -436,6 +453,63 @@ mod tests {
                 dropped: 1,
             })
         );
+
+        cancel_tx.send(true).expect("cancel send");
+        let outcome = bridge_task.await.expect("bridge join");
+        assert!(matches!(outcome, BridgeOutcome::Cancelled));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn mapping_error_is_recoverable_and_stream_continues() {
+        let (events_tx, mut events_rx) = broadcast::channel(8);
+        let (sync_tx, sync_rx) = broadcast::channel::<nooboard_sync::SyncEvent>(8);
+        let (_transfer_tx, transfer_rx) = broadcast::channel::<nooboard_sync::TransferUpdate>(8);
+        let (_status_tx, status_rx) = watch::channel(nooboard_sync::SyncStatus::Running);
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+
+        let bridge_task = tokio::spawn(run_session_bridge(
+            21,
+            sync_rx,
+            transfer_rx,
+            status_rx,
+            events_tx,
+            cancel_rx,
+        ));
+
+        sync_tx
+            .send(nooboard_sync::SyncEvent::TextReceived {
+                event_id: "not-a-uuid".to_string(),
+                content: "bad".to_string(),
+                device_id: "peer-a".to_string(),
+            })
+            .expect("event send");
+        assert_eq!(
+            events_rx.recv().await.expect("recoverable"),
+            EventSubscriptionItem::Lifecycle(SubscriptionLifecycle::RecoverableError {
+                session_id: 21,
+                stream: EventStream::Sync,
+                error: "invalid event id `not-a-uuid`: expected UUID string".to_string(),
+            })
+        );
+
+        sync_tx
+            .send(nooboard_sync::SyncEvent::TextReceived {
+                event_id: Uuid::now_v7().to_string(),
+                content: "good".to_string(),
+                device_id: "peer-b".to_string(),
+            })
+            .expect("event send");
+        let item = events_rx.recv().await.expect("event");
+        match item {
+            EventSubscriptionItem::Event {
+                session_id,
+                event: AppEvent::Sync(SyncEvent::TextReceived { content, .. }),
+            } => {
+                assert_eq!(session_id, 21);
+                assert_eq!(content, "good");
+            }
+            other => panic!("unexpected item: {other:?}"),
+        }
 
         cancel_tx.send(true).expect("cancel send");
         let outcome = bridge_task.await.expect("bridge join");

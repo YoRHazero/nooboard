@@ -229,6 +229,56 @@ async fn local_clipboard_change_succeeds_when_network_disabled()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn disabled_network_fails_send_usecases_fast() -> Result<(), Box<dyn std::error::Error>> {
+    let (service, _backend, dir, _config_path) = new_service(50)?;
+    service.start_engine().await?;
+
+    let event_id = EventId::new();
+    service
+        .store_remote_text(RemoteTextRequest {
+            event_id,
+            content: "stored-before-disable".to_string(),
+            device_id: "remote-a".to_string(),
+        })
+        .await?;
+    service
+        .apply_network_patch(NetworkPatch::SetNetworkEnabled(false))
+        .await?;
+
+    let file_path = dir.path().join("disabled-send.txt");
+    std::fs::write(&file_path, "body")?;
+
+    let send_file_result = service
+        .send_file(SendFileRequest {
+            path: file_path,
+            targets: Targets::all(),
+        })
+        .await;
+    assert!(matches!(send_file_result, Err(AppError::SyncDisabled)));
+
+    let decision_result = service
+        .respond_file_decision(FileDecisionRequest {
+            peer_node_id: NodeId::new("peer-a"),
+            transfer_id: 1,
+            accept: true,
+            reason: None,
+        })
+        .await;
+    assert!(matches!(decision_result, Err(AppError::SyncDisabled)));
+
+    let rebroadcast_result = service
+        .rebroadcast_history_entry(RebroadcastHistoryRequest {
+            event_id,
+            targets: Targets::all(),
+        })
+        .await;
+    assert!(matches!(rebroadcast_result, Err(AppError::SyncDisabled)));
+
+    service.stop_engine().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn recent_window_not_found_returns_business_error() -> Result<(), Box<dyn std::error::Error>>
 {
     let (service, _backend, _dir, _config_path) = new_service(1)?;

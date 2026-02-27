@@ -1,3 +1,5 @@
+use tokio::sync::mpsc;
+
 use nooboard_sync::{FileDecisionInput, SendFileRequest, SendTextRequest, SyncControlCommand};
 
 use crate::{AppError, AppResult};
@@ -5,57 +7,35 @@ use crate::{AppError, AppResult};
 use super::SyncRuntime;
 
 impl SyncRuntime {
-    pub async fn send_text(&self, request: SendTextRequest) -> AppResult<()> {
-        let engine = self
-            .state
+    pub fn text_sender(&self) -> AppResult<mpsc::Sender<SendTextRequest>> {
+        self.state
             .engine
             .as_ref()
-            .ok_or(AppError::EngineNotRunning)?;
-        engine
-            .text_tx
-            .send(request)
-            .await
-            .map_err(|error| AppError::ChannelClosed(format!("sync text_tx closed: {error}")))?;
-        Ok(())
+            .map(|engine| engine.text_tx.clone())
+            .ok_or(AppError::EngineNotRunning)
     }
 
-    pub async fn send_file(&self, request: SendFileRequest) -> AppResult<()> {
-        let engine = self
-            .state
+    pub fn file_sender(&self) -> AppResult<mpsc::Sender<SendFileRequest>> {
+        self.state
             .engine
             .as_ref()
-            .ok_or(AppError::EngineNotRunning)?;
-        engine
-            .file_tx
-            .send(request)
-            .await
-            .map_err(|error| AppError::ChannelClosed(format!("sync file_tx closed: {error}")))?;
-        Ok(())
+            .map(|engine| engine.file_tx.clone())
+            .ok_or(AppError::EngineNotRunning)
     }
 
-    pub async fn send_file_decision(&self, input: FileDecisionInput) -> AppResult<()> {
-        let engine = self
-            .state
+    pub fn decision_sender(&self) -> AppResult<mpsc::Sender<FileDecisionInput>> {
+        self.state
             .engine
             .as_ref()
-            .ok_or(AppError::EngineNotRunning)?;
-        engine.decision_tx.send(input).await.map_err(|error| {
-            AppError::ChannelClosed(format!("sync decision_tx closed: {error}"))
-        })?;
-        Ok(())
+            .map(|engine| engine.decision_tx.clone())
+            .ok_or(AppError::EngineNotRunning)
     }
 
-    pub async fn send_control_command(&self, command: SyncControlCommand) -> AppResult<()> {
-        let engine = self
-            .state
+    pub fn control_sender(&self) -> AppResult<mpsc::Sender<SyncControlCommand>> {
+        self.state
             .engine
             .as_ref()
-            .ok_or(AppError::EngineNotRunning)?;
-        engine
-            .control_tx
-            .send(command)
-            .await
-            .map_err(|error| AppError::ChannelClosed(format!("sync control_tx closed: {error}")))?;
-        Ok(())
+            .map(|engine| engine.control_tx.clone())
+            .ok_or(AppError::EngineNotRunning)
     }
 }

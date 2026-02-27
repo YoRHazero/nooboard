@@ -7,6 +7,14 @@ use super::{AppServiceImpl, AppSyncStatus, ConnectedPeer, SubscriptionCloseReaso
 
 impl AppServiceImpl {
     pub(super) async fn start_engine_usecase(&self) -> AppResult<()> {
+        let already_running = {
+            let runtime = self.sync_runtime.lock().await;
+            runtime.has_engine()
+        };
+        if already_running {
+            return self.restart_engine_usecase().await;
+        }
+
         let config = self.reload_config_from_disk().await?;
         let sync_config = config.to_sync_config()?;
         {

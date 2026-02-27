@@ -16,6 +16,10 @@ impl SyncRuntime {
             state: RuntimeState::new(),
         }
     }
+
+    pub fn has_engine(&self) -> bool {
+        self.state.engine.is_some()
+    }
 }
 
 impl Default for SyncRuntime {
