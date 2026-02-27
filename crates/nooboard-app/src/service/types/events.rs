@@ -2,6 +2,12 @@ use std::net::SocketAddr;
 
 use super::{EventId, NodeId, TransferUpdate};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventStream {
+    Sync,
+    Transfer,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncEvent {
     TextReceived {
@@ -19,6 +25,13 @@ pub enum SyncEvent {
     ConnectionError {
         peer_node_id: Option<NodeId>,
         addr: Option<SocketAddr>,
+        error: String,
+    },
+    BridgeLagged {
+        stream: EventStream,
+        dropped: u64,
+    },
+    BridgeMappingFailed {
         error: String,
     },
 }

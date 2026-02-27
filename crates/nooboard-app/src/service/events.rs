@@ -5,7 +5,7 @@ use tokio::sync::{Mutex, broadcast};
 use crate::AppResult;
 use crate::sync_runtime::SyncRuntime;
 
-use super::types::AppEvent;
+use super::types::{AppEvent, EventStream, SyncEvent};
 
 const EVENT_CHANNEL_CAPACITY: usize = 256;
 
@@ -59,11 +59,12 @@ impl SubscriptionHub {
                     result = sync_rx.recv(), if !sync_closed => {
                         match result {
                             Ok(event) => {
-                                if let Ok(mapped) = AppEvent::try_from(event) {
-                                    let _ = events_tx.send(mapped);
-                                }
+                                forward_sync_event(&events_tx, event);
                             }
-                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(broadcast::error::RecvError::Lagged(dropped)) => {
+                                emit_bridge_lagged(&events_tx, EventStream::Sync, dropped);
+                                continue;
+                            }
                             Err(broadcast::error::RecvError::Closed) => {
                                 sync_closed = true;
                             }
@@ -74,7 +75,10 @@ impl SubscriptionHub {
                             Ok(update) => {
                                 let _ = events_tx.send(update.into());
                             }
-                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(broadcast::error::RecvError::Lagged(dropped)) => {
+                                emit_bridge_lagged(&events_tx, EventStream::Transfer, dropped);
+                                continue;
+                            }
                             Err(broadcast::error::RecvError::Closed) => {
                                 transfer_closed = true;
                             }
@@ -86,5 +90,67 @@ impl SubscriptionHub {
 
         *started = true;
         Ok(())
+    }
+}
+
+fn forward_sync_event(events_tx: &broadcast::Sender<AppEvent>, event: nooboard_sync::SyncEvent) {
+    match AppEvent::try_from(event) {
+        Ok(mapped) => {
+            let _ = events_tx.send(mapped);
+        }
+        Err(error) => {
+            let _ = events_tx.send(AppEvent::Sync(SyncEvent::BridgeMappingFailed {
+                error: error.to_string(),
+            }));
+        }
+    }
+}
+
+fn emit_bridge_lagged(events_tx: &broadcast::Sender<AppEvent>, stream: EventStream, dropped: u64) {
+    let _ = events_tx.send(AppEvent::Sync(SyncEvent::BridgeLagged {
+        stream,
+        dropped,
+    }));
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::broadcast;
+
+    use super::{AppEvent, EventStream, SyncEvent, emit_bridge_lagged, forward_sync_event};
+
+    #[test]
+    fn emits_lagged_diagnostic_event() {
+        let (events_tx, mut events_rx) = broadcast::channel(8);
+
+        emit_bridge_lagged(&events_tx, EventStream::Transfer, 7);
+
+        assert_eq!(
+            events_rx.try_recv().expect("diagnostic event"),
+            AppEvent::Sync(SyncEvent::BridgeLagged {
+                stream: EventStream::Transfer,
+                dropped: 7,
+            })
+        );
+    }
+
+    #[test]
+    fn emits_mapping_failure_diagnostic_event() {
+        let (events_tx, mut events_rx) = broadcast::channel(8);
+        forward_sync_event(
+            &events_tx,
+            nooboard_sync::SyncEvent::TextReceived {
+                event_id: "not-a-uuid".to_string(),
+                content: "payload".to_string(),
+                device_id: "peer-a".to_string(),
+            },
+        );
+
+        match events_rx.try_recv().expect("diagnostic event") {
+            AppEvent::Sync(SyncEvent::BridgeMappingFailed { error }) => {
+                assert!(error.contains("invalid event id"));
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
     }
 }

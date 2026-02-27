@@ -10,9 +10,9 @@ pub use config::{APP_CONFIG_VERSION, AppConfig, DEFAULT_RECENT_EVENT_LOOKUP_LIMI
 pub use error::{AppError, AppResult};
 pub use service::{
     AppEvent, AppService, AppServiceImpl, AppSyncStatus, BroadcastConfig, ConnectedPeer, EventId,
-    FileDecisionRequest, HistoryCursor, HistoryPage, HistoryRecord, ListHistoryRequest,
-    LocalClipboardChangeRequest, LocalClipboardChangeResult, NetworkPatch, NodeId,
-    PeerConnectionState, RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest,
+    EventStream, FileDecisionRequest, HistoryCursor, HistoryPage, HistoryRecord,
+    ListHistoryRequest, LocalClipboardChangeRequest, LocalClipboardChangeResult, NetworkPatch,
+    NodeId, PeerConnectionState, RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest,
     StorageConfigView, StoragePatch, SyncEvent, Targets, TransferDirection, TransferState,
     TransferUpdate,
 };

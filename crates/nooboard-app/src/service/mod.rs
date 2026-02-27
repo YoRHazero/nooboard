@@ -6,8 +6,9 @@ mod types;
 pub use app::{AppService, AppServiceImpl};
 pub use types::{
     AppEvent, AppSyncStatus, BroadcastConfig, ConnectedPeer, EventId, FileDecisionRequest,
-    HistoryCursor, HistoryPage, HistoryRecord, ListHistoryRequest, LocalClipboardChangeRequest,
-    LocalClipboardChangeResult, NetworkPatch, NodeId, PeerConnectionState,
+    EventStream, HistoryCursor, HistoryPage, HistoryRecord, ListHistoryRequest,
+    LocalClipboardChangeRequest, LocalClipboardChangeResult, NetworkPatch, NodeId,
+    PeerConnectionState,
     RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest, StorageConfigView, StoragePatch,
     SyncEvent, Targets, TransferDirection, TransferState, TransferUpdate,
 };

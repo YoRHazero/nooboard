@@ -10,7 +10,7 @@ pub use clipboard::{
     LocalClipboardChangeRequest, LocalClipboardChangeResult, RebroadcastHistoryRequest,
     RemoteTextRequest,
 };
-pub use events::{AppEvent, SyncEvent};
+pub use events::{AppEvent, EventStream, SyncEvent};
 pub use file_transfer::{
     FileDecisionRequest, SendFileRequest, TransferDirection, TransferState, TransferUpdate,
 };
