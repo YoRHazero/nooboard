@@ -9,11 +9,11 @@ pub use clipboard_runtime::ClipboardPort;
 pub use config::{APP_CONFIG_VERSION, AppConfig, DEFAULT_RECENT_EVENT_LOOKUP_LIMIT};
 pub use error::{AppError, AppResult};
 pub use service::{
-    AppEvent, AppService, AppServiceImpl, AppSyncStatus, BroadcastConfig, ConnectedPeer, EventId,
-    EventStream, EventSubscription, EventSubscriptionItem, FileDecisionRequest, HistoryCursor,
-    HistoryPage, HistoryRecord, ListHistoryRequest, LocalClipboardChangeRequest,
-    LocalClipboardChangeResult, NetworkPatch, NodeId, PeerConnectionState,
-    RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest, StorageConfigView, StoragePatch,
-    SubscriptionCloseReason, SubscriptionLifecycle, SyncEvent, Targets, TransferDirection,
-    TransferState, TransferUpdate,
+    AppEvent, AppPatch, AppService, AppServiceImpl, AppServiceSnapshot, AppSyncStatus,
+    ConnectedPeer, EventId, EventStream, EventSubscription, EventSubscriptionItem,
+    FileDecisionRequest, HistoryCursor, HistoryPage, HistoryRecord, ListHistoryRequest,
+    LocalClipboardChangeRequest, LocalClipboardChangeResult, NetworkPatch, NodeId,
+    PeerConnectionState, RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest,
+    StorageConfigView, StoragePatch, SubscriptionCloseReason, SubscriptionLifecycle,
+    SyncDesiredState, SyncEvent, Targets, TransferDirection, TransferState, TransferUpdate,
 };

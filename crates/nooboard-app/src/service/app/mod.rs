@@ -1,41 +1,34 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use tokio::sync::{Mutex, RwLock, watch};
-use tokio::task::JoinHandle;
+use tokio::sync::{mpsc, oneshot};
 
-use crate::AppResult;
 use crate::clipboard_runtime::{ClipboardPort, ClipboardRuntime};
 use crate::config::AppConfig;
+use crate::service::events::SubscriptionHub;
 use crate::storage_runtime::StorageRuntime;
 use crate::sync_runtime::SyncRuntime;
+use crate::{AppError, AppResult};
 
-use super::events::SubscriptionHub;
 use super::types::{
-    AppSyncStatus, BroadcastConfig, ConnectedPeer, EventId, EventSubscription, FileDecisionRequest,
-    HistoryCursor, HistoryPage, HistoryRecord, ListHistoryRequest, LocalClipboardChangeRequest,
-    LocalClipboardChangeResult, NetworkPatch, RebroadcastHistoryRequest, RemoteTextRequest,
-    SendFileRequest, StorageConfigView, StoragePatch, SubscriptionCloseReason, find_recent_record,
-    now_millis_i64,
+    AppPatch, AppServiceSnapshot, EventId, EventSubscription, FileDecisionRequest, HistoryPage,
+    ListHistoryRequest, LocalClipboardChangeRequest, LocalClipboardChangeResult,
+    RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest, SyncDesiredState,
 };
 
-mod clipboard_history;
-mod config_patch_network;
-mod config_patch_storage;
-mod config_transcation;
-mod engine;
-mod files;
-mod outbox_dispatcher;
-mod subscriptions;
+mod control;
+
+use control::{ControlCommand, ControlState, spawn_control_actor};
 
 #[allow(async_fn_in_trait)]
 pub trait AppService {
-    async fn start_sync_engine(&self) -> AppResult<()>;
-    async fn stop_sync_engine(&self) -> AppResult<()>;
-    async fn restart_sync_engine(&self) -> AppResult<()>;
-    async fn shutdown_service(&self) -> AppResult<()>;
-    async fn sync_status(&self) -> AppResult<AppSyncStatus>;
-    async fn connected_peers(&self) -> AppResult<Vec<ConnectedPeer>>;
+    async fn shutdown(&self) -> AppResult<()>;
+    async fn set_sync_desired_state(
+        &self,
+        desired_state: SyncDesiredState,
+    ) -> AppResult<AppServiceSnapshot>;
+    async fn apply_config_patch(&self, patch: AppPatch) -> AppResult<AppServiceSnapshot>;
+    async fn snapshot(&self) -> AppResult<AppServiceSnapshot>;
 
     async fn apply_local_clipboard_change(
         &self,
@@ -51,25 +44,10 @@ pub trait AppService {
     async fn respond_file_decision(&self, request: FileDecisionRequest) -> AppResult<()>;
 
     async fn subscribe_events(&self) -> AppResult<EventSubscription>;
-
-    async fn apply_network_patch(&self, patch: NetworkPatch) -> AppResult<BroadcastConfig>;
-    async fn apply_storage_patch(&self, patch: StoragePatch) -> AppResult<StorageConfigView>;
 }
 
 pub struct AppServiceImpl {
-    config_path: std::path::PathBuf,
-    config: Arc<RwLock<AppConfig>>,
-    storage_runtime: Arc<StorageRuntime>,
-    clipboard: ClipboardRuntime,
-    sync_runtime: Arc<Mutex<SyncRuntime>>,
-    config_update_lock: Arc<Mutex<()>>,
-    subscriptions: Arc<SubscriptionHub>,
-    outbox_dispatcher: Arc<Mutex<Option<OutboxDispatcherHandle>>>,
-}
-
-struct OutboxDispatcherHandle {
-    shutdown_tx: watch::Sender<bool>,
-    task: JoinHandle<()>,
+    command_tx: mpsc::Sender<ControlCommand>,
 }
 
 impl AppServiceImpl {
@@ -80,90 +58,148 @@ impl AppServiceImpl {
         let config_path = config_path.as_ref().to_path_buf();
         let config = AppConfig::load(&config_path)?;
         let storage_runtime = Arc::new(StorageRuntime::new(config.to_storage_config())?);
+        let clipboard = ClipboardRuntime::new(clipboard);
+        let sync_runtime = SyncRuntime::new();
+        let subscriptions = Arc::new(SubscriptionHub::new());
+
+        let state = ControlState::new(
+            config_path,
+            config,
+            storage_runtime,
+            clipboard,
+            sync_runtime,
+            subscriptions,
+        );
 
         Ok(Self {
-            config_path,
-            config: Arc::new(RwLock::new(config)),
-            storage_runtime,
-            clipboard: ClipboardRuntime::new(clipboard),
-            sync_runtime: Arc::new(Mutex::new(SyncRuntime::new())),
-            config_update_lock: Arc::new(Mutex::new(())),
-            subscriptions: Arc::new(SubscriptionHub::new()),
-            outbox_dispatcher: Arc::new(Mutex::new(None)),
+            command_tx: spawn_control_actor(state),
         })
+    }
+
+    async fn request<T>(
+        &self,
+        command_factory: impl FnOnce(oneshot::Sender<AppResult<T>>) -> ControlCommand,
+        op: &'static str,
+    ) -> AppResult<T> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx
+            .send(command_factory(reply_tx))
+            .await
+            .map_err(|_| {
+                AppError::ChannelClosed(format!("control command channel closed: {op}"))
+            })?;
+
+        reply_rx.await.map_err(|_| {
+            AppError::ChannelClosed(format!("control response channel closed: {op}"))
+        })?
     }
 }
 
 impl AppService for AppServiceImpl {
-    async fn start_sync_engine(&self) -> AppResult<()> {
-        self.start_sync_engine_usecase().await
+    async fn shutdown(&self) -> AppResult<()> {
+        self.request(|reply| ControlCommand::Shutdown { reply }, "shutdown")
+            .await
     }
 
-    async fn stop_sync_engine(&self) -> AppResult<()> {
-        self.stop_sync_engine_usecase().await
+    async fn set_sync_desired_state(
+        &self,
+        desired_state: SyncDesiredState,
+    ) -> AppResult<AppServiceSnapshot> {
+        self.request(
+            |reply| ControlCommand::SetSyncDesiredState {
+                desired_state,
+                reply,
+            },
+            "set_sync_desired_state",
+        )
+        .await
     }
 
-    async fn restart_sync_engine(&self) -> AppResult<()> {
-        self.restart_sync_engine_usecase().await
+    async fn apply_config_patch(&self, patch: AppPatch) -> AppResult<AppServiceSnapshot> {
+        self.request(
+            |reply| ControlCommand::ApplyConfigPatch { patch, reply },
+            "apply_config_patch",
+        )
+        .await
     }
 
-    async fn shutdown_service(&self) -> AppResult<()> {
-        self.shutdown_service_usecase().await
-    }
-
-    async fn sync_status(&self) -> AppResult<AppSyncStatus> {
-        self.sync_status_usecase().await
-    }
-
-    async fn connected_peers(&self) -> AppResult<Vec<ConnectedPeer>> {
-        self.connected_peers_usecase().await
+    async fn snapshot(&self) -> AppResult<AppServiceSnapshot> {
+        self.request(|reply| ControlCommand::Snapshot { reply }, "snapshot")
+            .await
     }
 
     async fn apply_local_clipboard_change(
         &self,
         request: LocalClipboardChangeRequest,
     ) -> AppResult<LocalClipboardChangeResult> {
-        self.apply_local_clipboard_change_usecase(request).await
+        self.request(
+            |reply| ControlCommand::ApplyLocalClipboardChange { request, reply },
+            "apply_local_clipboard_change",
+        )
+        .await
     }
 
     async fn apply_history_entry_to_clipboard(&self, event_id: EventId) -> AppResult<()> {
-        self.apply_history_entry_to_clipboard_usecase(event_id)
-            .await
+        self.request(
+            |reply| ControlCommand::ApplyHistoryEntryToClipboard { event_id, reply },
+            "apply_history_entry_to_clipboard",
+        )
+        .await
     }
 
     async fn list_history(&self, request: ListHistoryRequest) -> AppResult<HistoryPage> {
-        self.list_history_usecase(request).await
+        self.request(
+            |reply| ControlCommand::ListHistory { request, reply },
+            "list_history",
+        )
+        .await
     }
 
     async fn rebroadcast_history_entry(&self, request: RebroadcastHistoryRequest) -> AppResult<()> {
-        self.rebroadcast_history_entry_usecase(request).await
+        self.request(
+            |reply| ControlCommand::RebroadcastHistoryEntry { request, reply },
+            "rebroadcast_history_entry",
+        )
+        .await
     }
 
     async fn store_remote_text(&self, request: RemoteTextRequest) -> AppResult<()> {
-        self.store_remote_text_usecase(request).await
+        self.request(
+            |reply| ControlCommand::StoreRemoteText { request, reply },
+            "store_remote_text",
+        )
+        .await
     }
 
     async fn write_remote_text_to_clipboard(&self, request: RemoteTextRequest) -> AppResult<()> {
-        self.write_remote_text_to_clipboard_usecase(request).await
+        self.request(
+            |reply| ControlCommand::WriteRemoteTextToClipboard { request, reply },
+            "write_remote_text_to_clipboard",
+        )
+        .await
     }
 
     async fn send_file(&self, request: SendFileRequest) -> AppResult<()> {
-        self.send_file_usecase(request).await
+        self.request(
+            |reply| ControlCommand::SendFile { request, reply },
+            "send_file",
+        )
+        .await
     }
 
     async fn respond_file_decision(&self, request: FileDecisionRequest) -> AppResult<()> {
-        self.respond_file_decision_usecase(request).await
+        self.request(
+            |reply| ControlCommand::RespondFileDecision { request, reply },
+            "respond_file_decision",
+        )
+        .await
     }
 
     async fn subscribe_events(&self) -> AppResult<EventSubscription> {
-        self.subscribe_events_usecase().await
-    }
-
-    async fn apply_network_patch(&self, patch: NetworkPatch) -> AppResult<BroadcastConfig> {
-        self.apply_network_patch_usecase(patch).await
-    }
-
-    async fn apply_storage_patch(&self, patch: StoragePatch) -> AppResult<StorageConfigView> {
-        self.apply_storage_patch_usecase(patch).await
+        self.request(
+            |reply| ControlCommand::SubscribeEvents { reply },
+            "subscribe_events",
+        )
+        .await
     }
 }

@@ -11,13 +11,6 @@ pub enum NetworkPatch {
     RemoveManualPeer(SocketAddr),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BroadcastConfig {
-    pub network_enabled: bool,
-    pub mdns_enabled: bool,
-    pub manual_peers: Vec<SocketAddr>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StoragePatch {
     pub db_root: Option<PathBuf>,
@@ -26,6 +19,12 @@ pub struct StoragePatch {
     pub dedup_window_days: Option<u32>,
     pub gc_every_inserts: Option<u32>,
     pub gc_batch_size: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppPatch {
+    Network(NetworkPatch),
+    Storage(StoragePatch),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,4 +59,22 @@ pub struct ConnectedPeer {
     pub outbound: bool,
     pub connected_at_ms: u64,
     pub state: PeerConnectionState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SyncDesiredState {
+    Running,
+    #[default]
+    Stopped,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppServiceSnapshot {
+    pub desired_state: SyncDesiredState,
+    pub actual_sync_status: AppSyncStatus,
+    pub connected_peers: Vec<ConnectedPeer>,
+    pub network_enabled: bool,
+    pub mdns_enabled: bool,
+    pub manual_peers: Vec<SocketAddr>,
+    pub storage: StorageConfigView,
 }

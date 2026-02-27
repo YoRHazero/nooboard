@@ -51,15 +51,12 @@ impl SubscriptionHub {
         ))
     }
 
-    pub(super) async fn activate(&self, sync_runtime: Arc<Mutex<SyncRuntime>>) -> AppResult<()> {
-        let (sync_rx, transfer_rx, status_rx) = {
-            let runtime = sync_runtime.lock().await;
-            (
-                runtime.subscribe_events()?,
-                runtime.subscribe_transfer_updates()?,
-                runtime.subscribe_status()?,
-            )
-        };
+    pub(super) async fn activate(&self, sync_runtime: &SyncRuntime) -> AppResult<()> {
+        let (sync_rx, transfer_rx, status_rx) = (
+            sync_runtime.subscribe_events()?,
+            sync_runtime.subscribe_transfer_updates()?,
+            sync_runtime.subscribe_status()?,
+        );
         let (events_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         let (cancel_tx, cancel_rx) = watch::channel(false);
 

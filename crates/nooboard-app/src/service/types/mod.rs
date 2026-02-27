@@ -21,7 +21,7 @@ pub(crate) use history::find_recent_record;
 pub use history::{HistoryCursor, HistoryPage, HistoryRecord, ListHistoryRequest};
 pub use identity::{EventId, NodeId, Targets};
 pub use network::{
-    AppSyncStatus, BroadcastConfig, ConnectedPeer, NetworkPatch, PeerConnectionState,
-    StorageConfigView, StoragePatch,
+    AppPatch, AppServiceSnapshot, AppSyncStatus, ConnectedPeer, NetworkPatch, PeerConnectionState,
+    StorageConfigView, StoragePatch, SyncDesiredState,
 };
 pub(crate) use time::now_millis_i64;
