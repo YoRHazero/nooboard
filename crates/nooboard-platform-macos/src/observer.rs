@@ -3,8 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use nooboard_core::ClipboardEvent;
-use nooboard_platform::ClipboardEventSender;
+use nooboard_platform::{ClipboardEvent, ClipboardEventSender, NooboardError};
 
 use crate::pasteboard::{pasteboard_change_count, read_text_from_pasteboard};
 
@@ -12,7 +11,7 @@ pub(crate) fn spawn_observer(
     sender: ClipboardEventSender,
     shutdown: Arc<AtomicBool>,
     interval: Duration,
-) -> Result<JoinHandle<()>, nooboard_core::NooboardError> {
+) -> Result<JoinHandle<()>, NooboardError> {
     let mut last_change_count = pasteboard_change_count()?;
 
     let handle = thread::spawn(move || {

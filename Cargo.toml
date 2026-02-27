@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  "crates/nooboard-core",
+  "crates/nooboard-app",
   "crates/nooboard-platform",
   "crates/nooboard-platform-macos",
   "crates/nooboard-storage",

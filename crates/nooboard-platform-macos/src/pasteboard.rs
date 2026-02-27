@@ -1,4 +1,4 @@
-use nooboard_core::NooboardError;
+use nooboard_platform::NooboardError;
 use objc2::rc::{Retained, autoreleasepool};
 use objc2::runtime::AnyObject;
 use objc2::{ClassType, msg_send};

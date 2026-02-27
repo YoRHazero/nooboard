@@ -69,7 +69,7 @@ pub enum SyncEvent {
     TextReceived {
         event_id: String,
         content: String,
-        source_device_id: String,
+        device_id: String,
     },
     FileDecisionRequired {
         peer_node_id: String,

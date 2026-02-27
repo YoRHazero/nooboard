@@ -5,8 +5,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use nooboard_core::NooboardError;
-use nooboard_platform::{ClipboardBackend, ClipboardEventSender};
+use nooboard_platform::{ClipboardBackend, ClipboardEventSender, NooboardError};
 
 pub struct MacOsClipboardBackend;
 

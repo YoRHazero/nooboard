@@ -644,17 +644,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "nooboard-core"
+name = "nooboard-app"
 version = "0.1.0"
 dependencies = [
+ "nooboard-platform",
+ "nooboard-storage",
+ "nooboard-sync",
+ "serde",
+ "tempfile",
  "thiserror",
+ "tokio",
+ "toml",
+ "uuid",
 ]
 
 [[package]]
 name = "nooboard-platform"
 version = "0.1.0"
 dependencies = [
- "nooboard-core",
+ "thiserror",
  "tokio",
 ]
 
@@ -662,7 +670,6 @@ dependencies = [
 name = "nooboard-platform-macos"
 version = "0.1.0"
 dependencies = [
- "nooboard-core",
  "nooboard-platform",
  "objc2",
  "objc2-app-kit",

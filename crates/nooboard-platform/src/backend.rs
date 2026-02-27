@@ -2,8 +2,9 @@ use std::sync::{Arc, atomic::AtomicBool};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use nooboard_core::{ClipboardEvent, NooboardError};
 use tokio::sync::mpsc;
+
+use crate::{ClipboardEvent, NooboardError};
 
 pub type ClipboardEventSender = mpsc::Sender<ClipboardEvent>;
 

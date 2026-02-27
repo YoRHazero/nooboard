@@ -372,7 +372,7 @@ async fn handle_incoming_packet(
                         .send(SyncEvent::TextReceived {
                             event_id,
                             content,
-                            source_device_id: peer_device_id.to_string(),
+                            device_id: peer_device_id.to_string(),
                         })
                         .await;
                 }
