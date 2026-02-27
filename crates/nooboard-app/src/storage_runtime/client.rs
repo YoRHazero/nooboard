@@ -1,0 +1,126 @@
+use std::sync::{Mutex, mpsc};
+use std::thread::JoinHandle;
+
+use nooboard_storage::{HistoryCursor, HistoryRecord};
+use tokio::sync::oneshot;
+use uuid::Uuid;
+
+use crate::{AppError, AppResult};
+
+use super::actor::run_actor;
+use super::commands::StorageCommand;
+
+pub(crate) struct StorageRuntime {
+    command_tx: mpsc::Sender<StorageCommand>,
+    worker: Mutex<Option<JoinHandle<()>>>,
+}
+
+impl StorageRuntime {
+    pub(crate) fn new(storage_config: nooboard_storage::AppConfig) -> AppResult<Self> {
+        let (command_tx, command_rx) = mpsc::channel();
+        let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+
+        let worker = std::thread::Builder::new()
+            .name("nooboard-storage-runtime".to_string())
+            .spawn(move || run_actor(storage_config, command_rx, ready_tx))
+            .map_err(|error| {
+                AppError::ChannelClosed(format!("failed to spawn storage actor: {error}"))
+            })?;
+
+        match ready_rx.recv() {
+            Ok(Ok(())) => Ok(Self {
+                command_tx,
+                worker: Mutex::new(Some(worker)),
+            }),
+            Ok(Err(error)) => {
+                let _ = worker.join();
+                Err(error)
+            }
+            Err(error) => {
+                let _ = worker.join();
+                Err(AppError::ChannelClosed(format!(
+                    "storage actor startup signal dropped: {error}"
+                )))
+            }
+        }
+    }
+
+    pub(crate) async fn reconfigure(
+        &self,
+        storage_config: nooboard_storage::AppConfig,
+    ) -> AppResult<()> {
+        self.request(
+            |reply| StorageCommand::Reconfigure {
+                storage_config,
+                reply,
+            },
+            "reconfigure",
+        )
+        .await
+    }
+
+    pub(crate) async fn append_text(
+        &self,
+        text: &str,
+        event_id: Option<Uuid>,
+        origin_device_id: Option<&str>,
+        created_at_ms: i64,
+        applied_at_ms: i64,
+    ) -> AppResult<bool> {
+        self.request(
+            |reply| StorageCommand::AppendText {
+                text: text.to_string(),
+                event_id,
+                origin_device_id: origin_device_id.map(ToString::to_string),
+                created_at_ms,
+                applied_at_ms,
+                reply,
+            },
+            "append_text",
+        )
+        .await
+    }
+
+    pub(crate) async fn list_history(
+        &self,
+        limit: usize,
+        cursor: Option<HistoryCursor>,
+    ) -> AppResult<Vec<HistoryRecord>> {
+        self.request(
+            |reply| StorageCommand::ListHistory {
+                limit,
+                cursor,
+                reply,
+            },
+            "list_history",
+        )
+        .await
+    }
+
+    async fn request<T>(
+        &self,
+        command_factory: impl FnOnce(oneshot::Sender<AppResult<T>>) -> StorageCommand,
+        op: &'static str,
+    ) -> AppResult<T> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx
+            .send(command_factory(reply_tx))
+            .map_err(|_| {
+                AppError::ChannelClosed(format!("storage command channel closed: {op}"))
+            })?;
+        reply_rx.await.map_err(|_| {
+            AppError::ChannelClosed(format!("storage response channel closed: {op}"))
+        })?
+    }
+}
+
+impl Drop for StorageRuntime {
+    fn drop(&mut self) {
+        let _ = self.command_tx.send(StorageCommand::Shutdown);
+        if let Ok(mut guard) = self.worker.lock()
+            && let Some(worker) = guard.take()
+        {
+            let _ = worker.join();
+        }
+    }
+}
