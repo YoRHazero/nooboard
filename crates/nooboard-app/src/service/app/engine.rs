@@ -1,17 +1,27 @@
-use crate::{AppError, AppResult};
-use crate::config::AppConfig;
+use std::sync::Arc;
 
-use super::{AppServiceImpl, AppSyncStatus, ConnectedPeer};
+use crate::config::AppConfig;
+use crate::{AppError, AppResult};
+
+use super::{AppServiceImpl, AppSyncStatus, ConnectedPeer, SubscriptionCloseReason};
 
 impl AppServiceImpl {
     pub(super) async fn start_engine_usecase(&self) -> AppResult<()> {
         let config = self.reload_config_from_disk().await?;
         let sync_config = config.to_sync_config()?;
-        let mut runtime = self.sync_runtime.lock().await;
-        runtime.start(sync_config).await
+        {
+            let mut runtime = self.sync_runtime.lock().await;
+            runtime.start(sync_config).await?;
+        }
+        self.subscriptions
+            .activate(Arc::clone(&self.sync_runtime))
+            .await
     }
 
     pub(super) async fn stop_engine_usecase(&self) -> AppResult<()> {
+        self.subscriptions
+            .deactivate(SubscriptionCloseReason::EngineStopped)
+            .await;
         let mut runtime = self.sync_runtime.lock().await;
         runtime.stop().await
     }
@@ -26,7 +36,9 @@ impl AppServiceImpl {
         let updated_storage_config = updated_config.to_storage_config();
         let updated_sync_config = updated_config.to_sync_config()?;
 
-        self.storage_runtime.reconfigure(updated_storage_config).await?;
+        self.storage_runtime
+            .reconfigure(updated_storage_config)
+            .await?;
 
         let restart_result = {
             let mut runtime = self.sync_runtime.lock().await;
@@ -34,6 +46,9 @@ impl AppServiceImpl {
         };
 
         if let Err(restart_error) = restart_result {
+            self.subscriptions
+                .deactivate(SubscriptionCloseReason::Fatal)
+                .await;
             if let Some(rollback_failure) = self
                 .rollback_restart_failure(old_storage_config, old_sync_config, &restart_error)
                 .await
@@ -42,6 +57,9 @@ impl AppServiceImpl {
             }
             return Err(restart_error);
         }
+        self.subscriptions
+            .activate(Arc::clone(&self.sync_runtime))
+            .await?;
 
         *self.config.write().await = updated_config;
         Ok(())
@@ -88,6 +106,12 @@ impl AppServiceImpl {
         };
         if let Err(sync_error) = sync_rollback {
             rollback_errors.push(format!("sync rollback failed: {sync_error}"));
+        } else if let Err(subscribe_error) = self
+            .subscriptions
+            .activate(Arc::clone(&self.sync_runtime))
+            .await
+        {
+            rollback_errors.push(format!("subscription rollback failed: {subscribe_error}"));
         }
 
         if rollback_errors.is_empty() {

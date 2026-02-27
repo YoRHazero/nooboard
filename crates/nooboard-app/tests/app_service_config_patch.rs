@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use nooboard_app::{
-    AppConfig, AppError, AppResult, AppService, AppServiceImpl, AppSyncStatus, ClipboardPort, EventId,
-    ListHistoryRequest, NetworkPatch, RemoteTextRequest, StoragePatch,
+    AppConfig, AppError, AppResult, AppService, AppServiceImpl, AppSyncStatus, ClipboardPort,
+    EventId, ListHistoryRequest, NetworkPatch, RemoteTextRequest, StoragePatch,
 };
 use tempfile::TempDir;
 
@@ -320,7 +320,11 @@ async fn restart_engine_rolls_back_storage_when_sync_restart_fails()
             cursor: None,
         })
         .await?;
-    let contents: Vec<&str> = records.records.iter().map(|record| record.content.as_str()).collect();
+    let contents: Vec<&str> = records
+        .records
+        .iter()
+        .map(|record| record.content.as_str())
+        .collect();
     assert!(contents.contains(&"from-a"));
     assert!(contents.contains(&"after-failed-restart"));
 

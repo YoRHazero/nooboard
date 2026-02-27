@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use crate::config::AppConfig;
 use crate::{AppError, AppResult};
 
-use super::AppServiceImpl;
+use super::{AppServiceImpl, SubscriptionCloseReason};
 
 impl AppServiceImpl {
     pub(super) async fn execute_network_config_transcation<F>(
@@ -54,6 +56,9 @@ impl AppServiceImpl {
         };
 
         if let Err(restart_error) = restart_result {
+            self.subscriptions
+                .deactivate(SubscriptionCloseReason::Fatal)
+                .await;
             if let Some(rollback_failure) = self
                 .rollback_sync_restart_failure(&old_config, &restart_error)
                 .await
@@ -62,6 +67,9 @@ impl AppServiceImpl {
             }
             return Err(restart_error);
         }
+        self.subscriptions
+            .activate(Arc::clone(&self.sync_runtime))
+            .await?;
 
         *self.config.write().await = updated_config.clone();
         Ok(updated_config)
@@ -124,6 +132,17 @@ impl AppServiceImpl {
             return Some(AppError::ConfigRollbackFailed {
                 restart_error: restart_error.to_string(),
                 rollback_error: rollback_restart_error.to_string(),
+            });
+        }
+
+        if let Err(rollback_subscribe_error) = self
+            .subscriptions
+            .activate(Arc::clone(&self.sync_runtime))
+            .await
+        {
+            return Some(AppError::ConfigRollbackFailed {
+                restart_error: restart_error.to_string(),
+                rollback_error: rollback_subscribe_error.to_string(),
             });
         }
 

@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use tokio::sync::{Mutex, RwLock, broadcast};
+use tokio::sync::{Mutex, RwLock};
 
 use crate::AppResult;
 use crate::clipboard_runtime::{ClipboardPort, ClipboardRuntime};
@@ -11,10 +11,11 @@ use crate::sync_runtime::SyncRuntime;
 
 use super::events::SubscriptionHub;
 use super::types::{
-    AppEvent, AppSyncStatus, BroadcastConfig, ConnectedPeer, EventId, FileDecisionRequest,
+    AppSyncStatus, BroadcastConfig, ConnectedPeer, EventId, EventSubscription, FileDecisionRequest,
     HistoryCursor, HistoryPage, HistoryRecord, ListHistoryRequest, LocalClipboardChangeRequest,
     LocalClipboardChangeResult, NetworkPatch, RebroadcastHistoryRequest, RemoteTextRequest,
-    SendFileRequest, StorageConfigView, StoragePatch, find_recent_record, now_millis_i64,
+    SendFileRequest, StorageConfigView, StoragePatch, SubscriptionCloseReason, find_recent_record,
+    now_millis_i64,
 };
 
 mod clipboard_history;
@@ -46,7 +47,7 @@ pub trait AppService {
     async fn send_file(&self, request: SendFileRequest) -> AppResult<()>;
     async fn respond_file_decision(&self, request: FileDecisionRequest) -> AppResult<()>;
 
-    async fn subscribe_events(&self) -> AppResult<broadcast::Receiver<AppEvent>>;
+    async fn subscribe_events(&self) -> AppResult<EventSubscription>;
 
     async fn apply_network_patch(&self, patch: NetworkPatch) -> AppResult<BroadcastConfig>;
     async fn apply_storage_patch(&self, patch: StoragePatch) -> AppResult<StorageConfigView>;
@@ -140,7 +141,7 @@ impl AppService for AppServiceImpl {
         self.respond_file_decision_usecase(request).await
     }
 
-    async fn subscribe_events(&self) -> AppResult<broadcast::Receiver<AppEvent>> {
+    async fn subscribe_events(&self) -> AppResult<EventSubscription> {
         self.subscribe_events_usecase().await
     }
 

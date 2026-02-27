@@ -4,9 +4,9 @@ use std::sync::{Arc, Mutex};
 
 use nooboard_app::{
     AppConfig, AppError, AppEvent, AppResult, AppService, AppServiceImpl, ClipboardPort, EventId,
-    FileDecisionRequest, ListHistoryRequest, LocalClipboardChangeRequest, NetworkPatch, NodeId,
-    RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest, SyncEvent, Targets,
-    TransferState,
+    EventSubscriptionItem, FileDecisionRequest, ListHistoryRequest, LocalClipboardChangeRequest,
+    NetworkPatch, NodeId, RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest,
+    SubscriptionCloseReason, SubscriptionLifecycle, SyncEvent, Targets, TransferState,
 };
 use tempfile::TempDir;
 use tokio::time::{Duration, Instant, timeout};
@@ -348,6 +348,12 @@ async fn file_api_supports_normal_and_error_paths() -> Result<(), Box<dyn std::e
         .await?;
 
     let mut events = service.subscribe_events().await?;
+    assert!(matches!(
+        events.try_recv(),
+        Ok(EventSubscriptionItem::Lifecycle(
+            SubscriptionLifecycle::Opened { .. }
+        ))
+    ));
     assert!(events.try_recv().is_err());
 
     service.stop_engine().await?;
@@ -473,7 +479,10 @@ async fn transfer_events_do_not_break_sync_event_bridge() -> Result<(), Box<dyn 
             break;
         }
 
-        let event = timeout(remain, receiver_b.recv()).await??;
+        let item = timeout(remain, receiver_b.recv()).await??;
+        let EventSubscriptionItem::Event { event, .. } = item else {
+            continue;
+        };
         match event {
             AppEvent::Sync(SyncEvent::FileDecisionRequired {
                 peer_node_id,
@@ -516,7 +525,10 @@ async fn transfer_events_do_not_break_sync_event_bridge() -> Result<(), Box<dyn 
             break;
         }
 
-        let event = timeout(remain, receiver_b.recv()).await??;
+        let item = timeout(remain, receiver_b.recv()).await??;
+        let EventSubscriptionItem::Event { event, .. } = item else {
+            continue;
+        };
         if let AppEvent::Sync(SyncEvent::TextReceived { content, .. }) = event
             && content == marker
         {
@@ -552,8 +564,187 @@ async fn repeated_subscribe_uses_shared_hub() -> Result<(), Box<dyn std::error::
         .await?;
 
     let mut receiver = service.subscribe_events().await?;
+    assert!(matches!(
+        receiver.try_recv(),
+        Ok(EventSubscriptionItem::Lifecycle(
+            SubscriptionLifecycle::Opened { .. }
+        ))
+    ));
     assert!(receiver.try_recv().is_err());
 
     service.stop_engine().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stop_emits_terminal_closed_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
+    let (service, _backend, _dir, _config_path) = new_service(50)?;
+    service.start_engine().await?;
+
+    let mut subscription = service.subscribe_events().await?;
+    let session_id = subscription.session_id();
+    assert_eq!(
+        subscription.recv().await?,
+        EventSubscriptionItem::Lifecycle(SubscriptionLifecycle::Opened { session_id })
+    );
+
+    service.stop_engine().await?;
+
+    assert_eq!(
+        timeout(Duration::from_secs(2), subscription.recv()).await??,
+        EventSubscriptionItem::Lifecycle(SubscriptionLifecycle::Closed {
+            session_id,
+            reason: SubscriptionCloseReason::EngineStopped,
+        })
+    );
+    assert!(matches!(
+        timeout(Duration::from_secs(2), subscription.recv()).await,
+        Ok(Err(tokio::sync::broadcast::error::RecvError::Closed))
+    ));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn restart_rebinds_old_stream_and_keeps_new_stream_usable()
+-> Result<(), Box<dyn std::error::Error>> {
+    let port_a = free_port();
+    let port_b = free_port();
+    let listen_a: SocketAddr = format!("127.0.0.1:{port_a}").parse()?;
+    let listen_b: SocketAddr = format!("127.0.0.1:{port_b}").parse()?;
+
+    let (service_a, _backend_a, _dir_a, _config_a) =
+        new_service_with_network(50, listen_a, vec![listen_b])?;
+    let (service_b, _backend_b, _dir_b, _config_b) =
+        new_service_with_network(50, listen_b, vec![listen_a])?;
+
+    service_a.start_engine().await?;
+    service_b.start_engine().await?;
+
+    let mut old_stream = service_b.subscribe_events().await?;
+    let old_session_id = old_stream.session_id();
+    assert_eq!(
+        old_stream.recv().await?,
+        EventSubscriptionItem::Lifecycle(SubscriptionLifecycle::Opened {
+            session_id: old_session_id,
+        })
+    );
+
+    let connect_deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < connect_deadline {
+        if !service_a.connected_peers().await?.is_empty()
+            && !service_b.connected_peers().await?.is_empty()
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(
+        !service_a.connected_peers().await?.is_empty(),
+        "service A must connect to service B before restart"
+    );
+    assert!(
+        !service_b.connected_peers().await?.is_empty(),
+        "service B must connect to service A before restart"
+    );
+
+    service_b.restart_engine().await?;
+
+    let mut saw_rebinding = false;
+    let mut saw_closed = false;
+    let old_stream_deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < old_stream_deadline {
+        let remain = old_stream_deadline.saturating_duration_since(Instant::now());
+        if remain.is_zero() {
+            break;
+        }
+
+        match timeout(remain, old_stream.recv()).await?? {
+            EventSubscriptionItem::Lifecycle(SubscriptionLifecycle::Rebinding {
+                from_session_id,
+                to_session_id,
+            }) => {
+                assert_eq!(from_session_id, old_session_id);
+                assert!(to_session_id > old_session_id);
+                saw_rebinding = true;
+            }
+            EventSubscriptionItem::Lifecycle(SubscriptionLifecycle::Closed {
+                session_id,
+                reason: SubscriptionCloseReason::Rebinding { next_session_id },
+            }) => {
+                assert_eq!(session_id, old_session_id);
+                assert!(next_session_id > old_session_id);
+                saw_closed = true;
+                break;
+            }
+            EventSubscriptionItem::Lifecycle(_) | EventSubscriptionItem::Event { .. } => {}
+        }
+    }
+    assert!(saw_rebinding, "old stream must observe rebinding lifecycle");
+    assert!(saw_closed, "old stream must observe closed lifecycle");
+    assert!(matches!(
+        timeout(Duration::from_secs(2), old_stream.recv()).await,
+        Ok(Err(tokio::sync::broadcast::error::RecvError::Closed))
+    ));
+
+    let mut new_stream = service_b.subscribe_events().await?;
+    let new_session_id = new_stream.session_id();
+    assert!(new_session_id > old_session_id);
+    assert_eq!(
+        new_stream.recv().await?,
+        EventSubscriptionItem::Lifecycle(SubscriptionLifecycle::Opened {
+            session_id: new_session_id,
+        })
+    );
+
+    let reconnect_deadline = Instant::now() + Duration::from_secs(15);
+    while Instant::now() < reconnect_deadline {
+        if !service_a.connected_peers().await?.is_empty()
+            && !service_b.connected_peers().await?.is_empty()
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(
+        !service_a.connected_peers().await?.is_empty(),
+        "service A must reconnect to service B after restart"
+    );
+    assert!(
+        !service_b.connected_peers().await?.is_empty(),
+        "service B must reconnect to service A after restart"
+    );
+
+    let marker = format!("post-restart-{new_session_id}");
+    service_a
+        .apply_local_clipboard_change(LocalClipboardChangeRequest {
+            text: marker.clone(),
+            targets: Targets::all(),
+        })
+        .await?;
+
+    let text_deadline = Instant::now() + Duration::from_secs(10);
+    let mut saw_text = false;
+    while Instant::now() < text_deadline {
+        let remain = text_deadline.saturating_duration_since(Instant::now());
+        if remain.is_zero() {
+            break;
+        }
+
+        let item = timeout(remain, new_stream.recv()).await??;
+        if let EventSubscriptionItem::Event {
+            session_id,
+            event: AppEvent::Sync(SyncEvent::TextReceived { content, .. }),
+        } = item
+            && session_id == new_session_id
+            && content == marker
+        {
+            saw_text = true;
+            break;
+        }
+    }
+    assert!(saw_text, "new stream must continue receiving sync events");
+
+    service_a.stop_engine().await?;
+    service_b.stop_engine().await?;
     Ok(())
 }

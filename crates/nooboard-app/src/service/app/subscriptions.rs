@@ -1,17 +1,9 @@
-use std::sync::Arc;
-
-use tokio::sync::broadcast;
-
 use crate::AppResult;
 
-use super::{AppEvent, AppServiceImpl};
+use super::{AppServiceImpl, EventSubscription};
 
 impl AppServiceImpl {
-    pub(super) async fn subscribe_events_usecase(
-        &self,
-    ) -> AppResult<broadcast::Receiver<AppEvent>> {
-        self.subscriptions
-            .subscribe(Arc::clone(&self.sync_runtime))
-            .await
+    pub(super) async fn subscribe_events_usecase(&self) -> AppResult<EventSubscription> {
+        self.subscriptions.subscribe().await
     }
 }
