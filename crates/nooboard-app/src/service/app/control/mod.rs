@@ -4,7 +4,6 @@ mod command;
 mod config_patch;
 mod engine_reconcile;
 mod files;
-mod outbox;
 mod state;
 mod subscriptions;
 

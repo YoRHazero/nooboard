@@ -1,9 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tokio::sync::watch;
-use tokio::task::JoinHandle;
-
 use crate::clipboard_runtime::ClipboardRuntime;
 use crate::config::AppConfig;
 use crate::service::events::SubscriptionHub;
@@ -13,11 +10,6 @@ use crate::service::types::{
 use crate::storage_runtime::StorageRuntime;
 use crate::sync_runtime::SyncRuntime;
 
-pub(crate) struct OutboxTickerHandle {
-    pub(super) shutdown_tx: watch::Sender<bool>,
-    pub(super) task: JoinHandle<()>,
-}
-
 pub(crate) struct ControlState {
     pub(super) config_path: PathBuf,
     pub(super) config: AppConfig,
@@ -26,7 +18,6 @@ pub(crate) struct ControlState {
     pub(super) clipboard: ClipboardRuntime,
     pub(super) sync_runtime: SyncRuntime,
     pub(super) subscriptions: Arc<SubscriptionHub>,
-    pub(super) outbox_ticker: Option<OutboxTickerHandle>,
 }
 
 impl ControlState {
@@ -46,7 +37,6 @@ impl ControlState {
             clipboard,
             sync_runtime,
             subscriptions,
-            outbox_ticker: None,
         }
     }
 

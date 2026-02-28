@@ -1,7 +1,7 @@
 use std::sync::{Mutex, mpsc};
 use std::thread::JoinHandle;
 
-use nooboard_storage::{HistoryCursor, HistoryRecord, OutboxMessage};
+use nooboard_storage::{HistoryCursor, HistoryRecord};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
@@ -93,98 +93,6 @@ impl StorageRuntime {
                 reply,
             },
             "list_history",
-        )
-        .await
-    }
-
-    pub(crate) async fn append_text_with_outbox(
-        &self,
-        text: &str,
-        event_id: Uuid,
-        origin_device_id: Option<&str>,
-        created_at_ms: i64,
-        applied_at_ms: i64,
-        targets: Option<Vec<String>>,
-        enqueue_at_ms: i64,
-    ) -> AppResult<bool> {
-        self.request(
-            |reply| StorageCommand::AppendTextWithOutbox {
-                text: text.to_string(),
-                event_id,
-                origin_device_id: origin_device_id.map(ToString::to_string),
-                created_at_ms,
-                applied_at_ms,
-                targets,
-                enqueue_at_ms,
-                reply,
-            },
-            "append_text_with_outbox",
-        )
-        .await
-    }
-
-    pub(crate) async fn list_due_outbox(
-        &self,
-        now_ms: i64,
-        limit: usize,
-    ) -> AppResult<Vec<OutboxMessage>> {
-        self.request(
-            |reply| StorageCommand::ListDueOutbox {
-                now_ms,
-                limit,
-                reply,
-            },
-            "list_due_outbox",
-        )
-        .await
-    }
-
-    pub(crate) async fn try_lease_outbox_message(
-        &self,
-        id: i64,
-        lease_until_ms: i64,
-        now_ms: i64,
-    ) -> AppResult<bool> {
-        self.request(
-            |reply| StorageCommand::TryLeaseOutbox {
-                id,
-                lease_until_ms,
-                now_ms,
-                reply,
-            },
-            "try_lease_outbox_message",
-        )
-        .await
-    }
-
-    pub(crate) async fn mark_outbox_sent(&self, id: i64, sent_at_ms: i64) -> AppResult<bool> {
-        self.request(
-            |reply| StorageCommand::MarkOutboxSent {
-                id,
-                sent_at_ms,
-                reply,
-            },
-            "mark_outbox_sent",
-        )
-        .await
-    }
-
-    pub(crate) async fn mark_outbox_retry(
-        &self,
-        id: i64,
-        next_attempt_at_ms: i64,
-        error: String,
-        now_ms: i64,
-    ) -> AppResult<bool> {
-        self.request(
-            |reply| StorageCommand::MarkOutboxRetry {
-                id,
-                next_attempt_at_ms,
-                error,
-                now_ms,
-                reply,
-            },
-            "mark_outbox_retry",
         )
         .await
     }

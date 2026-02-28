@@ -9,7 +9,23 @@ pub struct LocalClipboardChangeRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalClipboardChangeResult {
     pub event_id: EventId,
-    pub broadcast_attempted: bool,
+    pub broadcast_status: BroadcastStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BroadcastStatus {
+    NotRequested,
+    Sent,
+    Dropped(BroadcastDropReason),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BroadcastDropReason {
+    NetworkDisabled,
+    EngineNotRunning,
+    NoEligiblePeer,
+    QueueFull,
+    QueueClosed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

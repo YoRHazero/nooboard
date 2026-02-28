@@ -43,14 +43,3 @@ pub struct HistoryCursor {
     pub created_at_ms: i64,
     pub event_id: [u8; 16],
 }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OutboxMessage {
-    pub id: i64,
-    pub event_id: [u8; 16],
-    pub content: String,
-    pub target_key: String,
-    pub targets: Option<Vec<String>>,
-    pub attempt_count: u32,
-    pub next_attempt_at_ms: i64,
-}

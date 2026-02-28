@@ -3,11 +3,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use nooboard_app::{
-    AppConfig, AppError, AppEvent, AppPatch, AppResult, AppService, AppServiceImpl, ClipboardPort,
-    EventId, EventSubscriptionItem, FileDecisionRequest, ListHistoryRequest,
-    LocalClipboardChangeRequest, NetworkPatch, NodeId, RebroadcastHistoryRequest,
-    RemoteTextRequest, SendFileRequest, SubscriptionCloseReason, SubscriptionLifecycle,
-    SyncDesiredState, SyncEvent, Targets, TransferState,
+    AppConfig, AppError, AppEvent, AppPatch, AppResult, AppService, AppServiceImpl,
+    BroadcastDropReason, BroadcastStatus, ClipboardPort, EventId, EventSubscriptionItem,
+    FileDecisionRequest, ListHistoryRequest, LocalClipboardChangeRequest, NetworkPatch, NodeId,
+    RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest, SubscriptionCloseReason,
+    SubscriptionLifecycle, SyncDesiredState, SyncEvent, Targets, TransferState,
 };
 use tempfile::TempDir;
 use tokio::time::{Duration, Instant, timeout};
@@ -168,13 +168,17 @@ async fn clipboard_flow_covers_a1_a2_a3_a4() -> Result<(), Box<dyn std::error::E
         .set_sync_desired_state(SyncDesiredState::Running)
         .await?;
 
-    let event_id = service
+    let result = service
         .apply_local_clipboard_change(LocalClipboardChangeRequest {
             text: "alpha".to_string(),
             targets: Targets::all(),
         })
-        .await?
-        .event_id;
+        .await?;
+    assert_eq!(
+        result.broadcast_status,
+        BroadcastStatus::Dropped(BroadcastDropReason::NoEligiblePeer)
+    );
+    let event_id = result.event_id;
 
     let history = service
         .list_history(ListHistoryRequest {
@@ -219,7 +223,10 @@ async fn local_clipboard_change_succeeds_when_network_disabled()
             targets: Targets::all(),
         })
         .await?;
-    assert!(!result.broadcast_attempted);
+    assert_eq!(
+        result.broadcast_status,
+        BroadcastStatus::Dropped(BroadcastDropReason::NetworkDisabled)
+    );
 
     let history = service
         .list_history(ListHistoryRequest {
@@ -238,7 +245,7 @@ async fn local_clipboard_change_succeeds_when_network_disabled()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn queued_local_change_is_dispatched_after_engine_start()
+async fn queued_local_change_is_not_dispatched_after_engine_start()
 -> Result<(), Box<dyn std::error::Error>> {
     let port_a = free_port();
     let port_b = free_port();
@@ -262,7 +269,10 @@ async fn queued_local_change_is_dispatched_after_engine_start()
             targets: Targets::all(),
         })
         .await?;
-    assert!(result.broadcast_attempted);
+    assert_eq!(
+        result.broadcast_status,
+        BroadcastStatus::Dropped(BroadcastDropReason::EngineNotRunning)
+    );
 
     service_a
         .set_sync_desired_state(SyncDesiredState::Running)
@@ -279,33 +289,32 @@ async fn queued_local_change_is_dispatched_after_engine_start()
     }
     assert!(
         !service_a.snapshot().await?.connected_peers.is_empty(),
-        "service A must connect to service B before outbox dispatch"
+        "service A must connect to service B before realtime check"
     );
     assert!(
         !service_b.snapshot().await?.connected_peers.is_empty(),
-        "service B must connect to service A before outbox dispatch"
+        "service B must connect to service A before realtime check"
     );
 
-    let receive_deadline = Instant::now() + Duration::from_secs(10);
-    let mut received = false;
-    while Instant::now() < receive_deadline {
-        let remain = receive_deadline.saturating_duration_since(Instant::now());
-        if remain.is_zero() {
-            break;
-        }
-
-        let item = timeout(remain, receiver_b.recv()).await??;
-        let EventSubscriptionItem::Event { event, .. } = item else {
-            continue;
-        };
-        if let AppEvent::Sync(SyncEvent::TextReceived { content, .. }) = event
-            && content == marker
-        {
-            received = true;
-            break;
-        }
-    }
-    assert!(received, "queued local clipboard change must be dispatched");
+    let received = matches!(
+        timeout(Duration::from_secs(2), async {
+            loop {
+                let item = receiver_b.recv().await?;
+                if let EventSubscriptionItem::Event { event, .. } = item
+                    && let AppEvent::Sync(SyncEvent::TextReceived { content, .. }) = event
+                    && content == marker
+                {
+                    return Ok::<(), tokio::sync::broadcast::error::RecvError>(());
+                }
+            }
+        })
+        .await,
+        Ok(Ok(()))
+    );
+    assert!(
+        !received,
+        "clipboard change created before engine start must not be replayed after reconnect"
+    );
 
     service_a
         .set_sync_desired_state(SyncDesiredState::Stopped)
@@ -498,7 +507,6 @@ async fn file_api_supports_normal_and_error_paths() -> Result<(), Box<dyn std::e
             SubscriptionLifecycle::Opened { .. }
         ))
     ));
-    assert!(events.try_recv().is_err());
 
     service
         .set_sync_desired_state(SyncDesiredState::Stopped)

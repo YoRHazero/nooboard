@@ -60,6 +60,4 @@ pub(crate) enum ControlCommand {
     SubscribeEvents {
         reply: oneshot::Sender<AppResult<EventSubscription>>,
     },
-
-    TickOutbox,
 }

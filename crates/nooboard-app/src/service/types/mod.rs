@@ -7,8 +7,8 @@ mod network;
 mod time;
 
 pub use clipboard::{
-    LocalClipboardChangeRequest, LocalClipboardChangeResult, RebroadcastHistoryRequest,
-    RemoteTextRequest,
+    BroadcastDropReason, BroadcastStatus, LocalClipboardChangeRequest, LocalClipboardChangeResult,
+    RebroadcastHistoryRequest, RemoteTextRequest,
 };
 pub use events::{
     AppEvent, EventStream, EventSubscription, EventSubscriptionItem, SubscriptionCloseReason,

@@ -5,7 +5,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params, types::Type};
 
 use crate::StorageError;
 use crate::config::{AppConfig, STORAGE_SCHEMA_VERSION, StorageConfig};
-use crate::model::{EventState, HistoryCursor, HistoryRecord, OutboxMessage};
+use crate::model::{EventState, HistoryCursor, HistoryRecord};
 use crate::sql_catalog::SqlCatalog;
 
 pub struct SqliteEventRepository {
@@ -73,45 +73,6 @@ impl SqliteEventRepository {
         Ok(true)
     }
 
-    pub fn append_text_with_outbox(
-        &mut self,
-        text: &str,
-        event_id: uuid::Uuid,
-        origin_device_id: Option<&str>,
-        created_at_ms: i64,
-        applied_at_ms: i64,
-        targets: Option<&[String]>,
-        enqueue_at_ms: i64,
-    ) -> Result<bool, StorageError> {
-        let inserted = self.insert_text_event(
-            text,
-            Some(event_id),
-            origin_device_id,
-            created_at_ms,
-            applied_at_ms,
-        )?;
-        if !inserted {
-            return Ok(false);
-        }
-
-        for (target_key, targets_serialized) in normalize_targets_for_outbox(targets) {
-            self.conn.execute(
-                &self.sql.outbox_enqueue,
-                params![
-                    event_id.as_bytes().as_slice(),
-                    text,
-                    target_key,
-                    targets_serialized,
-                    enqueue_at_ms
-                ],
-            )?;
-        }
-
-        self.inserts_since_gc = self.inserts_since_gc.saturating_add(1);
-        self.run_gc_if_needed(applied_at_ms)?;
-        Ok(true)
-    }
-
     pub fn list_history(
         &self,
         limit: usize,
@@ -166,54 +127,6 @@ impl SqliteEventRepository {
             map_history_row,
         )?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-    }
-
-    pub fn list_due_outbox(
-        &self,
-        now_ms: i64,
-        limit: usize,
-    ) -> Result<Vec<OutboxMessage>, StorageError> {
-        if limit == 0 {
-            return Ok(Vec::new());
-        }
-        let limit = i64::try_from(limit).map_err(|_| StorageError::LimitOutOfRange(limit))?;
-        let mut statement = self.conn.prepare(&self.sql.outbox_list_due)?;
-        let rows = statement.query_map(params![now_ms, limit], map_outbox_row)?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-    }
-
-    pub fn try_lease_outbox_message(
-        &self,
-        id: i64,
-        lease_until_ms: i64,
-        now_ms: i64,
-    ) -> Result<bool, StorageError> {
-        let updated = self.conn.execute(
-            &self.sql.outbox_try_lease,
-            params![lease_until_ms, now_ms, id],
-        )?;
-        Ok(updated > 0)
-    }
-
-    pub fn mark_outbox_sent(&self, id: i64, sent_at_ms: i64) -> Result<bool, StorageError> {
-        let updated = self
-            .conn
-            .execute(&self.sql.outbox_mark_sent, params![sent_at_ms, id])?;
-        Ok(updated > 0)
-    }
-
-    pub fn mark_outbox_retry(
-        &self,
-        id: i64,
-        next_attempt_at_ms: i64,
-        error: &str,
-        now_ms: i64,
-    ) -> Result<bool, StorageError> {
-        let updated = self.conn.execute(
-            &self.sql.outbox_mark_retry,
-            params![next_attempt_at_ms, error, now_ms, id],
-        )?;
-        Ok(updated > 0)
     }
 
     pub fn run_gc_if_needed(&mut self, now_ms: i64) -> Result<(), StorageError> {
@@ -316,83 +229,6 @@ fn map_history_row(row: &Row<'_>) -> rusqlite::Result<HistoryRecord> {
         applied_at_ms: row.get(3)?,
         content: row.get(4)?,
     })
-}
-
-fn map_outbox_row(row: &Row<'_>) -> rusqlite::Result<OutboxMessage> {
-    let event_id_blob: Vec<u8> = row.get(1)?;
-    let event_id = event_id_blob.try_into().map_err(|value: Vec<u8>| {
-        rusqlite::Error::FromSqlConversionFailure(
-            1,
-            Type::Blob,
-            Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("event_id must be exactly 16 bytes, got {}", value.len()),
-            )),
-        )
-    })?;
-
-    let targets_serialized: Option<String> = row.get(4)?;
-    let targets = decode_targets(targets_serialized.as_deref());
-    let attempt_count_i64: i64 = row.get(5)?;
-    let attempt_count = if attempt_count_i64 < 0 {
-        0
-    } else {
-        u32::try_from(attempt_count_i64).unwrap_or(u32::MAX)
-    };
-
-    Ok(OutboxMessage {
-        id: row.get(0)?,
-        event_id,
-        content: row.get(2)?,
-        target_key: row.get(3)?,
-        targets,
-        attempt_count,
-        next_attempt_at_ms: row.get(6)?,
-    })
-}
-
-fn normalize_targets_for_outbox(targets: Option<&[String]>) -> Vec<(String, Option<String>)> {
-    let Some(normalized) = normalize_targets(targets) else {
-        return Vec::new();
-    };
-    match normalized {
-        None => vec![("all".to_string(), None)],
-        Some(nodes) => nodes
-            .into_iter()
-            .map(|node| (format!("node:{node}"), Some(node)))
-            .collect(),
-    }
-}
-
-fn normalize_targets(targets: Option<&[String]>) -> Option<Option<Vec<String>>> {
-    match targets {
-        None => Some(None),
-        Some(nodes) => {
-            let mut normalized: Vec<String> = nodes
-                .iter()
-                .map(|node| node.trim().to_string())
-                .filter(|node| !node.is_empty())
-                .collect();
-            normalized.sort();
-            normalized.dedup();
-            if normalized.is_empty() {
-                None
-            } else {
-                Some(Some(normalized))
-            }
-        }
-    }
-}
-
-fn decode_targets(serialized: Option<&str>) -> Option<Vec<String>> {
-    let value = serialized?;
-    let nodes: Vec<String> = value
-        .split('\n')
-        .map(str::trim)
-        .filter(|node| !node.is_empty())
-        .map(ToString::to_string)
-        .collect();
-    if nodes.is_empty() { None } else { Some(nodes) }
 }
 
 fn cutoff_ms(now_ms: i64, window_days: u32) -> i64 {
@@ -639,104 +475,6 @@ mod tests {
 
         let records = repository.list_history(10, None)?;
         assert_eq!(records.len(), 1);
-
-        let _ = fs::remove_dir_all(repository.storage.db_root.clone());
-        Ok(())
-    }
-
-    #[test]
-    fn append_with_outbox_enqueue_and_ack_flow() -> Result<(), StorageError> {
-        let mut repository = SqliteEventRepository::open(make_config(
-            "append-with-outbox",
-            LifecycleConfig::default(),
-            0,
-        ))?;
-        repository.init_storage()?;
-
-        let event_id = uuid::Uuid::now_v7();
-        let targets = vec![
-            " peer-b ".to_string(),
-            "peer-a".to_string(),
-            "peer-a".to_string(),
-        ];
-
-        assert!(repository.append_text_with_outbox(
-            "local-text",
-            event_id,
-            Some("device-local"),
-            100,
-            100,
-            Some(&targets),
-            100
-        )?);
-
-        let due = repository.list_due_outbox(100, 10)?;
-        assert_eq!(due.len(), 2);
-        assert!(
-            due.iter()
-                .all(|message| message.event_id == *event_id.as_bytes())
-        );
-        assert!(due.iter().all(|message| message.attempt_count == 0));
-        let mut due_targets = due
-            .iter()
-            .filter_map(|message| message.targets.as_ref())
-            .filter_map(|targets| targets.first())
-            .cloned()
-            .collect::<Vec<_>>();
-        due_targets.sort();
-        assert_eq!(
-            due_targets,
-            vec!["peer-a".to_string(), "peer-b".to_string()]
-        );
-
-        let first_id = due[0].id;
-        assert!(repository.try_lease_outbox_message(first_id, 300, 100)?);
-        assert!(!repository.try_lease_outbox_message(first_id, 400, 101)?);
-
-        for message in due {
-            assert!(repository.mark_outbox_sent(message.id, 120)?);
-        }
-        let after_ack = repository.list_due_outbox(1_000, 10)?;
-        assert!(after_ack.is_empty());
-
-        let _ = fs::remove_dir_all(repository.storage.db_root.clone());
-        Ok(())
-    }
-
-    #[test]
-    fn outbox_retry_updates_attempt_count_and_next_attempt() -> Result<(), StorageError> {
-        let mut repository = SqliteEventRepository::open(make_config(
-            "outbox-retry",
-            LifecycleConfig::default(),
-            0,
-        ))?;
-        repository.init_storage()?;
-
-        let event_id = uuid::Uuid::now_v7();
-        assert!(repository.append_text_with_outbox(
-            "retry-text",
-            event_id,
-            Some("device-local"),
-            10,
-            10,
-            None,
-            10
-        )?);
-
-        let due = repository.list_due_outbox(10, 10)?;
-        assert_eq!(due.len(), 1);
-        let id = due[0].id;
-        assert!(repository.try_lease_outbox_message(id, 100, 10)?);
-
-        assert!(repository.mark_outbox_retry(id, 210, "network down", 20)?);
-        let not_due = repository.list_due_outbox(200, 10)?;
-        assert!(not_due.is_empty());
-
-        let due_again = repository.list_due_outbox(210, 10)?;
-        assert_eq!(due_again.len(), 1);
-        assert_eq!(due_again[0].attempt_count, 1);
-        assert_eq!(due_again[0].next_attempt_at_ms, 210);
-        assert!(due_again[0].targets.is_none());
 
         let _ = fs::remove_dir_all(repository.storage.db_root.clone());
         Ok(())

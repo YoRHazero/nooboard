@@ -1,7 +1,6 @@
 use crate::AppResult;
 use crate::service::types::{AppServiceSnapshot, SubscriptionCloseReason, SyncDesiredState};
 
-use super::outbox::stop_outbox_ticker;
 use super::state::ControlState;
 
 pub(super) async fn set_sync_desired_state(
@@ -45,8 +44,6 @@ pub(super) async fn reconcile_engine_state(
 }
 
 pub(super) async fn shutdown(state: &mut ControlState) -> AppResult<()> {
-    stop_outbox_ticker(state).await;
-
     state.desired_state = SyncDesiredState::Stopped;
     state
         .subscriptions

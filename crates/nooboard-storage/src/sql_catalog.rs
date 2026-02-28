@@ -8,11 +8,6 @@ pub struct SqlCatalog {
     pub search_history: String,
     pub gc_mark_tombstone: String,
     pub gc_delete_expired_tombstone: String,
-    pub outbox_enqueue: String,
-    pub outbox_list_due: String,
-    pub outbox_try_lease: String,
-    pub outbox_mark_sent: String,
-    pub outbox_mark_retry: String,
 }
 
 impl SqlCatalog {
@@ -33,11 +28,6 @@ impl SqlCatalog {
                 "../sql/queries/gc_delete_expired_tombstone.sql"
             )
             .to_string(),
-            outbox_enqueue: include_str!("../sql/queries/outbox_enqueue.sql").to_string(),
-            outbox_list_due: include_str!("../sql/queries/outbox_list_due.sql").to_string(),
-            outbox_try_lease: include_str!("../sql/queries/outbox_try_lease.sql").to_string(),
-            outbox_mark_sent: include_str!("../sql/queries/outbox_mark_sent.sql").to_string(),
-            outbox_mark_retry: include_str!("../sql/queries/outbox_mark_retry.sql").to_string(),
         }
     }
 }

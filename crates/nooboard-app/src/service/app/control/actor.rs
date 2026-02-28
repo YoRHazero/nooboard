@@ -5,7 +5,6 @@ use super::command::ControlCommand;
 use super::config_patch;
 use super::engine_reconcile;
 use super::files;
-use super::outbox;
 use super::state::ControlState;
 use super::subscriptions;
 
@@ -13,10 +12,9 @@ const CONTROL_CHANNEL_CAPACITY: usize = 256;
 
 pub(crate) fn spawn_control_actor(mut state: ControlState) -> mpsc::Sender<ControlCommand> {
     let (command_tx, command_rx) = mpsc::channel(CONTROL_CHANNEL_CAPACITY);
-    let actor_tx = command_tx.clone();
 
     tokio::spawn(async move {
-        run_control_actor(&mut state, command_rx, actor_tx).await;
+        run_control_actor(&mut state, command_rx).await;
     });
 
     command_tx
@@ -25,17 +23,13 @@ pub(crate) fn spawn_control_actor(mut state: ControlState) -> mpsc::Sender<Contr
 async fn run_control_actor(
     state: &mut ControlState,
     mut command_rx: mpsc::Receiver<ControlCommand>,
-    command_tx: mpsc::Sender<ControlCommand>,
 ) {
-    state.outbox_ticker = Some(outbox::start_outbox_ticker(command_tx));
-
     while let Some(command) = command_rx.recv().await {
         if handle_control_command(state, command).await {
             break;
         }
     }
 
-    outbox::stop_outbox_ticker(state).await;
     state
         .subscriptions
         .deactivate(crate::service::types::SubscriptionCloseReason::EngineStopped)
@@ -106,11 +100,6 @@ async fn handle_control_command(state: &mut ControlState, command: ControlComman
 
         ControlCommand::SubscribeEvents { reply } => {
             let _ = reply.send(subscriptions::subscribe_events(state).await);
-            false
-        }
-
-        ControlCommand::TickOutbox => {
-            outbox::tick_outbox(state).await;
             false
         }
     }
