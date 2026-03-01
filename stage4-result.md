@@ -1,158 +1,483 @@
-# nooboard-app 当前状态与 API 文档
+# nooboard-app API 文档
 
-更新时间：2026-02-27
+更新时间：2026-03-01
 
-## 1. crate 职责
+## 1. 定位
 
-`nooboard-app` 是应用层编排边界（当前仍以 `app` 为顶层语义），负责：
+`nooboard-app` 是应用层编排 crate，统一封装：
 
-- 统一对外暴露控制 API（`AppService`）
-- 控制面串行状态机（单 mailbox actor）
-- 编排 `nooboard-sync` 生命周期与事件订阅
-- 编排 `nooboard-storage` 历史/配置重配置/outbox 数据面接口
-- 编排剪贴板读写 (`ClipboardPort`)
+1. `nooboard-sync`（网络同步与文件传输）
+2. `nooboard-storage`（历史存储与分页查询）
+3. `nooboard-platform`（剪切板能力）
 
-当前仓库内不存在 `app` 的外部调用者约束，因此 API 已按新语义硬切换。
+上层（GUI/CLI）应优先通过 `AppService` 调用业务能力，而不是直接拼接底层 crate。
 
-## 2. 架构概览
+## 2. 对外入口
 
-### 2.1 顶层模块
+## 2.1 推荐入口（高层）
 
-- `crates/nooboard-app/src/lib.rs`
-- `crates/nooboard-app/src/error.rs`
-- `crates/nooboard-app/src/config/*`
-- `crates/nooboard-app/src/service/*`
-- `crates/nooboard-app/src/sync_runtime/*`
-- `crates/nooboard-app/src/storage_runtime/*`
+1. `AppService`（trait）
+2. `AppServiceImpl`（默认实现）
+3. `AppError` / `AppResult`
+4. 业务 DTO 与事件类型（`LocalClipboardChangeRequest`、`HistoryPage`、`AppEvent` 等）
 
-### 2.2 service/app 结构
+## 2.2 模块入口（低层）
 
-- `service/app/mod.rs`：
-  - `AppService` trait（对外 API）
-  - `AppServiceImpl` facade/client（仅发命令 + 收回复）
-- `service/app/control/*`：控制面内聚实现
-  - `command.rs`：actor 命令定义（mpsc + oneshot）
-  - `state.rs`：控制状态聚合
-  - `actor.rs`：单 mailbox 主循环
-  - `engine_reconcile.rs`：desired/actual 生命周期收敛
-  - `config_patch.rs`：patch 应用 + 持久化 + 回滚聚合
-  - `outbox.rs`：内部 tick 驱动 outbox 调度
-  - `clipboard_history.rs` / `files.rs` / `subscriptions.rs`：业务子域命令处理
+1. `nooboard_app::config`：配置结构、加载、校验、落盘与映射
+2. `nooboard_app::sync_runtime`：同步引擎运行时封装（高级用法）
+3. `nooboard_app::clipboard_runtime`：剪切板抽象与运行时包装
 
-### 2.3 关键设计原则
+## 3. 快速接入
 
-- 控制面串行：所有控制命令在同一 actor 内顺序执行
-- 对外暴露意图：调用方提交 desired state / patch，不暴露重启细节
-- Facade 轻量：`AppServiceImpl` 不再承担锁编排职责
-- 高内聚：控制面逻辑集中在 `service/app/control`，避免横向散落
+```rust
+use std::sync::Arc;
+use nooboard_app::{AppService, AppServiceImpl, ClipboardPort};
 
-## 3. 对外 API（当前基线）
+struct MyClipboard;
+impl ClipboardPort for MyClipboard {
+    fn read_text(&self) -> nooboard_app::AppResult<Option<String>> { Ok(None) }
+    fn write_text(&self, _text: &str) -> nooboard_app::AppResult<()> { Ok(()) }
+}
 
-`AppService` 的控制 API：
+#[tokio::main]
+async fn main() -> nooboard_app::AppResult<()> {
+    let service = AppServiceImpl::new("configs/app.toml", Arc::new(MyClipboard))?;
+    let _snapshot = service.snapshot().await?;
+    service.shutdown().await?;
+    Ok(())
+}
+```
 
-1. `shutdown() -> AppResult<()>`
-2. `set_sync_desired_state(SyncDesiredState) -> AppResult<AppServiceSnapshot>`
-3. `apply_config_patch(AppPatch) -> AppResult<AppServiceSnapshot>`
-4. `snapshot() -> AppResult<AppServiceSnapshot>`
+## 4. AppService API
+
+```rust
+#[allow(async_fn_in_trait)]
+pub trait AppService {
+    async fn shutdown(&self) -> AppResult<()>;
+    async fn set_sync_desired_state(&self, desired_state: SyncDesiredState)
+        -> AppResult<AppServiceSnapshot>;
+    async fn apply_config_patch(&self, patch: AppPatch)
+        -> AppResult<AppServiceSnapshot>;
+    async fn snapshot(&self) -> AppResult<AppServiceSnapshot>;
+
+    async fn apply_local_clipboard_change(
+        &self,
+        request: LocalClipboardChangeRequest,
+    ) -> AppResult<LocalClipboardChangeResult>;
+    async fn apply_history_entry_to_clipboard(&self, event_id: EventId) -> AppResult<()>;
+    async fn list_history(&self, request: ListHistoryRequest) -> AppResult<HistoryPage>;
+    async fn rebroadcast_history_entry(&self, request: RebroadcastHistoryRequest)
+        -> AppResult<()>;
+    async fn store_remote_text(&self, request: RemoteTextRequest) -> AppResult<()>;
+    async fn write_remote_text_to_clipboard(&self, request: RemoteTextRequest)
+        -> AppResult<()>;
+
+    async fn send_file(&self, request: SendFileRequest) -> AppResult<()>;
+    async fn respond_file_decision(&self, request: FileDecisionRequest) -> AppResult<()>;
+
+    async fn subscribe_events(&self) -> AppResult<EventSubscription>;
+}
+```
+
+## 4.1 生命周期与配置
+
+### `shutdown()`
+
+1. 关闭事件订阅会话（`EngineStopped`）
+2. 停止 sync runtime
+3. 关闭 storage runtime
+4. 之后再调用多数 API 会得到 `AppError::ChannelClosed`
+
+### `set_sync_desired_state(SyncDesiredState)`
 
 `SyncDesiredState`：
 
-- `Running`
-- `Stopped`
+1. `Running`
+2. `Stopped`（默认）
+
+行为：
+
+1. 更新 desired state
+2. 触发引擎状态收敛（启动/停止）
+3. 返回最新 `AppServiceSnapshot`
+
+### `apply_config_patch(AppPatch)`
 
 `AppPatch`：
 
-- `Network(NetworkPatch)`
-- `Storage(StoragePatch)`
+1. `AppPatch::Network(NetworkPatch)`
+2. `AppPatch::Storage(StoragePatch)`
 
-其余业务 API（剪贴板/历史/文件/订阅）仍由 `AppService` 统一暴露。
+执行流程：
 
-## 4. 关键 DTO
-
-### 4.1 `AppServiceSnapshot`
-
-`snapshot()` 与控制 API 返回的聚合视图，当前包含：
-
-- `desired_state`
-- `actual_sync_status`
-- `connected_peers`
-- `network_enabled`
-- `mdns_enabled`
-- `manual_peers`
-- `storage` (`StorageConfigView`)
-
-### 4.2 配置 patch
+1. 应用 patch
+2. 校验配置
+3. 原子写回配置文件
+4. 重配 storage runtime
+5. 必要时重启/重载 sync runtime
+6. 失败时执行回滚（配置、存储、引擎）
 
 `NetworkPatch`：
 
-- `SetMdnsEnabled(bool)`
-- `SetNetworkEnabled(bool)`
-- `AddManualPeer(SocketAddr)`
-- `RemoveManualPeer(SocketAddr)`
+1. `SetMdnsEnabled(bool)`
+2. `SetNetworkEnabled(bool)`
+3. `AddManualPeer(SocketAddr)`
+4. `RemoveManualPeer(SocketAddr)`
 
-`StoragePatch`（全字段 `Option<T>`）：
+`StoragePatch`（可选字段）：
 
-- `db_root`
-- `retain_old_versions`
-- `history_window_days`
-- `dedup_window_days`
-- `gc_every_inserts`
-- `gc_batch_size`
+1. `db_root`
+2. `retain_old_versions`
+3. `history_window_days`
+4. `dedup_window_days`
+5. `gc_every_inserts`
+6. `gc_batch_size`
 
-## 5. 控制面行为语义
+### `snapshot()`
 
-### 5.1 生命周期语义
+返回 `AppServiceSnapshot`：
 
-- `set_sync_desired_state(Running)`：
-  - desired state 更新为 `Running`
-  - reconcile 启动/保持 sync runtime
-- `set_sync_desired_state(Stopped)`：
-  - desired state 更新为 `Stopped`
-  - 订阅关闭并停止 sync runtime
-- `shutdown()`：
-  - 停止 outbox ticker
-  - 停止 sync runtime
-  - shutdown storage runtime
-  - 关闭 control actor mailbox
+1. `desired_state`
+2. `actual_sync_status`（`Disabled | Starting | Running | Stopped | Error(String)`）
+3. `connected_peers`
+4. `network_enabled`
+5. `mdns_enabled`
+6. `manual_peers`
+7. `storage`（`StorageConfigView`）
 
-### 5.2 patch 语义
+## 4.2 文本与历史
 
-- `apply_config_patch` 在 actor 内串行执行：
-  1. clone 当前 config
-  2. 应用 patch
-  3. validate
-  4. 原子写回配置
-  5. reconfigure storage
-  6. reconcile engine（按 patch 类型触发）
-- 失败时执行回滚并聚合错误：
-  - 尽量执行全部 rollback 步骤
-  - 返回 `AppError::ConfigRollbackFailed`（若有回滚失败）
+### `apply_local_clipboard_change(LocalClipboardChangeRequest)`
 
-### 5.3 outbox 语义
+请求：
 
-- 使用内部 `TickOutbox` 命令驱动
-- 周期 ticker 只负责向 actor 投递 tick，不直接执行业务
-- 实际 dispatch/lease/retry 全在 actor 状态机内串行执行
+1. `text`
+2. `targets`
 
-## 6. 当前测试状态
+行为：
 
-主要测试文件：
+1. 生成新 `event_id` 并写入历史
+2. 按当前实时连接尝试发送到 sync 文本通道（非阻塞 `try_send`）
+3. 返回 `LocalClipboardChangeResult { event_id, broadcast_status }`
 
-- `crates/nooboard-app/tests/app_service_stage4.rs`
-- `crates/nooboard-app/tests/app_service_config_patch.rs`
+`broadcast_status`：
 
-覆盖重点：
+1. `NotRequested`
+2. `Sent`
+3. `Dropped(BroadcastDropReason)`
 
-- 剪贴板/历史/文件/订阅主链路
-- desired state 幂等性
-- 并发网络 patch 一致性
-- patch 持久化与相对路径解析
-- shutdown 终止行为
-- outbox 在启动后补发链路
+`BroadcastDropReason`：
 
-## 7. 建议验证命令
+1. `NetworkDisabled`
+2. `EngineNotRunning`
+3. `NoEligiblePeer`
+4. `QueueFull`
+5. `QueueClosed`
 
-1. `cargo fmt`
-2. `cargo check --workspace`
-3. `cargo test -p nooboard-app`
-4. `cargo test -p nooboard-sync --test p2p_file_transfer`
+### `apply_history_entry_to_clipboard(event_id)`
+
+行为：
+
+1. 在“最近 N 条”（`recent_event_lookup_limit`）里查找
+2. 找到后写本地剪切板
+3. 不做网络发送
+
+找不到返回 `AppError::NotFoundInRecentWindow`。
+
+### `list_history(ListHistoryRequest)`
+
+请求：
+
+1. `limit`
+2. `cursor`（可选）
+
+返回 `HistoryPage { records, next_cursor }`，按时间倒序（新到旧）。
+
+### `rebroadcast_history_entry(RebroadcastHistoryRequest)`
+
+请求：
+
+1. `event_id`
+2. `targets`
+
+行为：
+
+1. 在最近 N 条里找指定记录
+2. 严格尝试发送到 sync 文本通道
+
+注意：
+
+1. `targets` 无有效目标时直接成功返回（no-op）
+2. 网络禁用返回 `AppError::SyncDisabled`
+3. `EngineNotRunning`、通道满/关闭会返回错误
+4. 无匹配在线目标节点时返回成功（no-op）
+
+### `store_remote_text(RemoteTextRequest)`
+
+只写存储，不写剪切板。
+
+### `write_remote_text_to_clipboard(RemoteTextRequest)`
+
+只写剪切板，不写存储。
+
+`store_remote_text` 与 `write_remote_text_to_clipboard` 语义解耦，可按业务顺序单独调用。
+
+## 4.3 文件传输
+
+### `send_file(SendFileRequest)`
+
+请求：
+
+1. `path`
+2. `targets`
+
+行为：
+
+1. `targets` 无有效目标时 no-op 成功返回
+2. 网络禁用返回 `AppError::SyncDisabled`
+3. 其余通过 sync 文件通道发送
+
+### `respond_file_decision(FileDecisionRequest)`
+
+请求：
+
+1. `peer_node_id`
+2. `transfer_id`
+3. `accept`
+4. `reason`
+
+行为：把接收方决策回传给 sync 引擎。
+
+## 4.4 事件订阅
+
+### `subscribe_events() -> EventSubscription`
+
+前置条件：sync 引擎已运行；否则返回 `AppError::EngineNotRunning`。
+
+`EventSubscription`：
+
+1. `session_id()`
+2. `recv().await`
+3. `try_recv()`
+
+首次 `recv/try_recv` 会先返回 `Lifecycle::Opened`，之后返回真实流事件。
+
+## 5. 关键类型
+
+## 5.1 标识与目标
+
+`EventId`：
+
+1. 内部是 UUID v7
+2. 支持 `EventId::new()`
+3. 支持 `TryFrom<&str>`（无效字符串返回 `InvalidEventId`）
+
+`NodeId`：
+
+1. 字符串封装
+2. `NodeId::new(...)` / `as_str()`
+
+`Targets`：
+
+1. `All`
+2. `Nodes(Vec<NodeId>)`
+
+`Nodes` 在发送前会做 trim、去空字符串、去重。
+
+## 5.2 历史分页
+
+`HistoryRecord`：
+
+1. `event_id`
+2. `origin_device_id`
+3. `created_at_ms`
+4. `applied_at_ms`
+5. `content`
+
+`HistoryCursor`：
+
+1. `created_at_ms`
+2. `event_id`
+
+## 5.3 文件事件
+
+`TransferUpdate`：
+
+1. `transfer_id`
+2. `peer_node_id`
+3. `direction`（`Incoming | Outgoing`）
+4. `state`
+
+`TransferState`：
+
+1. `Started`
+2. `Progress`
+3. `Finished`
+4. `Failed`
+5. `Cancelled`
+
+## 5.4 统一事件模型
+
+`AppEvent`：
+
+1. `AppEvent::Sync(SyncEvent)`
+2. `AppEvent::Transfer(TransferUpdate)`
+
+`SyncEvent`：
+
+1. `TextReceived`
+2. `FileDecisionRequired`
+3. `ConnectionError`
+
+## 5.5 订阅生命周期
+
+`SubscriptionLifecycle`：
+
+1. `Opened`
+2. `Rebinding`
+3. `Lagged`
+4. `RecoverableError`
+5. `Fatal`
+6. `Closed`
+
+`Closed` 的原因 `SubscriptionCloseReason`：
+
+1. `EngineStopped`
+2. `Rebinding { next_session_id }`
+3. `UpstreamClosed { stream }`
+4. `Fatal`
+
+## 6. 配置 API（AppConfig）
+
+`AppConfig` 提供：
+
+1. `AppConfig::load(path)`
+2. `save_atomically(path)`
+3. `validate()`
+4. `to_storage_config()`
+5. `to_sync_config()`
+6. `recent_event_lookup_limit()`
+7. `node_id()`
+8. `regenerate_node_id(config_path)`
+
+## 6.1 常量
+
+1. `APP_CONFIG_VERSION = 2`
+2. `DEFAULT_RECENT_EVENT_LOOKUP_LIMIT = 50`
+
+## 6.2 加载行为
+
+`load` 时会：
+
+1. 解析 TOML
+2. 将相对路径转成配置文件目录下绝对路径（`identity.noob_id_file`、`storage.db_root`、`sync.file.download_dir`）
+3. 读取或初始化 `node_id` 文件
+4. 执行校验
+
+## 6.3 校验规则（摘要）
+
+1. `meta.config_version` 必须等于 `2`
+2. `identity.device_id` 不能为空
+3. `app.clipboard.recent_event_lookup_limit > 0`
+4. `history_window_days >= 1`
+5. `dedup_window_days >= history_window_days`
+6. `gc_every_inserts >= 1`
+7. `gc_batch_size >= 1`
+8. `sync.network.manual_peers` 不允许重复
+9. `to_sync_config()` 必须通过 sync 层校验
+
+## 6.4 配置示例
+
+```toml
+[meta]
+config_version = 2
+profile = "dev"
+
+[identity]
+noob_id_file = ".dev-data/noob_id"
+device_id = "dev-mac"
+
+[app.clipboard]
+recent_event_lookup_limit = 50
+
+[storage]
+db_root = ".dev-data"
+retain_old_versions = 0
+
+[storage.lifecycle]
+history_window_days = 7
+dedup_window_days = 14
+gc_every_inserts = 200
+gc_batch_size = 500
+
+[sync.network]
+enabled = true
+mdns_enabled = true
+listen_addr = "0.0.0.0:17890"
+manual_peers = []
+
+[sync.auth]
+token = "dev-sync-token"
+
+[sync.file]
+download_dir = ".dev-data/downloads"
+max_file_size = 10737418240
+chunk_size = 65536
+active_downloads = 8
+decision_timeout_ms = 30000
+idle_timeout_ms = 15000
+
+[sync.transport]
+connect_timeout_ms = 5000
+handshake_timeout_ms = 5000
+ping_interval_ms = 5000
+pong_timeout_ms = 15000
+max_packet_size = 8388608
+```
+
+## 7. 剪切板抽象（clipboard_runtime）
+
+`ClipboardPort`：
+
+1. `read_text() -> AppResult<Option<String>>`
+2. `write_text(text: &str) -> AppResult<()>`
+
+`ClipboardRuntime`：
+
+1. `new(Arc<dyn ClipboardPort>)`
+2. `read_text()`
+3. `write_text(text)`
+
+任何实现了 `nooboard_platform::ClipboardBackend` 的类型都可自动作为 `ClipboardPort` 使用。
+
+## 8. SyncRuntime（高级入口）
+
+`SyncRuntime` 公开能力：
+
+1. 生命周期：`new`、`start`、`stop`、`restart`、`has_engine`
+2. 状态读取：`status`、`connected_peers`
+3. 发送通道：`text_sender`、`file_sender`、`decision_sender`、`control_sender`
+4. 订阅通道：`subscribe_events`、`subscribe_transfer_updates`、`subscribe_status`
+
+该模块更接近底层运行时，常规业务建议优先走 `AppService`。
+
+## 9. 错误模型（AppError）
+
+主要错误类别：
+
+1. `Io` / `Storage` / `Sync` / `Platform`
+2. `ConfigParse` / `ConfigSerialize` / `InvalidConfig`
+3. `EngineNotRunning` / `EngineAlreadyRunning` / `SyncDisabled`
+4. `ChannelClosed`
+5. `NotFoundInRecentWindow`
+6. `InvalidEventId`
+7. `ManualPeerExists` / `ManualPeerNotFound`
+8. `ConfigRollbackFailed`
+
+## 10. 运行语义约定
+
+1. 控制面为单 actor 串行处理，所有 `AppService` 调用进入同一命令队列。
+2. 本地文本广播是“实时尝试”，不会为离线场景做自动补发。
+3. 历史回放相关操作（应用到剪切板、重发）只在最近 N 条窗口内查找。
+4. `store_remote_text` 与 `write_remote_text_to_clipboard` 无隐式联动。
+5. 事件订阅基于广播通道，慢消费者会收到 `Lifecycle::Lagged`。
