@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/nooboard-app",
+  "crates/nooboard-desktop",
   "crates/nooboard-platform",
   "crates/nooboard-platform-macos",
   "crates/nooboard-storage",
@@ -15,11 +16,14 @@ license = "MIT"
 authors = ["nooboard contributors"]
 
 [workspace.dependencies]
+anyhow = "1"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "fs", "net", "io-util"] }
 clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+gpui = "0.2.2"
+gpui-component = "0.5.1"
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
