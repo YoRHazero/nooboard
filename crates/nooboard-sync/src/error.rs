@@ -4,9 +4,9 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum ProtocolError {
     #[error("packet serialization failed: {0}")]
-    Serialize(bincode::Error),
+    Serialize(postcard::Error),
     #[error("packet deserialization failed: {0}")]
-    Deserialize(bincode::Error),
+    Deserialize(postcard::Error),
     #[error("unauthenticated connection only accepts Packet::Handshake")]
     HandshakeRequired,
 }

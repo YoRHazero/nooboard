@@ -1,4 +1,4 @@
-use bincode::{deserialize, serialize};
+use postcard::{from_bytes, to_extend};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ProtocolError;
@@ -64,11 +64,11 @@ pub enum DataPacket {
 }
 
 pub fn encode_packet(packet: &Packet) -> Result<Vec<u8>, ProtocolError> {
-    serialize(packet).map_err(ProtocolError::Serialize)
+    to_extend(packet, Vec::new()).map_err(ProtocolError::Serialize)
 }
 
 pub fn decode_packet(bytes: &[u8]) -> Result<Packet, ProtocolError> {
-    deserialize(bytes).map_err(ProtocolError::Deserialize)
+    from_bytes(bytes).map_err(ProtocolError::Deserialize)
 }
 
 pub fn require_handshake(packet: Packet) -> Result<HandshakePacket, ProtocolError> {
@@ -89,5 +89,19 @@ mod tests {
             require_handshake(packet),
             Err(ProtocolError::HandshakeRequired)
         ));
+    }
+
+    #[test]
+    fn packet_round_trip_via_postcard() {
+        let packet = Packet::Data(DataPacket::FileChunk {
+            transfer_id: 7,
+            seq: 3,
+            data: vec![1, 2, 3, 4],
+        });
+
+        let encoded = encode_packet(&packet).expect("packet should serialize");
+        let decoded = decode_packet(&encoded).expect("packet should deserialize");
+
+        assert_eq!(decoded, packet);
     }
 }
