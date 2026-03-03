@@ -24,14 +24,25 @@ pub struct WorkspaceView {
     state: Arc<SharedState>,
     route: WorkspaceRoute,
     main_y_scroll: ScrollHandle,
+    activity_rail_expanded: bool,
+    activity_rail_has_toggled: bool,
+    network_service_enabled: bool,
+    auto_bridge_remote_text: bool,
 }
 
 impl WorkspaceView {
     pub fn new(state: Arc<SharedState>) -> Self {
+        let network_service_enabled = state.app.system_core.network_enabled;
+        let auto_bridge_remote_text = state.app.system_core.auto_bridge_remote_text;
+
         Self {
             state,
             route: WorkspaceRoute::Home,
             main_y_scroll: ScrollHandle::default(),
+            activity_rail_expanded: true,
+            activity_rail_has_toggled: false,
+            network_service_enabled,
+            auto_bridge_remote_text,
         }
     }
 
@@ -128,14 +139,14 @@ impl WorkspaceView {
             .p(px(18.0))
             .child(self.sidebar(cx).h_full())
             .child(self.main_viewport(main).h_full())
-            .child(self.activity_rail())
+            .child(self.activity_rail(cx))
     }
 }
 
 impl Render for WorkspaceView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let main = match self.route {
-            WorkspaceRoute::Home => self.home_page(),
+            WorkspaceRoute::Home => self.home_page(cx),
             WorkspaceRoute::Clipboard => self.placeholder_page(
                 "Clipboard",
                 "Compose, target selection, and broadcast state will be wired against AppService next.",
