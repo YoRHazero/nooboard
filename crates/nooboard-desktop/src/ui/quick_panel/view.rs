@@ -50,10 +50,6 @@ impl QuickPanelView {
             .child(text.to_string())
     }
 
-    fn sync_label(&self) -> String {
-        format!("{:?}", self.state.app.sync_status)
-    }
-
     fn send_tab(&self) -> Div {
         div()
             .v_flex()
@@ -231,11 +227,6 @@ impl Render for QuickPanelView {
                                         .font_semibold()
                                         .text_color(theme::fg_primary())
                                         .child("Nooboard Quick"),
-                                )
-                                .child(
-                                    div()
-                                        .text_color(theme::accent_green())
-                                        .child(self.sync_label()),
                                 )
                                 .child(div().text_color(theme::fg_secondary()).child(format!(
                                     "Inbox {}",

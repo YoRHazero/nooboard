@@ -1,4 +1,5 @@
-mod panels;
+mod sections;
+mod summary;
 
 use gpui::{
     AnimationExt as _, Context, Div, Hsla, InteractiveElement, IntoElement, ParentElement,
@@ -7,38 +8,38 @@ use gpui::{
 use gpui_component::StyledExt;
 use gpui_component::scroll::ScrollableElement;
 
+use crate::state::WorkspaceRoute;
 use crate::ui::theme;
 
 use super::{
     WorkspaceView,
-    components::console_pill,
-    shared::{ACTIVITY_COLLAPSED_WIDTH, ACTIVITY_WIDTH, panel_toggle_animation},
+    shared::{TRANSFER_RAIL_COLLAPSED_WIDTH, TRANSFER_RAIL_WIDTH, panel_toggle_animation},
 };
 
-const ACTIVITY_HANDLE_WIDTH: f32 = 28.0;
-const ACTIVITY_HANDLE_HEIGHT: f32 = 88.0;
-const ACTIVITY_HANDLE_OFFSET: f32 = 14.0;
+const TRANSFER_RAIL_HANDLE_WIDTH: f32 = 28.0;
+const TRANSFER_RAIL_HANDLE_HEIGHT: f32 = 88.0;
+const TRANSFER_RAIL_HANDLE_OFFSET: f32 = 14.0;
 
 impl WorkspaceView {
-    fn activity_rail_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let expanded = self.activity_rail_expanded;
+    fn transfer_rail_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let expanded = self.transfer_rail_expanded;
         let triangle = if expanded { "▶" } else { "◀" };
         let accent = if expanded {
-            theme::accent_cyan()
+            theme::accent_blue()
         } else {
             theme::accent_green()
         };
 
         div()
-            .id("activity-rail-handle")
+            .id("transfer-rail-handle")
             .cursor_pointer()
             .on_click(cx.listener(|this, _, _, cx| {
-                this.activity_rail_expanded = !this.activity_rail_expanded;
-                this.activity_rail_has_toggled = true;
+                this.transfer_rail_expanded = !this.transfer_rail_expanded;
+                this.transfer_rail_has_toggled = true;
                 cx.notify();
             }))
-            .w(px(ACTIVITY_HANDLE_WIDTH))
-            .h(px(ACTIVITY_HANDLE_HEIGHT))
+            .w(px(TRANSFER_RAIL_HANDLE_WIDTH))
+            .h(px(TRANSFER_RAIL_HANDLE_HEIGHT))
             .rounded(px(16.0))
             .bg(theme::bg_console())
             .border_1()
@@ -80,20 +81,20 @@ impl WorkspaceView {
             )
     }
 
-    fn activity_rail_handle_slot(&self, cx: &mut Context<Self>) -> Div {
+    fn transfer_rail_handle_slot(&self, cx: &mut Context<Self>) -> Div {
         div()
             .absolute()
-            .left(px(-ACTIVITY_HANDLE_OFFSET))
+            .left(px(-TRANSFER_RAIL_HANDLE_OFFSET))
             .top(px(0.0))
             .bottom(px(0.0))
-            .w(px(ACTIVITY_HANDLE_WIDTH))
+            .w(px(TRANSFER_RAIL_HANDLE_WIDTH))
             .flex()
             .items_center()
             .justify_center()
-            .child(self.activity_rail_handle(cx))
+            .child(self.transfer_rail_handle(cx))
     }
 
-    fn activity_rail_trace(&self, accent: Hsla, left: f32) -> Div {
+    fn transfer_rail_trace(&self, accent: Hsla, left: f32) -> Div {
         div()
             .absolute()
             .left(px(left))
@@ -121,15 +122,15 @@ impl WorkspaceView {
             )
     }
 
-    fn collapsed_activity_rail(&self, cx: &mut Context<Self>) -> Div {
+    fn collapsed_transfer_rail(&self, cx: &mut Context<Self>) -> Div {
         div()
             .relative()
             .size_full()
-            .child(self.activity_rail_trace(theme::accent_green(), 0.0))
-            .child(self.activity_rail_handle_slot(cx))
+            .child(self.transfer_rail_trace(theme::accent_green(), 0.0))
+            .child(self.transfer_rail_handle_slot(cx))
     }
 
-    fn expanded_activity_rail(&self) -> Div {
+    fn expanded_transfer_rail(&self, cx: &mut Context<Self>) -> Div {
         div()
             .v_flex()
             .h_full()
@@ -139,82 +140,39 @@ impl WorkspaceView {
             .child(
                 div()
                     .v_flex()
-                    .gap(px(12.0))
-                    .p(px(14.0))
+                    .gap(px(16.0))
+                    .p(px(16.0))
                     .bg(theme::bg_rail_panel())
                     .border_1()
                     .border_color(theme::border_soft())
                     .rounded(px(22.0))
-                    .child(
-                        div()
-                            .h_flex()
-                            .items_center()
-                            .gap(px(10.0))
-                            .child(
-                                div()
-                                    .h_flex()
-                                    .items_center()
-                                    .gap(px(10.0))
-                                    .child(div().size(px(10.0)).rounded(px(999.0)).bg(theme::accent_cyan()))
-                                    .child(
-                                        div()
-                                            .text_size(px(16.0))
-                                            .font_semibold()
-                                            .text_color(theme::fg_primary())
-                                            .child("Operations Feed"),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .h_flex()
-                            .gap(px(8.0))
-                            .items_center()
-                            .child(console_pill("telemetry", theme::accent_cyan()))
-                            .child(console_pill("review", theme::accent_amber()))
-                            .child(console_pill("notes", theme::accent_rose())),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .text_color(theme::fg_secondary())
-                            .line_clamp(2)
-                            .text_ellipsis()
-                            .child("A side telemetry column with tighter framing and darker panel treatment, intentionally distinct from the main canvas surfaces."),
-                    ),
+                    .child(self.transfer_summary(cx)),
             )
             .child(
                 div()
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scrollbar()
-                    .child(
-                        div()
-                            .v_flex()
-                            .gap(px(20.0))
-                            .child(self.activity_panel())
-                            .child(self.pending_files_panel())
-                            .child(self.error_panel()),
-                    ),
+                    .child(self.transfer_sections(cx)),
             )
     }
 
-    pub(super) fn activity_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let expanded = self.activity_rail_expanded;
+    pub(super) fn transfer_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let expanded = self.transfer_rail_expanded;
         let width = if expanded {
-            ACTIVITY_WIDTH
+            TRANSFER_RAIL_WIDTH
         } else {
-            ACTIVITY_COLLAPSED_WIDTH
+            TRANSFER_RAIL_COLLAPSED_WIDTH
         };
         let from_width = if expanded {
-            ACTIVITY_COLLAPSED_WIDTH
+            TRANSFER_RAIL_COLLAPSED_WIDTH
         } else {
-            ACTIVITY_WIDTH
+            TRANSFER_RAIL_WIDTH
         };
         let animation_id = if expanded {
-            "activity-rail-width-expand"
+            "transfer-rail-width-expand"
         } else {
-            "activity-rail-width-collapse"
+            "transfer-rail-width-collapse"
         };
 
         let rail = if expanded {
@@ -235,20 +193,20 @@ impl WorkspaceView {
                         .border_color(theme::border_base())
                         .rounded(px(26.0))
                         .shadow_xs()
-                        .child(self.activity_rail_trace(theme::accent_cyan(), 0.0))
-                        .child(self.expanded_activity_rail()),
+                        .child(self.transfer_rail_trace(theme::accent_blue(), 0.0))
+                        .child(self.expanded_transfer_rail(cx)),
                 )
-                .child(self.activity_rail_handle_slot(cx))
+                .child(self.transfer_rail_handle_slot(cx))
         } else {
             div()
                 .relative()
                 .w(px(width))
                 .h_full()
                 .min_h_0()
-                .child(self.collapsed_activity_rail(cx))
+                .child(self.collapsed_transfer_rail(cx))
         };
 
-        if self.activity_rail_has_toggled {
+        if self.transfer_rail_has_toggled {
             rail.with_animation(
                 animation_id,
                 panel_toggle_animation(),
@@ -261,5 +219,10 @@ impl WorkspaceView {
         } else {
             rail.into_any_element()
         }
+    }
+
+    fn open_transfers(&mut self, cx: &mut Context<Self>) {
+        self.route = WorkspaceRoute::Transfers;
+        cx.notify();
     }
 }

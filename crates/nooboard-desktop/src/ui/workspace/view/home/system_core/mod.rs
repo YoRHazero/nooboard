@@ -14,7 +14,6 @@ use gpui::{
 use gpui_component::clipboard::Clipboard;
 use gpui_component::tooltip::Tooltip;
 use gpui_component::{Icon, IconName, StyledExt};
-use nooboard_app::AppSyncStatus;
 
 use crate::{
     state::{ClipboardOrigin, ClipboardSnapshot, SystemPeer, SystemPeerStatus},
@@ -41,15 +40,6 @@ enum RadarPeerVisualState {
 }
 
 impl WorkspaceView {
-    fn system_core_status_accent(&self) -> Hsla {
-        match self.state.app.sync_status {
-            AppSyncStatus::Running => theme::accent_green(),
-            AppSyncStatus::Starting => theme::accent_cyan(),
-            AppSyncStatus::Disabled | AppSyncStatus::Stopped => theme::accent_amber(),
-            AppSyncStatus::Error(_) => theme::accent_rose(),
-        }
-    }
-
     fn short_node_id(node_id: &str) -> String {
         node_id.chars().take(8).collect()
     }

@@ -2,7 +2,7 @@ mod app_store;
 mod ui_store;
 
 pub use app_store::{
-    ClipboardOrigin, ClipboardSnapshot, PendingFileDecision, SharedState, SystemPeer,
-    SystemPeerStatus, TransferItem,
+    ActivityItem, ClipboardOrigin, ClipboardSnapshot, PendingFileDecision, SharedState, SystemPeer,
+    SystemPeerStatus, TransferRailItem, TransferRailStage, TransferRailStatus,
 };
 pub use ui_store::{QuickPanelTab, WorkspaceRoute};

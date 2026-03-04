@@ -1,8 +1,8 @@
-mod activity_rail;
 mod components;
 mod home;
 mod shared;
 mod sidebar;
+mod transfer_rail;
 
 use std::sync::Arc;
 
@@ -14,7 +14,7 @@ use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::{StyledExt, TitleBar};
 
-use crate::state::{SharedState, WorkspaceRoute};
+use crate::state::{SharedState, TransferRailItem, TransferRailStage, WorkspaceRoute};
 use crate::ui::theme;
 
 use self::components::{titlebar_brand, titlebar_chip};
@@ -24,8 +24,9 @@ pub struct WorkspaceView {
     state: Arc<SharedState>,
     route: WorkspaceRoute,
     main_y_scroll: ScrollHandle,
-    activity_rail_expanded: bool,
-    activity_rail_has_toggled: bool,
+    transfer_rail_items: Vec<TransferRailItem>,
+    transfer_rail_expanded: bool,
+    transfer_rail_has_toggled: bool,
     network_service_enabled: bool,
     auto_bridge_remote_text: bool,
 }
@@ -34,13 +35,15 @@ impl WorkspaceView {
     pub fn new(state: Arc<SharedState>) -> Self {
         let network_service_enabled = state.app.system_core.network_enabled;
         let auto_bridge_remote_text = state.app.system_core.auto_bridge_remote_text;
+        let transfer_rail_items = state.app.transfer_rail_items.clone();
 
         Self {
             state,
             route: WorkspaceRoute::Home,
             main_y_scroll: ScrollHandle::default(),
-            activity_rail_expanded: true,
-            activity_rail_has_toggled: false,
+            transfer_rail_items,
+            transfer_rail_expanded: true,
+            transfer_rail_has_toggled: false,
             network_service_enabled,
             auto_bridge_remote_text,
         }
@@ -139,7 +142,32 @@ impl WorkspaceView {
             .p(px(18.0))
             .child(self.sidebar(cx).h_full())
             .child(self.main_viewport(main).h_full())
-            .child(self.activity_rail(cx))
+            .child(self.transfer_rail(cx))
+    }
+
+    fn transfer_count(&self, stage: TransferRailStage) -> usize {
+        self.transfer_rail_items
+            .iter()
+            .filter(|item| item.stage() == stage)
+            .count()
+    }
+
+    fn awaiting_review_count(&self) -> usize {
+        self.transfer_count(TransferRailStage::AwaitingReview)
+    }
+
+    fn in_progress_count(&self) -> usize {
+        self.transfer_count(TransferRailStage::InProgress)
+    }
+
+    fn completed_count(&self) -> usize {
+        self.transfer_count(TransferRailStage::Completed)
+    }
+
+    fn dismiss_completed_item(&mut self, item_id: &str, cx: &mut Context<Self>) {
+        self.transfer_rail_items
+            .retain(|item| !(item.id == item_id && item.is_completed()));
+        cx.notify();
     }
 }
 
@@ -196,18 +224,13 @@ impl Render for WorkspaceView {
                                 .gap(px(8.0))
                                 .items_center()
                                 .child(titlebar_chip(
-                                    "Sync",
-                                    self.sync_label(),
-                                    theme::accent_green(),
-                                ))
-                                .child(titlebar_chip(
                                     "Peers",
                                     self.state.app.online_peers.to_string(),
                                     theme::accent_cyan(),
                                 ))
                                 .child(titlebar_chip(
                                     "Inbox",
-                                    self.state.app.pending_files.len().to_string(),
+                                    self.awaiting_review_count().to_string(),
                                     theme::accent_amber(),
                                 )),
                         ),

@@ -1,4 +1,4 @@
-mod feed;
+mod recent_activity;
 mod system_core;
 
 use gpui::{Context, Div, ParentElement, Styled, div, px};
@@ -16,8 +16,7 @@ impl WorkspaceView {
                 .flex_shrink_0()
                 .gap(px(18.0))
                 .child(self.system_core_card(cx))
-                .child(self.recent_activity_card())
-                .child(self.transfer_queue_card()),
+                .child(self.recent_activity_card()),
         )
     }
 }
