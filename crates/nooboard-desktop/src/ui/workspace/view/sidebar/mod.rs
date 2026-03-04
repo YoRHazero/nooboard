@@ -70,21 +70,15 @@ impl WorkspaceView {
                                         cx,
                                     ))
                                     .child(self.nav_item(
-                                        "nav-history",
-                                        "History",
-                                        WorkspaceRoute::History,
+                                        "nav-transfers",
+                                        "Transfers",
+                                        WorkspaceRoute::Transfers,
                                         cx,
                                     ))
                                     .child(self.nav_item(
                                         "nav-peers",
                                         "Peers",
                                         WorkspaceRoute::Peers,
-                                        cx,
-                                    ))
-                                    .child(self.nav_item(
-                                        "nav-transfers",
-                                        "Transfers",
-                                        WorkspaceRoute::Transfers,
                                         cx,
                                     ))
                                     .child(self.nav_item(

@@ -13,7 +13,6 @@ fn route_icon(route: WorkspaceRoute) -> IconName {
     match route {
         WorkspaceRoute::Home => IconName::LayoutDashboard,
         WorkspaceRoute::Clipboard => IconName::Copy,
-        WorkspaceRoute::History => IconName::BookOpen,
         WorkspaceRoute::Peers => IconName::Globe,
         WorkspaceRoute::Transfers => IconName::Folder,
         WorkspaceRoute::Settings => IconName::Settings2,
@@ -24,7 +23,6 @@ fn route_subtitle(route: WorkspaceRoute) -> &'static str {
     match route {
         WorkspaceRoute::Home => "runtime overview",
         WorkspaceRoute::Clipboard => "broadcast console",
-        WorkspaceRoute::History => "local record stream",
         WorkspaceRoute::Peers => "mesh topology",
         WorkspaceRoute::Transfers => "file lanes",
         WorkspaceRoute::Settings => "system tuning",
@@ -35,10 +33,9 @@ fn route_code(route: WorkspaceRoute) -> &'static str {
     match route {
         WorkspaceRoute::Home => "01",
         WorkspaceRoute::Clipboard => "02",
-        WorkspaceRoute::History => "03",
+        WorkspaceRoute::Transfers => "03",
         WorkspaceRoute::Peers => "04",
-        WorkspaceRoute::Transfers => "05",
-        WorkspaceRoute::Settings => "06",
+        WorkspaceRoute::Settings => "05",
     }
 }
 
@@ -46,7 +43,6 @@ fn route_accent(route: WorkspaceRoute) -> Hsla {
     match route {
         WorkspaceRoute::Home => theme::accent_cyan(),
         WorkspaceRoute::Clipboard => theme::accent_blue(),
-        WorkspaceRoute::History => theme::accent_green(),
         WorkspaceRoute::Peers => theme::accent_cyan(),
         WorkspaceRoute::Transfers => theme::accent_amber(),
         WorkspaceRoute::Settings => theme::accent_rose(),

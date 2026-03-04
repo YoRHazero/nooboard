@@ -16,7 +16,7 @@ use gpui_component::tooltip::Tooltip;
 use gpui_component::{Icon, IconName, StyledExt};
 
 use crate::{
-    state::{ClipboardOrigin, ClipboardSnapshot, SystemPeer, SystemPeerStatus},
+    state::{ClipboardTextItem, ClipboardTextOrigin, SystemPeer, SystemPeerStatus},
     ui::theme,
 };
 

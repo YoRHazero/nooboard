@@ -168,31 +168,48 @@ impl QuickPanelView {
             .children(
                 self.state
                     .app
-                    .recent_history
-                    .iter()
+                    .clipboard
+                    .history_items()
                     .take(5)
                     .enumerate()
                     .map(|(index, item)| {
                         div()
-                            .h_flex()
-                            .justify_between()
-                            .items_center()
-                            .gap(px(12.0))
+                            .v_flex()
+                            .gap(px(10.0))
                             .p(px(12.0))
                             .bg(theme::bg_panel_alt())
                             .rounded(px(14.0))
                             .child(
                                 div()
-                                    .flex_1()
-                                    .min_w(px(0.0))
-                                    .text_color(theme::fg_primary())
-                                    .truncate()
-                                    .child(item.clone()),
+                                    .h_flex()
+                                    .justify_between()
+                                    .items_center()
+                                    .gap(px(12.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(12.0))
+                                            .font_semibold()
+                                            .text_color(theme::fg_primary())
+                                            .child(item.device_id.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .text_color(theme::fg_muted())
+                                            .child(item.recorded_at_label.clone()),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .text_color(theme::fg_secondary())
+                                    .line_clamp(2)
+                                    .text_ellipsis()
+                                    .child(item.preview_text(76)),
                             )
                             .child(Button::new(("recent-copy", index)).label("Copy"))
                     }),
             )
-            .child(Button::new("open-history").label("Open Full History"))
     }
 }
 

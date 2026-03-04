@@ -12,3 +12,4 @@ gpui-platform.workspace = true
 gpui-component.workspace = true
 gpui-component-assets.workspace = true
 nooboard-app = { path = "../nooboard-app" }
+uuid.workspace = true

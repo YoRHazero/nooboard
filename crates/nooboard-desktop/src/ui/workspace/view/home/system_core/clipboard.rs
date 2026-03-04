@@ -1,12 +1,8 @@
 use super::*;
 
 impl WorkspaceView {
-    fn clipboard_copy_action(
-        &self,
-        snapshot: &ClipboardSnapshot,
-        accent: Hsla,
-    ) -> impl IntoElement {
-        let copy_id = if snapshot.origin == ClipboardOrigin::Remote {
+    fn clipboard_copy_action(&self, item: &ClipboardTextItem, accent: Hsla) -> impl IntoElement {
+        let copy_id = if item.origin == ClipboardTextOrigin::Remote {
             1usize
         } else {
             0usize
@@ -35,8 +31,7 @@ impl WorkspaceView {
                 Self::themed_tooltip("Copy original clipboard text".into(), window, cx)
             })
             .child(
-                Clipboard::new(("system-core-clipboard-copy", copy_id))
-                    .value(snapshot.content.clone()),
+                Clipboard::new(("system-core-clipboard-copy", copy_id)).value(item.content.clone()),
             )
     }
 
@@ -60,7 +55,7 @@ impl WorkspaceView {
 
     fn clipboard_read_board(
         &self,
-        snapshot: &ClipboardSnapshot,
+        item: &ClipboardTextItem,
         accent: Hsla,
         show_copy_action: bool,
     ) -> Div {
@@ -99,7 +94,7 @@ impl WorkspaceView {
                                                     .font_semibold()
                                                     .text_color(theme::fg_primary())
                                                     .truncate()
-                                                    .child(snapshot.device_id.clone()),
+                                                    .child(item.device_id.clone()),
                                             ),
                                     )
                                     .child(
@@ -107,12 +102,11 @@ impl WorkspaceView {
                                             .text_size(px(10.0))
                                             .font_semibold()
                                             .text_color(theme::fg_muted())
-                                            .child(snapshot.captured_at_label.clone()),
+                                            .child(item.recorded_at_label.clone()),
                                     ),
                             )
                             .child(if show_copy_action {
-                                self.clipboard_copy_action(snapshot, accent)
-                                    .into_any_element()
+                                self.clipboard_copy_action(item, accent).into_any_element()
                             } else {
                                 self.clipboard_copy_placeholder(accent).into_any_element()
                             }),
@@ -135,29 +129,24 @@ impl WorkspaceView {
                                 .text_color(theme::fg_primary())
                                 .line_clamp(12)
                                 .text_ellipsis()
-                                .child(snapshot.content.clone()),
+                                .child(item.content.clone()),
                         ),
                     ),
             )
     }
 
     pub(super) fn clipboard_panel(&self) -> Div {
+        let clipboard = &self.state.app.clipboard;
         let core = &self.state.app.system_core;
-        let local_snapshot = &core.local_clipboard;
-        let latest_snapshot = match core.latest_remote_clipboard.as_ref() {
-            Some(snapshot) if snapshot.updated_at_order > local_snapshot.updated_at_order => {
-                snapshot
-            }
-            _ => local_snapshot,
-        };
-        let latest_accent = if latest_snapshot.origin == ClipboardOrigin::Remote {
+        let latest_item = clipboard.latest_live_item();
+        let latest_accent = if latest_item.origin == ClipboardTextOrigin::Remote {
             theme::accent_blue()
         } else {
             theme::accent_green()
         };
-        let show_copy_action = latest_snapshot.origin == ClipboardOrigin::Remote
+        let show_copy_action = latest_item.origin == ClipboardTextOrigin::Remote
             && !self.auto_bridge_remote_text
-            && latest_snapshot.device_id != core.local_device_id;
+            && latest_item.device_id != core.local_device_id;
 
         div()
             .w(px(CLIPBOARD_PANEL_WIDTH))
@@ -168,6 +157,6 @@ impl WorkspaceView {
             .border_color(theme::border_soft())
             .rounded(px(24.0))
             .shadow_xs()
-            .child(self.clipboard_read_board(latest_snapshot, latest_accent, show_copy_action))
+            .child(self.clipboard_read_board(latest_item, latest_accent, show_copy_action))
     }
 }

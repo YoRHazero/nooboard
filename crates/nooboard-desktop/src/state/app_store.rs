@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 #[derive(Clone)]
 pub struct SharedState {
     pub app: AppStore,
@@ -56,6 +58,28 @@ impl SharedState {
             .complete_transfer("11:58", "1m 06s"),
         ];
 
+        let clipboard_targets = vec![
+            ClipboardTarget::connected("b71d8bb8-e35b-4e2e-9278-6d99ab77b6cf", "mbp-lab"),
+            ClipboardTarget::connected("3177c7f4-d664-4a5a-823e-8e5a962f34f1", "render-node"),
+            ClipboardTarget::connected("8d9c9bc0-b070-4b7e-89f9-4712929b89b5", "mbp-lab"),
+            ClipboardTarget::offline("9ab31b96-f61d-4f08-b2e5-c2b1d7e30b60", "node-alpha"),
+        ];
+
+        let local_live = ClipboardTextItem::local_live(
+            Uuid::from_u128(0x018fbf9ad8ea7c13a2f00e09d8300001),
+            "desk-01",
+            2026_03_03_12_14_08,
+            "2026-03-03 12:14:08",
+            "cargo test -p nooboard-desktop --workspace",
+        );
+        let remote_live = ClipboardTextItem::remote_live(
+            Uuid::from_u128(0x018fbf9ad8ea7c13a2f00e09d8300002),
+            "render-node",
+            2026_03_03_12_16_27,
+            "2026-03-03 12:16:27",
+            "handoff ready: transfer lane 02 is draining and db write is still pending",
+        );
+
         Self {
             app: AppStore {
                 online_peers: 3,
@@ -83,20 +107,63 @@ impl SharedState {
                             status: SystemPeerStatus::Connected,
                         },
                     ],
-                    local_clipboard: ClipboardSnapshot {
-                        origin: ClipboardOrigin::Local,
-                        device_id: "desk-01".into(),
-                        updated_at_order: 2026_03_03_12_14_08,
-                        captured_at_label: "2026-03-03 12:14:08".into(),
-                        content: "cargo test -p nooboard-desktop --workspace".into(),
-                    },
-                    latest_remote_clipboard: Some(ClipboardSnapshot {
-                        origin: ClipboardOrigin::Remote,
-                        device_id: "render-node".into(),
-                        updated_at_order: 2026_03_03_12_16_27,
-                        captured_at_label: "2026-03-03 12:16:27".into(),
-                        content: "handoff ready: transfer lane 02 is draining and db write is still pending".into(),
-                    }),
+                },
+                clipboard: ClipboardStore {
+                    targets: clipboard_targets,
+                    default_selected_target_node_ids: vec![
+                        "b71d8bb8-e35b-4e2e-9278-6d99ab77b6cf".into(),
+                        "3177c7f4-d664-4a5a-823e-8e5a962f34f1".into(),
+                    ],
+                    local_live,
+                    latest_remote_live: Some(remote_live),
+                    history_pages: vec![
+                        ClipboardHistoryPage::new(vec![
+                            ClipboardTextItem::remote_history(
+                                Uuid::from_u128(0x018fbf9ad8ea7c13a2f00e09d8300010),
+                                "node-gamma",
+                                2026_03_03_12_05_44,
+                                "2026-03-03 12:05:44",
+                                "remote message from node-gamma with a long troubleshooting summary",
+                            ),
+                            ClipboardTextItem::local_history(
+                                Uuid::from_u128(0x018fbf9ad8ea7c13a2f00e09d8300011),
+                                "desk-01",
+                                2026_03_03_11_48_19,
+                                "2026-03-03 11:48:19",
+                                "deploy command with temporary feature flags and validation notes",
+                            ),
+                            ClipboardTextItem::remote_history(
+                                Uuid::from_u128(0x018fbf9ad8ea7c13a2f00e09d8300012),
+                                "render-node",
+                                2026_03_03_11_42_07,
+                                "2026-03-03 11:42:07",
+                                "alpha release checklist updated after handoff",
+                            ),
+                        ]),
+                        ClipboardHistoryPage::new(vec![
+                            ClipboardTextItem::local_history(
+                                Uuid::from_u128(0x018fbf9ad8ea7c13a2f00e09d8300013),
+                                "desk-01",
+                                2026_03_03_10_51_30,
+                                "2026-03-03 10:51:30",
+                                "ssh key copied",
+                            ),
+                            ClipboardTextItem::local_history(
+                                Uuid::from_u128(0x018fbf9ad8ea7c13a2f00e09d8300014),
+                                "desk-01",
+                                2026_03_03_10_18_02,
+                                "2026-03-03 10:18:02",
+                                "build finished",
+                            ),
+                            ClipboardTextItem::remote_history(
+                                Uuid::from_u128(0x018fbf9ad8ea7c13a2f00e09d8300015),
+                                "mbp-lab",
+                                2026_03_03_09_57_11,
+                                "2026-03-03 09:57:11",
+                                "copy the migration notes before restarting the app runtime",
+                            ),
+                        ]),
+                    ],
                 },
                 pending_files: vec![
                     PendingFileDecision {
@@ -114,12 +181,14 @@ impl SharedState {
                     ActivityItem {
                         time_label: "12:03".into(),
                         kind: "TextReceived".into(),
-                        title: "device-a sent \"alpha release checklist updated after handoff\"".into(),
+                        title: "device-a sent \"alpha release checklist updated after handoff\""
+                            .into(),
                     },
                     ActivityItem {
                         time_label: "12:08".into(),
                         kind: "ConnectionError".into(),
-                        title: "192.168.1.9 rejected handshake during capability negotiation".into(),
+                        title: "192.168.1.9 rejected handshake during capability negotiation"
+                            .into(),
                     },
                     ActivityItem {
                         time_label: "12:10".into(),
@@ -129,20 +198,16 @@ impl SharedState {
                     ActivityItem {
                         time_label: "12:18".into(),
                         kind: "ReviewQueued".into(),
-                        title: "archive-project-handshake-debug-bundle.zip queued for operator review".into(),
+                        title:
+                            "archive-project-handshake-debug-bundle.zip queued for operator review"
+                                .into(),
                     },
                     ActivityItem {
                         time_label: "12:24".into(),
                         kind: "TransferStarted".into(),
-                        title: "capture-sequence-raw-frames.zip started transferring from mbp-lab".into(),
+                        title: "capture-sequence-raw-frames.zip started transferring from mbp-lab"
+                            .into(),
                     },
-                ],
-                recent_history: vec![
-                    "alpha release checklist updated after handoff".into(),
-                    "build finished".into(),
-                    "ssh key copied".into(),
-                    "remote message from node-gamma with a long troubleshooting summary".into(),
-                    "deploy command with temporary feature flags and validation notes".into(),
                 ],
                 transfer_rail_items,
             },
@@ -154,10 +219,230 @@ impl SharedState {
 pub struct AppStore {
     pub online_peers: usize,
     pub system_core: SystemCoreStore,
+    pub clipboard: ClipboardStore,
     pub pending_files: Vec<PendingFileDecision>,
     pub recent_activity: Vec<ActivityItem>,
-    pub recent_history: Vec<String>,
     pub transfer_rail_items: Vec<TransferRailItem>,
+}
+
+#[derive(Clone)]
+pub struct ClipboardStore {
+    pub targets: Vec<ClipboardTarget>,
+    pub default_selected_target_node_ids: Vec<String>,
+    pub local_live: ClipboardTextItem,
+    pub latest_remote_live: Option<ClipboardTextItem>,
+    pub history_pages: Vec<ClipboardHistoryPage>,
+}
+
+impl ClipboardStore {
+    pub fn latest_live_item(&self) -> &ClipboardTextItem {
+        match self.latest_remote_live.as_ref() {
+            Some(remote) if remote.recorded_at_ms > self.local_live.recorded_at_ms => remote,
+            _ => &self.local_live,
+        }
+    }
+
+    pub fn history_items(&self) -> impl Iterator<Item = &ClipboardTextItem> {
+        self.history_pages.iter().flat_map(|page| page.items.iter())
+    }
+}
+
+#[derive(Clone)]
+pub struct ClipboardHistoryPage {
+    pub items: Vec<ClipboardTextItem>,
+}
+
+impl ClipboardHistoryPage {
+    pub fn new(items: Vec<ClipboardTextItem>) -> Self {
+        Self { items }
+    }
+}
+
+#[derive(Clone)]
+pub struct ClipboardTextItem {
+    pub event_id: Uuid,
+    pub device_id: String,
+    pub content: String,
+    pub recorded_at_ms: i64,
+    pub recorded_at_label: String,
+    pub origin: ClipboardTextOrigin,
+    pub residency: ClipboardTextResidency,
+}
+
+impl ClipboardTextItem {
+    pub fn local_live(
+        event_id: Uuid,
+        device_id: impl Into<String>,
+        recorded_at_ms: i64,
+        recorded_at_label: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            event_id,
+            device_id,
+            recorded_at_ms,
+            recorded_at_label,
+            content,
+            ClipboardTextOrigin::Local,
+            ClipboardTextResidency::Live,
+        )
+    }
+
+    pub fn remote_live(
+        event_id: Uuid,
+        device_id: impl Into<String>,
+        recorded_at_ms: i64,
+        recorded_at_label: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            event_id,
+            device_id,
+            recorded_at_ms,
+            recorded_at_label,
+            content,
+            ClipboardTextOrigin::Remote,
+            ClipboardTextResidency::Live,
+        )
+    }
+
+    pub fn local_history(
+        event_id: Uuid,
+        device_id: impl Into<String>,
+        recorded_at_ms: i64,
+        recorded_at_label: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            event_id,
+            device_id,
+            recorded_at_ms,
+            recorded_at_label,
+            content,
+            ClipboardTextOrigin::Local,
+            ClipboardTextResidency::History,
+        )
+    }
+
+    pub fn remote_history(
+        event_id: Uuid,
+        device_id: impl Into<String>,
+        recorded_at_ms: i64,
+        recorded_at_label: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            event_id,
+            device_id,
+            recorded_at_ms,
+            recorded_at_label,
+            content,
+            ClipboardTextOrigin::Remote,
+            ClipboardTextResidency::History,
+        )
+    }
+
+    pub fn preview_text(&self, limit: usize) -> String {
+        let mut preview = String::new();
+        let mut length = 0usize;
+
+        for ch in self.content.chars() {
+            if length >= limit {
+                preview.push_str("...");
+                return preview;
+            }
+
+            preview.push(ch);
+            length += 1;
+        }
+
+        preview
+    }
+
+    pub fn can_write_to_clipboard(&self) -> bool {
+        self.origin == ClipboardTextOrigin::Remote
+            || self.residency == ClipboardTextResidency::History
+    }
+
+    pub fn can_broadcast(&self) -> bool {
+        self.origin == ClipboardTextOrigin::Local
+            || self.residency == ClipboardTextResidency::History
+    }
+
+    pub fn can_store(&self) -> bool {
+        self.origin == ClipboardTextOrigin::Remote && self.residency == ClipboardTextResidency::Live
+    }
+
+    pub fn can_delete(&self) -> bool {
+        self.residency == ClipboardTextResidency::History
+    }
+
+    fn new(
+        event_id: Uuid,
+        device_id: impl Into<String>,
+        recorded_at_ms: i64,
+        recorded_at_label: impl Into<String>,
+        content: impl Into<String>,
+        origin: ClipboardTextOrigin,
+        residency: ClipboardTextResidency,
+    ) -> Self {
+        Self {
+            event_id,
+            device_id: device_id.into(),
+            content: content.into(),
+            recorded_at_ms,
+            recorded_at_label: recorded_at_label.into(),
+            origin,
+            residency,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ClipboardTextOrigin {
+    Local,
+    Remote,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ClipboardTextResidency {
+    Live,
+    History,
+}
+
+#[derive(Clone)]
+pub struct ClipboardTarget {
+    pub node_id: String,
+    pub device_id: String,
+    pub status: ClipboardTargetStatus,
+}
+
+impl ClipboardTarget {
+    pub fn connected(node_id: impl Into<String>, device_id: impl Into<String>) -> Self {
+        Self {
+            node_id: node_id.into(),
+            device_id: device_id.into(),
+            status: ClipboardTargetStatus::Connected,
+        }
+    }
+
+    pub fn offline(node_id: impl Into<String>, device_id: impl Into<String>) -> Self {
+        Self {
+            node_id: node_id.into(),
+            device_id: device_id.into(),
+            status: ClipboardTargetStatus::Offline,
+        }
+    }
+
+    pub fn is_connected(&self) -> bool {
+        self.status == ClipboardTargetStatus::Connected
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ClipboardTargetStatus {
+    Connected,
+    Offline,
 }
 
 #[derive(Clone)]
@@ -166,8 +451,6 @@ pub struct SystemCoreStore {
     pub network_enabled: bool,
     pub auto_bridge_remote_text: bool,
     pub peers: Vec<SystemPeer>,
-    pub local_clipboard: ClipboardSnapshot,
-    pub latest_remote_clipboard: Option<ClipboardSnapshot>,
 }
 
 #[derive(Clone)]
@@ -182,21 +465,6 @@ pub struct SystemPeer {
 pub enum SystemPeerStatus {
     Connected,
     Transferring,
-}
-
-#[derive(Clone)]
-pub struct ClipboardSnapshot {
-    pub origin: ClipboardOrigin,
-    pub device_id: String,
-    pub updated_at_order: u64,
-    pub captured_at_label: String,
-    pub content: String,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ClipboardOrigin {
-    Local,
-    Remote,
 }
 
 #[derive(Clone)]

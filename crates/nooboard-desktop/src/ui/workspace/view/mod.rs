@@ -1,3 +1,4 @@
+mod clipboard;
 mod components;
 mod home;
 mod shared;
@@ -17,6 +18,7 @@ use gpui_component::{StyledExt, TitleBar};
 use crate::state::{SharedState, TransferRailItem, TransferRailStage, WorkspaceRoute};
 use crate::ui::theme;
 
+use self::clipboard::ClipboardPageState;
 use self::components::{titlebar_brand, titlebar_chip};
 use self::shared::MAIN_CANVAS_MIN_WIDTH;
 
@@ -24,6 +26,7 @@ pub struct WorkspaceView {
     state: Arc<SharedState>,
     route: WorkspaceRoute,
     main_y_scroll: ScrollHandle,
+    clipboard_page: ClipboardPageState,
     transfer_rail_items: Vec<TransferRailItem>,
     transfer_rail_expanded: bool,
     transfer_rail_has_toggled: bool,
@@ -35,12 +38,14 @@ impl WorkspaceView {
     pub fn new(state: Arc<SharedState>) -> Self {
         let network_service_enabled = state.app.system_core.network_enabled;
         let auto_bridge_remote_text = state.app.system_core.auto_bridge_remote_text;
+        let clipboard_page = ClipboardPageState::new(&state.app.clipboard);
         let transfer_rail_items = state.app.transfer_rail_items.clone();
 
         Self {
             state,
             route: WorkspaceRoute::Home,
             main_y_scroll: ScrollHandle::default(),
+            clipboard_page,
             transfer_rail_items,
             transfer_rail_expanded: true,
             transfer_rail_has_toggled: false,
@@ -175,16 +180,7 @@ impl Render for WorkspaceView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let main = match self.route {
             WorkspaceRoute::Home => self.home_page(cx),
-            WorkspaceRoute::Clipboard => self.placeholder_page(
-                "Clipboard",
-                "Compose, target selection, and broadcast state will be wired against AppService next.",
-                cx,
-            ),
-            WorkspaceRoute::History => self.placeholder_page(
-                "History",
-                "Cursor pagination, record detail, and rebroadcast actions are planned for the next slice.",
-                cx,
-            ),
+            WorkspaceRoute::Clipboard => self.clipboard_page(cx),
             WorkspaceRoute::Peers => self.placeholder_page(
                 "Peers & Network",
                 "Connected peers, manual peers, and runtime toggles will land here after the home dashboard settles.",
