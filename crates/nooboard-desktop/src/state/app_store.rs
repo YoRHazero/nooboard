@@ -37,7 +37,7 @@ impl SharedState {
             )
             .start_transfer(0.24, "1.1 MB/s", "12:24", "46s", "ETA 14s"),
             TransferRailItem::awaiting_review(
-                "completed-evidence-pack",
+                "complete-evidence-pack",
                 "evidence-pack-alpha-02.zip",
                 "34.2 MB",
                 "node-alpha",
@@ -46,7 +46,7 @@ impl SharedState {
             .start_transfer(1.0, "6.8 MB/s", "12:02", "31s", "ETA 0s")
             .complete_transfer("12:03", "31s"),
             TransferRailItem::awaiting_review(
-                "completed-screen-capture",
+                "complete-screen-capture",
                 "screen-capture-ux-pass.mov",
                 "72.8 MB",
                 "node-gamma",
@@ -255,7 +255,7 @@ impl TransferRailItem {
                 file_name: self.file_name,
                 size_label: self.size_label,
                 source_device: self.source_device,
-                status: TransferRailStatus::InProgress {
+                status: TransferRailStatus::Progress {
                     progress,
                     speed_label: speed_label.into(),
                     started_at_label: started_at_label.into(),
@@ -273,12 +273,12 @@ impl TransferRailItem {
         duration_label: impl Into<String>,
     ) -> Self {
         match self.status {
-            TransferRailStatus::InProgress { .. } => Self {
+            TransferRailStatus::Progress { .. } => Self {
                 id: self.id,
                 file_name: self.file_name,
                 size_label: self.size_label,
                 source_device: self.source_device,
-                status: TransferRailStatus::Completed {
+                status: TransferRailStatus::Complete {
                     completed_at_label: completed_at_label.into(),
                     duration_label: duration_label.into(),
                 },
@@ -290,8 +290,8 @@ impl TransferRailItem {
     pub fn stage(&self) -> TransferRailStage {
         match &self.status {
             TransferRailStatus::AwaitingReview { .. } => TransferRailStage::AwaitingReview,
-            TransferRailStatus::InProgress { .. } => TransferRailStage::InProgress,
-            TransferRailStatus::Completed { .. } => TransferRailStage::Completed,
+            TransferRailStatus::Progress { .. } => TransferRailStage::Progress,
+            TransferRailStatus::Complete { .. } => TransferRailStage::Complete,
         }
     }
 
@@ -299,12 +299,12 @@ impl TransferRailItem {
         self.stage() == TransferRailStage::AwaitingReview
     }
 
-    pub fn is_in_progress(&self) -> bool {
-        self.stage() == TransferRailStage::InProgress
+    pub fn is_progress(&self) -> bool {
+        self.stage() == TransferRailStage::Progress
     }
 
-    pub fn is_completed(&self) -> bool {
-        self.stage() == TransferRailStage::Completed
+    pub fn is_complete(&self) -> bool {
+        self.stage() == TransferRailStage::Complete
     }
 }
 
@@ -313,14 +313,14 @@ pub enum TransferRailStatus {
     AwaitingReview {
         queued_at_label: String,
     },
-    InProgress {
+    Progress {
         progress: f32,
         speed_label: String,
         started_at_label: String,
         elapsed_label: String,
         eta_label: String,
     },
-    Completed {
+    Complete {
         completed_at_label: String,
         duration_label: String,
     },
@@ -329,6 +329,6 @@ pub enum TransferRailStatus {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TransferRailStage {
     AwaitingReview,
-    InProgress,
-    Completed,
+    Progress,
+    Complete,
 }

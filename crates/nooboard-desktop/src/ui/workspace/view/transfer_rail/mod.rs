@@ -149,11 +149,12 @@ impl WorkspaceView {
                     .child(self.transfer_summary(cx)),
             )
             .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scrollbar()
-                    .child(self.transfer_sections(cx)),
+                div().flex_1().min_h_0().child(
+                    div()
+                        .size_full()
+                        .overflow_y_scrollbar()
+                        .child(self.transfer_sections(cx)),
+                ),
             )
     }
 

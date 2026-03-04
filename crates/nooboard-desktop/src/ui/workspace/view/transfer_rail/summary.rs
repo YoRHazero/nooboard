@@ -46,15 +46,15 @@ impl WorkspaceView {
                     ))
                     .child(self.transfer_summary_card(
                         1,
-                        "In Progress",
-                        self.in_progress_count(),
+                        "Progress",
+                        self.progress_count(),
                         theme::accent_blue(),
                         cx,
                     ))
                     .child(self.transfer_summary_card(
                         2,
-                        "Completed",
-                        self.completed_count(),
+                        "Complete",
+                        self.complete_count(),
                         theme::accent_green(),
                         cx,
                     )),

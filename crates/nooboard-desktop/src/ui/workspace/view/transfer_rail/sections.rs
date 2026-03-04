@@ -1,7 +1,7 @@
-use gpui::{Context, Div, ParentElement, Styled, div, px};
-use gpui_component::StyledExt;
-use gpui_component::button::{Button, ButtonVariants};
+use gpui::{Context, Div, ElementId, Hsla, ParentElement, Styled, div, px};
+use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::progress::Progress;
+use gpui_component::{Sizable, StyledExt};
 
 use crate::state::{TransferRailItem, TransferRailStatus};
 use crate::ui::theme;
@@ -14,8 +14,8 @@ impl WorkspaceView {
             .v_flex()
             .gap(px(18.0))
             .child(self.awaiting_review_section(cx))
-            .child(self.in_progress_section())
-            .child(self.completed_section(cx))
+            .child(self.progress_section())
+            .child(self.complete_section(cx))
     }
 
     fn awaiting_review_section(&self, cx: &mut Context<Self>) -> Div {
@@ -35,27 +35,27 @@ impl WorkspaceView {
         )
     }
 
-    fn in_progress_section(&self) -> Div {
+    fn progress_section(&self) -> Div {
         let cards = self
             .transfer_rail_items
             .iter()
-            .filter(|item| item.is_in_progress())
-            .map(Self::in_progress_card)
+            .filter(|item| item.is_progress())
+            .map(Self::progress_card)
             .collect::<Vec<_>>();
 
-        self.transfer_section("In Progress", cards.len(), cards, "No active transfers.")
+        self.transfer_section("Progress", cards.len(), cards, "No files in progress.")
     }
 
-    fn completed_section(&self, cx: &mut Context<Self>) -> Div {
+    fn complete_section(&self, cx: &mut Context<Self>) -> Div {
         let cards = self
             .transfer_rail_items
             .iter()
-            .filter(|item| item.is_completed())
+            .filter(|item| item.is_complete())
             .enumerate()
-            .map(|(index, item)| self.completed_card(index, item, cx))
+            .map(|(index, item)| self.complete_card(index, item, cx))
             .collect::<Vec<_>>();
 
-        self.transfer_section("Completed", cards.len(), cards, "No completed transfers.")
+        self.transfer_section("Complete", cards.len(), cards, "No completed files.")
     }
 
     fn transfer_section(
@@ -134,22 +134,29 @@ impl WorkspaceView {
                 item.source_device.as_str(),
                 item.size_label.as_str(),
             ))
-            .child(Self::transfer_detail_pair(
-                "Queued",
-                queued_at_label.as_str(),
-            ))
             .child(
-                Button::new(("transfer-queue-open", index))
-                    .label("Open Transfers")
-                    .primary()
-                    .on_click(cx.listener(|this, _, _, cx| this.open_transfers(cx))),
+                div()
+                    .h_flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(10.0))
+                    .child(Self::transfer_inline_note("Queued", queued_at_label.as_str()).flex_1())
+                    .child(
+                        Self::transfer_action_button(
+                            ("transfer-queue-open", index),
+                            "Check",
+                            theme::accent_amber(),
+                            cx,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.open_transfers(cx))),
+                    ),
             )
     }
 
-    fn in_progress_card(item: &TransferRailItem) -> Div {
+    fn progress_card(item: &TransferRailItem) -> Div {
         let (progress, speed_label, started_at_label, elapsed_label, eta_label) = match &item.status
         {
-            TransferRailStatus::InProgress {
+            TransferRailStatus::Progress {
                 progress,
                 speed_label,
                 started_at_label,
@@ -217,13 +224,13 @@ impl WorkspaceView {
             )
     }
 
-    fn completed_card(&self, index: usize, item: &TransferRailItem, cx: &mut Context<Self>) -> Div {
+    fn complete_card(&self, index: usize, item: &TransferRailItem, cx: &mut Context<Self>) -> Div {
         let (completed_at_label, duration_label) = match &item.status {
-            TransferRailStatus::Completed {
+            TransferRailStatus::Complete {
                 completed_at_label,
                 duration_label,
             } => (completed_at_label.as_str(), duration_label.as_str()),
-            _ => unreachable!("completed section only renders completed items"),
+            _ => unreachable!("complete section only renders complete items"),
         };
 
         div()
@@ -238,27 +245,32 @@ impl WorkspaceView {
                 item.file_name.as_str(),
                 theme::accent_green(),
             ))
-            .child(Self::transfer_meta_row(
+            .child(Self::transfer_complete_meta_row(
                 item.source_device.as_str(),
                 item.size_label.as_str(),
+                duration_label,
             ))
             .child(
                 div()
-                    .grid()
-                    .grid_cols(2)
+                    .h_flex()
+                    .items_center()
+                    .justify_between()
                     .gap(px(10.0))
-                    .child(Self::transfer_detail_pair("Completed", completed_at_label))
-                    .child(Self::transfer_detail_pair("Duration", duration_label)),
-            )
-            .child({
-                let item_id = item.id.clone();
+                    .child(Self::transfer_inline_note("Complete", completed_at_label).flex_1())
+                    .child({
+                        let item_id = item.id.clone();
 
-                Button::new(("dismiss-transfer-complete", index))
-                    .label("Dismiss")
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.dismiss_completed_item(item_id.as_str(), cx);
-                    }))
-            })
+                        Self::transfer_action_button(
+                            ("dismiss-transfer-complete", index),
+                            "Got it",
+                            theme::accent_green(),
+                            cx,
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.dismiss_complete_item(item_id.as_str(), cx);
+                        }))
+                    }),
+            )
     }
 
     fn transfer_card_heading(file_name: &str, accent: gpui::Hsla) -> Div {
@@ -283,6 +295,71 @@ impl WorkspaceView {
             .text_color(theme::fg_muted())
             .truncate()
             .child(format!("{} · {}", source_device, size_label))
+    }
+
+    fn transfer_complete_meta_row(
+        source_device: &str,
+        size_label: &str,
+        duration_label: &str,
+    ) -> Div {
+        div()
+            .text_size(px(11.0))
+            .text_color(theme::fg_muted())
+            .truncate()
+            .child(format!(
+                "{} · {} · done in {}",
+                source_device, size_label, duration_label
+            ))
+    }
+
+    fn transfer_action_button(
+        id: impl Into<ElementId>,
+        label: &str,
+        accent: Hsla,
+        cx: &mut Context<Self>,
+    ) -> Button {
+        let variant = ButtonCustomVariant::new(cx)
+            .color(accent.opacity(0.12))
+            .foreground(theme::fg_primary())
+            .hover(accent.opacity(0.2))
+            .active(accent.opacity(0.28))
+            .shadow(false);
+
+        Button::new(id)
+            .custom(variant)
+            .small()
+            .compact()
+            .rounded(px(999.0))
+            .border_1()
+            .border_color(accent.opacity(0.24))
+            .child(
+                div()
+                    .text_color(theme::fg_primary())
+                    .font_semibold()
+                    .child(label.to_string()),
+            )
+    }
+
+    fn transfer_inline_note(label: &str, value: &str) -> Div {
+        div()
+            .h_flex()
+            .items_center()
+            .gap(px(6.0))
+            .min_w(px(0.0))
+            .child(
+                div()
+                    .text_size(px(10.0))
+                    .font_semibold()
+                    .text_color(theme::fg_muted())
+                    .child(label.to_uppercase()),
+            )
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .text_color(theme::fg_secondary())
+                    .truncate()
+                    .child(value.to_string()),
+            )
     }
 
     fn transfer_detail_pair(label: &str, value: &str) -> Div {

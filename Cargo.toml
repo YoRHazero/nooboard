@@ -23,7 +23,7 @@ clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 gpui = { git = "https://github.com/zed-industries/zed" }
-gpui-platform = { git = "https://github.com/zed-industries/zed", package = "gpui_platform" }
+gpui-platform = { git = "https://github.com/zed-industries/zed", package = "gpui_platform", features = ["font-kit"] }
 gpui-component = { git = "https://github.com/longbridge/gpui-component.git", branch = "main" }
 gpui-component-assets = { git = "https://github.com/longbridge/gpui-component.git", branch = "main" }
 objc2 = "0.6"

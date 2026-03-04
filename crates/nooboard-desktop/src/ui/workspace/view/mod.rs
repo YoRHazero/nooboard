@@ -156,17 +156,17 @@ impl WorkspaceView {
         self.transfer_count(TransferRailStage::AwaitingReview)
     }
 
-    fn in_progress_count(&self) -> usize {
-        self.transfer_count(TransferRailStage::InProgress)
+    fn progress_count(&self) -> usize {
+        self.transfer_count(TransferRailStage::Progress)
     }
 
-    fn completed_count(&self) -> usize {
-        self.transfer_count(TransferRailStage::Completed)
+    fn complete_count(&self) -> usize {
+        self.transfer_count(TransferRailStage::Complete)
     }
 
-    fn dismiss_completed_item(&mut self, item_id: &str, cx: &mut Context<Self>) {
+    fn dismiss_complete_item(&mut self, item_id: &str, cx: &mut Context<Self>) {
         self.transfer_rail_items
-            .retain(|item| !(item.id == item_id && item.is_completed()));
+            .retain(|item| !(item.id == item_id && item.is_complete()));
         cx.notify();
     }
 }
