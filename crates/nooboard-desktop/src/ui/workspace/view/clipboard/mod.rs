@@ -1,7 +1,7 @@
 mod detail;
 mod header;
 mod history;
-mod state;
+mod page_state;
 mod targets;
 
 use gpui::{
@@ -22,7 +22,7 @@ use crate::{
     ui::theme,
 };
 
-pub(super) use state::ClipboardPageState;
+pub(super) use page_state::ClipboardPageState;
 
 use super::WorkspaceView;
 

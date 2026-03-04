@@ -182,7 +182,11 @@ impl WorkspaceView {
         cx.notify();
     }
 
-    pub(super) fn delete_history_clipboard_item(&mut self, event_id: Uuid, cx: &mut Context<Self>) {
+    pub(super) fn delete_history_clipboard_item(
+        &mut self,
+        event_id: Uuid,
+        cx: &mut Context<Self>,
+    ) {
         let before = self.clipboard_page.history_items.len();
         self.clipboard_page
             .history_items
