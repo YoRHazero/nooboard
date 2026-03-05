@@ -1,6 +1,8 @@
 mod clipboard;
 mod components;
 mod home;
+mod peers;
+mod settings;
 mod shared;
 mod sidebar;
 mod transfer_rail;
@@ -12,7 +14,6 @@ use gpui::{
     Context, Div, InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle,
     StatefulInteractiveElement, Styled, Window, div, px,
 };
-use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::{StyledExt, TitleBar};
 
@@ -21,6 +22,8 @@ use crate::ui::theme;
 
 use self::clipboard::ClipboardPageState;
 use self::components::{titlebar_brand, titlebar_chip};
+use self::peers::PeersPageState;
+use self::settings::SettingsPageState;
 use self::shared::MAIN_CANVAS_MIN_WIDTH;
 use self::transfers::TransfersPageState;
 
@@ -29,6 +32,8 @@ pub struct WorkspaceView {
     route: WorkspaceRoute,
     main_y_scroll: ScrollHandle,
     clipboard_page: ClipboardPageState,
+    peers_page_state: PeersPageState,
+    settings_page_state: SettingsPageState,
     transfers_page_state: TransfersPageState,
     transfer_items: Vec<TransferItem>,
     transfer_rail_expanded: bool,
@@ -42,6 +47,8 @@ impl WorkspaceView {
         let network_service_enabled = state.app.system_core.network_enabled;
         let auto_bridge_remote_text = state.app.system_core.auto_bridge_remote_text;
         let clipboard_page = ClipboardPageState::new(&state.app.clipboard);
+        let peers_page_state = PeersPageState::new();
+        let settings_page_state = SettingsPageState::new(state.app.system_core.network_enabled);
         let transfers_page_state = TransfersPageState::new(&state.app.clipboard);
         let transfer_items = state.app.transfer_items.clone();
 
@@ -50,6 +57,8 @@ impl WorkspaceView {
             route: WorkspaceRoute::Home,
             main_y_scroll: ScrollHandle::default(),
             clipboard_page,
+            peers_page_state,
+            settings_page_state,
             transfers_page_state,
             transfer_items,
             transfer_rail_expanded: true,
@@ -57,50 +66,6 @@ impl WorkspaceView {
             network_service_enabled,
             auto_bridge_remote_text,
         }
-    }
-
-    fn placeholder_page(&self, label: &str, description: &str, cx: &mut Context<Self>) -> Div {
-        div()
-            .flex()
-            .items_center()
-            .justify_center()
-            .w_full()
-            .min_h(px(620.0))
-            .child(
-                div()
-                    .v_flex()
-                    .gap(px(14.0))
-                    .p(px(30.0))
-                    .bg(theme::bg_panel())
-                    .border_1()
-                    .border_color(theme::border_base())
-                    .rounded(px(24.0))
-                    .shadow_xs()
-                    .child(
-                        div()
-                            .text_size(px(24.0))
-                            .font_semibold()
-                            .text_color(theme::fg_primary())
-                            .child(label.to_string()),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(13.0))
-                            .text_color(theme::fg_secondary())
-                            .line_clamp(3)
-                            .text_ellipsis()
-                            .child(description.to_string()),
-                    )
-                    .child(
-                        Button::new("workspace-home")
-                            .primary()
-                            .label("Back to Home")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.route = WorkspaceRoute::Home;
-                                cx.notify();
-                            })),
-                    ),
-            )
     }
 
     fn main_viewport(&self, main: Div) -> Div {
@@ -186,17 +151,9 @@ impl Render for WorkspaceView {
         let main = match self.route {
             WorkspaceRoute::Home => self.home_page(cx),
             WorkspaceRoute::Clipboard => self.clipboard_page(cx),
-            WorkspaceRoute::Peers => self.placeholder_page(
-                "Peers & Network",
-                "Connected peers, manual peers, and runtime toggles will land here after the home dashboard settles.",
-                cx,
-            ),
+            WorkspaceRoute::Peers => self.peers_page(cx),
             WorkspaceRoute::Transfers => self.transfers_page(cx),
-            WorkspaceRoute::Settings => self.placeholder_page(
-                "Settings",
-                "Storage, network, and desktop behavior tuning will arrive here once the control surface is finalized.",
-                cx,
-            ),
+            WorkspaceRoute::Settings => self.settings_page(cx),
         };
 
         div()
