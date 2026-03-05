@@ -168,18 +168,6 @@ impl SharedState {
                         ]),
                     ],
                 },
-                pending_files: vec![
-                    PendingFileDecision {
-                        file_name: "report-quarterly-final-v7-with-annotations.pdf".into(),
-                        peer_label: "node-alpha".into(),
-                        size_label: "14.2 MB".into(),
-                    },
-                    PendingFileDecision {
-                        file_name: "archive-project-handshake-debug-bundle.zip".into(),
-                        peer_label: "node-beta".into(),
-                        size_label: "88.5 MB".into(),
-                    },
-                ],
                 recent_activity: vec![
                     ActivityItem {
                         time_label: "12:03".into(),
@@ -223,7 +211,6 @@ pub struct AppStore {
     pub online_peers: usize,
     pub system_core: SystemCoreStore,
     pub clipboard: ClipboardStore,
-    pub pending_files: Vec<PendingFileDecision>,
     pub recent_activity: Vec<ActivityItem>,
     pub transfer_items: Vec<TransferItem>,
 }
@@ -248,13 +235,6 @@ pub struct SystemPeer {
 pub enum SystemPeerStatus {
     Connected,
     Transferring,
-}
-
-#[derive(Clone)]
-pub struct PendingFileDecision {
-    pub file_name: String,
-    pub peer_label: String,
-    pub size_label: String,
 }
 
 #[derive(Clone)]

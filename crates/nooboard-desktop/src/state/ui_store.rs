@@ -6,10 +6,3 @@ pub enum WorkspaceRoute {
     Transfers,
     Settings,
 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum QuickPanelTab {
-    Send,
-    Inbox,
-    Recent,
-}

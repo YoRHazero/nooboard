@@ -10,7 +10,7 @@ use gpui_component_assets::Assets as ComponentAssets;
 use gpui_platform::application;
 
 use crate::state::SharedState;
-use crate::ui::{QuickPanelView, WorkspaceView};
+use crate::ui::WorkspaceView;
 
 struct DesktopAssets {
     component: ComponentAssets,
@@ -96,11 +96,9 @@ pub fn run() {
 
         let shared = Arc::new(SharedState::demo());
         let workspace_options = workspace_window_options(cx);
-        let quick_panel_options = quick_panel_window_options(cx);
 
         cx.spawn(async move |cx| {
-            open_workspace_window(shared.clone(), workspace_options, cx)?;
-            open_quick_panel_window(shared, quick_panel_options, cx)?;
+            open_workspace_window(shared, workspace_options, cx)?;
             Ok::<_, anyhow::Error>(())
         })
         .detach();
@@ -115,19 +113,6 @@ fn open_workspace_window(
     cx.open_window(options, move |window, cx| {
         let state = shared.clone();
         let view = cx.new(|_| WorkspaceView::new(state));
-        cx.new(|cx| Root::new(view, window, cx))
-    })?;
-    Ok(())
-}
-
-fn open_quick_panel_window(
-    shared: Arc<SharedState>,
-    options: WindowOptions,
-    cx: &AsyncApp,
-) -> anyhow::Result<()> {
-    cx.open_window(options, move |window, cx| {
-        let state = shared.clone();
-        let view = cx.new(|_| QuickPanelView::new(state));
         cx.new(|cx| Root::new(view, window, cx))
     })?;
     Ok(())
@@ -207,18 +192,5 @@ mod tests {
                 .any(|path| path.as_ref() == "system_core/radar_scan_line.svg"),
             "local asset should be present in listing"
         );
-    }
-}
-
-fn quick_panel_window_options(cx: &mut App) -> WindowOptions {
-    WindowOptions {
-        titlebar: Some(TitleBar::title_bar_options()),
-        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-            None,
-            size(px(460.0), px(620.0)),
-            cx,
-        ))),
-        window_min_size: Some(size(px(420.0), px(540.0))),
-        ..Default::default()
     }
 }
