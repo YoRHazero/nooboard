@@ -3,7 +3,7 @@ use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::progress::Progress;
 use gpui_component::{Sizable, StyledExt};
 
-use crate::state::{TransferRailItem, TransferRailStatus};
+use crate::state::{TransferItem, TransferStatus};
 use crate::ui::theme;
 
 use super::WorkspaceView;
@@ -20,7 +20,7 @@ impl WorkspaceView {
 
     fn awaiting_review_section(&self, cx: &mut Context<Self>) -> Div {
         let cards = self
-            .transfer_rail_items
+            .transfer_items
             .iter()
             .filter(|item| item.is_awaiting_review())
             .enumerate()
@@ -37,7 +37,7 @@ impl WorkspaceView {
 
     fn progress_section(&self) -> Div {
         let cards = self
-            .transfer_rail_items
+            .transfer_items
             .iter()
             .filter(|item| item.is_progress())
             .map(Self::progress_card)
@@ -48,7 +48,7 @@ impl WorkspaceView {
 
     fn complete_section(&self, cx: &mut Context<Self>) -> Div {
         let cards = self
-            .transfer_rail_items
+            .transfer_items
             .iter()
             .filter(|item| item.is_complete())
             .enumerate()
@@ -110,11 +110,11 @@ impl WorkspaceView {
     fn awaiting_review_card(
         &self,
         index: usize,
-        item: &TransferRailItem,
+        item: &TransferItem,
         cx: &mut Context<Self>,
     ) -> Div {
         let queued_at_label = match &item.status {
-            TransferRailStatus::AwaitingReview { queued_at_label } => queued_at_label,
+            TransferStatus::AwaitingReview { queued_at_label } => queued_at_label,
             _ => unreachable!("awaiting review section only renders awaiting review items"),
         };
 
@@ -153,10 +153,10 @@ impl WorkspaceView {
             )
     }
 
-    fn progress_card(item: &TransferRailItem) -> Div {
+    fn progress_card(item: &TransferItem) -> Div {
         let (progress, speed_label, started_at_label, elapsed_label, eta_label) = match &item.status
         {
-            TransferRailStatus::Progress {
+            TransferStatus::Progress {
                 progress,
                 speed_label,
                 started_at_label,
@@ -224,9 +224,9 @@ impl WorkspaceView {
             )
     }
 
-    fn complete_card(&self, index: usize, item: &TransferRailItem, cx: &mut Context<Self>) -> Div {
+    fn complete_card(&self, index: usize, item: &TransferItem, cx: &mut Context<Self>) -> Div {
         let (completed_at_label, duration_label) = match &item.status {
-            TransferRailStatus::Complete {
+            TransferStatus::Complete {
                 completed_at_label,
                 duration_label,
             } => (completed_at_label.as_str(), duration_label.as_str()),

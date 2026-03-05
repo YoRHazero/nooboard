@@ -1,6 +1,7 @@
 use uuid::Uuid;
 
 use super::clipboard::{ClipboardHistoryPage, ClipboardStore, ClipboardTarget, ClipboardTextItem};
+use super::transfer::TransferItem;
 
 #[derive(Clone)]
 pub struct SharedState {
@@ -9,22 +10,22 @@ pub struct SharedState {
 
 impl SharedState {
     pub fn demo() -> Self {
-        let transfer_rail_items = vec![
-            TransferRailItem::awaiting_review(
+        let transfer_items = vec![
+            TransferItem::awaiting_review(
                 "awaiting-report-quarterly",
                 "report-quarterly-final-v7-with-annotations.pdf",
                 "14.2 MB",
                 "node-alpha",
                 "12:18",
             ),
-            TransferRailItem::awaiting_review(
+            TransferItem::awaiting_review(
                 "awaiting-debug-bundle",
                 "archive-project-handshake-debug-bundle.zip",
                 "88.5 MB",
                 "node-beta",
                 "12:21",
             ),
-            TransferRailItem::awaiting_review(
+            TransferItem::awaiting_review(
                 "transfer-deployment-bundle",
                 "deployment-bundle-2026-03-04.tar.zst",
                 "150 MB",
@@ -32,7 +33,7 @@ impl SharedState {
                 "12:12",
             )
             .start_transfer(0.61, "3.2 MB/s", "12:14", "3m 18s", "ETA 18s"),
-            TransferRailItem::awaiting_review(
+            TransferItem::awaiting_review(
                 "transfer-capture-sequence",
                 "capture-sequence-raw-frames.zip",
                 "25 MB",
@@ -40,7 +41,7 @@ impl SharedState {
                 "12:23",
             )
             .start_transfer(0.24, "1.1 MB/s", "12:24", "46s", "ETA 14s"),
-            TransferRailItem::awaiting_review(
+            TransferItem::awaiting_review(
                 "complete-evidence-pack",
                 "evidence-pack-alpha-02.zip",
                 "34.2 MB",
@@ -49,7 +50,7 @@ impl SharedState {
             )
             .start_transfer(1.0, "6.8 MB/s", "12:02", "31s", "ETA 0s")
             .complete_transfer("12:03", "31s"),
-            TransferRailItem::awaiting_review(
+            TransferItem::awaiting_review(
                 "complete-screen-capture",
                 "screen-capture-ux-pass.mov",
                 "72.8 MB",
@@ -211,7 +212,7 @@ impl SharedState {
                             .into(),
                     },
                 ],
-                transfer_rail_items,
+                transfer_items,
             },
         }
     }
@@ -224,7 +225,7 @@ pub struct AppStore {
     pub clipboard: ClipboardStore,
     pub pending_files: Vec<PendingFileDecision>,
     pub recent_activity: Vec<ActivityItem>,
-    pub transfer_rail_items: Vec<TransferRailItem>,
+    pub transfer_items: Vec<TransferItem>,
 }
 
 #[derive(Clone)]
@@ -261,124 +262,4 @@ pub struct ActivityItem {
     pub time_label: String,
     pub kind: String,
     pub title: String,
-}
-
-#[derive(Clone)]
-pub struct TransferRailItem {
-    pub id: String,
-    pub file_name: String,
-    pub size_label: String,
-    pub source_device: String,
-    pub status: TransferRailStatus,
-}
-
-impl TransferRailItem {
-    pub fn awaiting_review(
-        id: impl Into<String>,
-        file_name: impl Into<String>,
-        size_label: impl Into<String>,
-        source_device: impl Into<String>,
-        queued_at_label: impl Into<String>,
-    ) -> Self {
-        Self {
-            id: id.into(),
-            file_name: file_name.into(),
-            size_label: size_label.into(),
-            source_device: source_device.into(),
-            status: TransferRailStatus::AwaitingReview {
-                queued_at_label: queued_at_label.into(),
-            },
-        }
-    }
-
-    pub fn start_transfer(
-        self,
-        progress: f32,
-        speed_label: impl Into<String>,
-        started_at_label: impl Into<String>,
-        elapsed_label: impl Into<String>,
-        eta_label: impl Into<String>,
-    ) -> Self {
-        match self.status {
-            TransferRailStatus::AwaitingReview { .. } => Self {
-                id: self.id,
-                file_name: self.file_name,
-                size_label: self.size_label,
-                source_device: self.source_device,
-                status: TransferRailStatus::Progress {
-                    progress,
-                    speed_label: speed_label.into(),
-                    started_at_label: started_at_label.into(),
-                    elapsed_label: elapsed_label.into(),
-                    eta_label: eta_label.into(),
-                },
-            },
-            _ => panic!("transfer rail item can only enter progress from awaiting review"),
-        }
-    }
-
-    pub fn complete_transfer(
-        self,
-        completed_at_label: impl Into<String>,
-        duration_label: impl Into<String>,
-    ) -> Self {
-        match self.status {
-            TransferRailStatus::Progress { .. } => Self {
-                id: self.id,
-                file_name: self.file_name,
-                size_label: self.size_label,
-                source_device: self.source_device,
-                status: TransferRailStatus::Complete {
-                    completed_at_label: completed_at_label.into(),
-                    duration_label: duration_label.into(),
-                },
-            },
-            _ => panic!("transfer rail item can only complete from in-progress"),
-        }
-    }
-
-    pub fn stage(&self) -> TransferRailStage {
-        match &self.status {
-            TransferRailStatus::AwaitingReview { .. } => TransferRailStage::AwaitingReview,
-            TransferRailStatus::Progress { .. } => TransferRailStage::Progress,
-            TransferRailStatus::Complete { .. } => TransferRailStage::Complete,
-        }
-    }
-
-    pub fn is_awaiting_review(&self) -> bool {
-        self.stage() == TransferRailStage::AwaitingReview
-    }
-
-    pub fn is_progress(&self) -> bool {
-        self.stage() == TransferRailStage::Progress
-    }
-
-    pub fn is_complete(&self) -> bool {
-        self.stage() == TransferRailStage::Complete
-    }
-}
-
-#[derive(Clone)]
-pub enum TransferRailStatus {
-    AwaitingReview {
-        queued_at_label: String,
-    },
-    Progress {
-        progress: f32,
-        speed_label: String,
-        started_at_label: String,
-        elapsed_label: String,
-        eta_label: String,
-    },
-    Complete {
-        completed_at_label: String,
-        duration_label: String,
-    },
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum TransferRailStage {
-    AwaitingReview,
-    Progress,
-    Complete,
 }

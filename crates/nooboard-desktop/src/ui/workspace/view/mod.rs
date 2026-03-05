@@ -4,6 +4,7 @@ mod home;
 mod shared;
 mod sidebar;
 mod transfer_rail;
+mod transfers;
 
 use std::sync::Arc;
 
@@ -15,19 +16,21 @@ use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::{StyledExt, TitleBar};
 
-use crate::state::{SharedState, TransferRailItem, TransferRailStage, WorkspaceRoute};
+use crate::state::{SharedState, TransferItem, TransferStage, WorkspaceRoute};
 use crate::ui::theme;
 
 use self::clipboard::ClipboardPageState;
 use self::components::{titlebar_brand, titlebar_chip};
 use self::shared::MAIN_CANVAS_MIN_WIDTH;
+use self::transfers::TransfersPageState;
 
 pub struct WorkspaceView {
     state: Arc<SharedState>,
     route: WorkspaceRoute,
     main_y_scroll: ScrollHandle,
     clipboard_page: ClipboardPageState,
-    transfer_rail_items: Vec<TransferRailItem>,
+    transfers_page_state: TransfersPageState,
+    transfer_items: Vec<TransferItem>,
     transfer_rail_expanded: bool,
     transfer_rail_has_toggled: bool,
     network_service_enabled: bool,
@@ -39,14 +42,16 @@ impl WorkspaceView {
         let network_service_enabled = state.app.system_core.network_enabled;
         let auto_bridge_remote_text = state.app.system_core.auto_bridge_remote_text;
         let clipboard_page = ClipboardPageState::new(&state.app.clipboard);
-        let transfer_rail_items = state.app.transfer_rail_items.clone();
+        let transfers_page_state = TransfersPageState::new(&state.app.clipboard);
+        let transfer_items = state.app.transfer_items.clone();
 
         Self {
             state,
             route: WorkspaceRoute::Home,
             main_y_scroll: ScrollHandle::default(),
             clipboard_page,
-            transfer_rail_items,
+            transfers_page_state,
+            transfer_items,
             transfer_rail_expanded: true,
             transfer_rail_has_toggled: false,
             network_service_enabled,
@@ -150,27 +155,27 @@ impl WorkspaceView {
             .child(self.transfer_rail(cx))
     }
 
-    fn transfer_count(&self, stage: TransferRailStage) -> usize {
-        self.transfer_rail_items
+    fn transfer_count(&self, stage: TransferStage) -> usize {
+        self.transfer_items
             .iter()
             .filter(|item| item.stage() == stage)
             .count()
     }
 
     fn awaiting_review_count(&self) -> usize {
-        self.transfer_count(TransferRailStage::AwaitingReview)
+        self.transfer_count(TransferStage::AwaitingReview)
     }
 
     fn progress_count(&self) -> usize {
-        self.transfer_count(TransferRailStage::Progress)
+        self.transfer_count(TransferStage::Progress)
     }
 
     fn complete_count(&self) -> usize {
-        self.transfer_count(TransferRailStage::Complete)
+        self.transfer_count(TransferStage::Complete)
     }
 
     fn dismiss_complete_item(&mut self, item_id: &str, cx: &mut Context<Self>) {
-        self.transfer_rail_items
+        self.transfer_items
             .retain(|item| !(item.id == item_id && item.is_complete()));
         cx.notify();
     }
@@ -186,11 +191,7 @@ impl Render for WorkspaceView {
                 "Connected peers, manual peers, and runtime toggles will land here after the home dashboard settles.",
                 cx,
             ),
-            WorkspaceRoute::Transfers => self.placeholder_page(
-                "Transfers",
-                "Incoming decisions, active progress, and completed transfers will graduate from the home queue into this dedicated view.",
-                cx,
-            ),
+            WorkspaceRoute::Transfers => self.transfers_page(cx),
             WorkspaceRoute::Settings => self.placeholder_page(
                 "Settings",
                 "Storage, network, and desktop behavior tuning will arrive here once the control surface is finalized.",
