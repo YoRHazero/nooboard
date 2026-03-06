@@ -12,8 +12,8 @@ use crate::{AppError, AppResult};
 
 use super::types::{
     AppPatch, AppServiceSnapshot, EventId, EventSubscription, FileDecisionRequest, HistoryPage,
-    ListHistoryRequest, LocalClipboardChangeRequest, LocalClipboardChangeResult,
-    RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest, SyncDesiredState,
+    IngestTextRequest, ListHistoryRequest, RebroadcastEventRequest, SendFileRequest,
+    SyncDesiredState,
 };
 
 mod control;
@@ -30,15 +30,11 @@ pub trait AppService {
     async fn apply_config_patch(&self, patch: AppPatch) -> AppResult<AppServiceSnapshot>;
     async fn snapshot(&self) -> AppResult<AppServiceSnapshot>;
 
-    async fn apply_local_clipboard_change(
-        &self,
-        request: LocalClipboardChangeRequest,
-    ) -> AppResult<LocalClipboardChangeResult>;
-    async fn apply_history_entry_to_clipboard(&self, event_id: EventId) -> AppResult<()>;
+    async fn ingest_text_event(&self, request: IngestTextRequest) -> AppResult<()>;
+    async fn write_event_to_clipboard(&self, event_id: EventId) -> AppResult<()>;
     async fn list_history(&self, request: ListHistoryRequest) -> AppResult<HistoryPage>;
-    async fn rebroadcast_history_entry(&self, request: RebroadcastHistoryRequest) -> AppResult<()>;
-    async fn store_remote_text(&self, request: RemoteTextRequest) -> AppResult<()>;
-    async fn write_remote_text_to_clipboard(&self, request: RemoteTextRequest) -> AppResult<()>;
+    async fn rebroadcast_event(&self, request: RebroadcastEventRequest) -> AppResult<()>;
+    async fn set_local_watch_enabled(&self, enabled: bool) -> AppResult<()>;
 
     async fn send_file(&self, request: SendFileRequest) -> AppResult<()>;
     async fn respond_file_decision(&self, request: FileDecisionRequest) -> AppResult<()>;
@@ -129,21 +125,18 @@ impl AppService for AppServiceImpl {
             .await
     }
 
-    async fn apply_local_clipboard_change(
-        &self,
-        request: LocalClipboardChangeRequest,
-    ) -> AppResult<LocalClipboardChangeResult> {
+    async fn ingest_text_event(&self, request: IngestTextRequest) -> AppResult<()> {
         self.request(
-            |reply| ControlCommand::ApplyLocalClipboardChange { request, reply },
-            "apply_local_clipboard_change",
+            |reply| ControlCommand::IngestTextEvent { request, reply },
+            "ingest_text_event",
         )
         .await
     }
 
-    async fn apply_history_entry_to_clipboard(&self, event_id: EventId) -> AppResult<()> {
+    async fn write_event_to_clipboard(&self, event_id: EventId) -> AppResult<()> {
         self.request(
-            |reply| ControlCommand::ApplyHistoryEntryToClipboard { event_id, reply },
-            "apply_history_entry_to_clipboard",
+            |reply| ControlCommand::WriteEventToClipboard { event_id, reply },
+            "write_event_to_clipboard",
         )
         .await
     }
@@ -156,26 +149,18 @@ impl AppService for AppServiceImpl {
         .await
     }
 
-    async fn rebroadcast_history_entry(&self, request: RebroadcastHistoryRequest) -> AppResult<()> {
+    async fn rebroadcast_event(&self, request: RebroadcastEventRequest) -> AppResult<()> {
         self.request(
-            |reply| ControlCommand::RebroadcastHistoryEntry { request, reply },
-            "rebroadcast_history_entry",
+            |reply| ControlCommand::RebroadcastEvent { request, reply },
+            "rebroadcast_event",
         )
         .await
     }
 
-    async fn store_remote_text(&self, request: RemoteTextRequest) -> AppResult<()> {
+    async fn set_local_watch_enabled(&self, enabled: bool) -> AppResult<()> {
         self.request(
-            |reply| ControlCommand::StoreRemoteText { request, reply },
-            "store_remote_text",
-        )
-        .await
-    }
-
-    async fn write_remote_text_to_clipboard(&self, request: RemoteTextRequest) -> AppResult<()> {
-        self.request(
-            |reply| ControlCommand::WriteRemoteTextToClipboard { request, reply },
-            "write_remote_text_to_clipboard",
+            |reply| ControlCommand::SetLocalWatchEnabled { enabled, reply },
+            "set_local_watch_enabled",
         )
         .await
     }

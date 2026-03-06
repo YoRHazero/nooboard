@@ -1,11 +1,11 @@
 use tokio::sync::oneshot;
 
 use crate::AppResult;
-use crate::clipboard_runtime::LocalClipboardSubscription;
+use crate::clipboard_runtime::{LocalClipboardObserved, LocalClipboardSubscription};
 use crate::service::types::{
     AppPatch, AppServiceSnapshot, EventId, EventSubscription, FileDecisionRequest, HistoryPage,
-    ListHistoryRequest, LocalClipboardChangeRequest, LocalClipboardChangeResult,
-    RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest, SyncDesiredState,
+    IngestTextRequest, ListHistoryRequest, RebroadcastEventRequest, SendFileRequest,
+    SyncDesiredState,
 };
 
 pub(crate) enum ControlCommand {
@@ -24,11 +24,11 @@ pub(crate) enum ControlCommand {
         reply: oneshot::Sender<AppResult<AppServiceSnapshot>>,
     },
 
-    ApplyLocalClipboardChange {
-        request: LocalClipboardChangeRequest,
-        reply: oneshot::Sender<AppResult<LocalClipboardChangeResult>>,
+    IngestTextEvent {
+        request: IngestTextRequest,
+        reply: oneshot::Sender<AppResult<()>>,
     },
-    ApplyHistoryEntryToClipboard {
+    WriteEventToClipboard {
         event_id: EventId,
         reply: oneshot::Sender<AppResult<()>>,
     },
@@ -36,16 +36,12 @@ pub(crate) enum ControlCommand {
         request: ListHistoryRequest,
         reply: oneshot::Sender<AppResult<HistoryPage>>,
     },
-    RebroadcastHistoryEntry {
-        request: RebroadcastHistoryRequest,
+    RebroadcastEvent {
+        request: RebroadcastEventRequest,
         reply: oneshot::Sender<AppResult<()>>,
     },
-    StoreRemoteText {
-        request: RemoteTextRequest,
-        reply: oneshot::Sender<AppResult<()>>,
-    },
-    WriteRemoteTextToClipboard {
-        request: RemoteTextRequest,
+    SetLocalWatchEnabled {
+        enabled: bool,
         reply: oneshot::Sender<AppResult<()>>,
     },
 
@@ -63,5 +59,11 @@ pub(crate) enum ControlCommand {
     },
     SubscribeLocalClipboard {
         reply: oneshot::Sender<AppResult<LocalClipboardSubscription>>,
+    },
+    InternalLocalClipboardObserved {
+        observed: LocalClipboardObserved,
+    },
+    InternalSyncEvent {
+        event: nooboard_sync::SyncEvent,
     },
 }

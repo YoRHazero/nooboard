@@ -99,6 +99,14 @@ impl StorageRuntime {
         .await
     }
 
+    pub(crate) async fn get_event_by_id(&self, event_id: Uuid) -> AppResult<Option<HistoryRecord>> {
+        self.request(
+            |reply| StorageCommand::GetEventById { event_id, reply },
+            "get_event_by_id",
+        )
+        .await
+    }
+
     pub(crate) async fn shutdown(&self) -> AppResult<()> {
         let worker = {
             let mut guard = match self.worker.lock() {

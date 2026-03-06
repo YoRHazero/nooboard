@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use tokio::sync::broadcast;
 
-use super::{EventId, NoobId, TransferUpdate};
+use super::{EventId, NoobId, TextSource, TransferUpdate};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventStream {
@@ -36,6 +36,13 @@ pub enum SyncEvent {
 pub enum AppEvent {
     Sync(SyncEvent),
     Transfer(TransferUpdate),
+    TextIngested {
+        event_id: EventId,
+        origin_noob_id: NoobId,
+        origin_device_id: String,
+        source: TextSource,
+        created_at_ms: i64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

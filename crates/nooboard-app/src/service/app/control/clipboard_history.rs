@@ -2,69 +2,62 @@ use nooboard_sync::SendTextRequest;
 use tokio::sync::mpsc::error::TrySendError;
 
 use crate::service::types::{
-    BroadcastDropReason, BroadcastStatus, EventId, HistoryCursor, HistoryPage, HistoryRecord,
-    ListHistoryRequest, LocalClipboardChangeRequest, LocalClipboardChangeResult,
-    RebroadcastHistoryRequest, RemoteTextRequest, find_recent_record, now_millis_i64,
+    AppEvent, EventId, HistoryCursor, HistoryPage, HistoryRecord, IngestTextRequest,
+    ListHistoryRequest, RebroadcastEventRequest, now_millis_i64,
 };
 use crate::{AppError, AppResult};
 
 use super::state::ControlState;
 
-pub(super) async fn apply_local_clipboard_change(
+pub(super) async fn ingest_text_event(
     state: &ControlState,
-    request: LocalClipboardChangeRequest,
-) -> AppResult<LocalClipboardChangeResult> {
-    let LocalClipboardChangeRequest {
+    request: IngestTextRequest,
+) -> AppResult<()> {
+    let IngestTextRequest {
         event_id,
-        text,
-        targets,
+        content,
+        origin_noob_id,
+        origin_device_id,
+        source,
     } = request;
     let now_ms = now_millis_i64();
 
-    let _ = state
+    let inserted = state
         .storage_runtime
         .append_text(
-            &text,
+            &content,
             Some(event_id.as_uuid()),
-            state.config.noob_id(),
-            Some(state.config.identity.device_id.as_str()),
+            Some(origin_noob_id.as_str()),
+            Some(origin_device_id.as_str()),
             now_ms,
             now_ms,
         )
         .await?;
 
-    let broadcast_status = if !targets.should_send() {
-        BroadcastStatus::NotRequested
-    } else if !state.config.sync.network.enabled {
-        BroadcastStatus::Dropped(BroadcastDropReason::NetworkDisabled)
-    } else {
-        try_send_sync_text_best_effort(
-            state,
-            SendTextRequest {
-                event_id: event_id.as_uuid().to_string(),
-                content: text,
-                targets: targets.to_sync_targets(),
-            },
-        )
-    };
+    if inserted {
+        state
+            .subscriptions
+            .publish_app_event(AppEvent::TextIngested {
+                event_id,
+                origin_noob_id,
+                origin_device_id,
+                source,
+                created_at_ms: now_ms,
+            })
+            .await;
+    }
 
-    Ok(LocalClipboardChangeResult {
-        event_id,
-        broadcast_status,
-    })
+    Ok(())
 }
 
-pub(super) async fn apply_history_entry_to_clipboard(
+pub(super) async fn write_event_to_clipboard(
     state: &ControlState,
     event_id: EventId,
 ) -> AppResult<()> {
-    let recent_limit = state.config.recent_event_lookup_limit();
-    let records = state
-        .storage_runtime
-        .list_history(recent_limit, None)
-        .await?;
-    let record = find_recent_record(records, event_id, recent_limit)?;
-    state.clipboard.write_text(&record.content)
+    let record = load_record_by_event_id(state, event_id).await?;
+    state
+        .clipboard
+        .write_text_with_event(event_id, &record.content)
 }
 
 pub(super) async fn list_history(
@@ -88,9 +81,9 @@ pub(super) async fn list_history(
     })
 }
 
-pub(super) async fn rebroadcast_history_entry(
+pub(super) async fn rebroadcast_event(
     state: &ControlState,
-    request: RebroadcastHistoryRequest,
+    request: RebroadcastEventRequest,
 ) -> AppResult<()> {
     if !request.targets.should_send() {
         return Ok(());
@@ -100,61 +93,30 @@ pub(super) async fn rebroadcast_history_entry(
         return Err(AppError::SyncDisabled);
     }
 
-    let recent_limit = state.config.recent_event_lookup_limit();
-    let records = state
-        .storage_runtime
-        .list_history(recent_limit, None)
-        .await?;
-    let record = find_recent_record(records, request.event_id, recent_limit)?;
-
+    let record = load_record_by_event_id(state, request.event_id).await?;
     let sync_request = SendTextRequest {
         event_id: uuid::Uuid::from_bytes(record.event_id).to_string(),
         content: record.content,
         targets: request.targets.to_sync_targets(),
     };
-    try_send_sync_text_strict(state, sync_request)
+    send_sync_text_strict(state, sync_request)
 }
 
-pub(super) async fn store_remote_text(
+async fn load_record_by_event_id(
     state: &ControlState,
-    request: RemoteTextRequest,
-) -> AppResult<()> {
-    let now_ms = now_millis_i64();
-    let _ = state
+    event_id: EventId,
+) -> AppResult<nooboard_storage::HistoryRecord> {
+    state
         .storage_runtime
-        .append_text(
-            &request.content,
-            Some(request.event_id.as_uuid()),
-            Some(request.noob_id.as_str()),
-            Some(request.device_id.as_str()),
-            now_ms,
-            now_ms,
-        )
-        .await?;
-    Ok(())
+        .get_event_by_id(event_id.as_uuid())
+        .await?
+        .ok_or(AppError::EventNotFound {
+            event_id: event_id.to_string(),
+        })
 }
 
-pub(super) async fn write_remote_text_to_clipboard(
-    state: &ControlState,
-    request: RemoteTextRequest,
-) -> AppResult<()> {
-    state.clipboard.write_text(&request.content)
-}
-
-fn try_send_sync_text_best_effort(
-    state: &ControlState,
-    sync_request: SendTextRequest,
-) -> BroadcastStatus {
-    let text_tx = match state.sync_runtime.text_sender() {
-        Ok(tx) => tx,
-        Err(AppError::EngineNotRunning) => {
-            return BroadcastStatus::Dropped(BroadcastDropReason::EngineNotRunning);
-        }
-        Err(_) => {
-            return BroadcastStatus::Dropped(BroadcastDropReason::QueueClosed);
-        }
-    };
-
+fn send_sync_text_strict(state: &ControlState, sync_request: SendTextRequest) -> AppResult<()> {
+    let text_tx = state.sync_runtime.text_sender()?;
     let connected_peer_ids = state
         .sync_runtime
         .connected_peers()
@@ -162,45 +124,31 @@ fn try_send_sync_text_best_effort(
         .map(|peer| peer.peer_noob_id)
         .collect::<Vec<_>>();
     if !has_eligible_peer(&connected_peer_ids, sync_request.targets.as_deref()) {
-        return BroadcastStatus::Dropped(BroadcastDropReason::NoEligiblePeer);
+        return Ok(());
     }
 
     match text_tx.try_send(sync_request) {
-        Ok(()) => BroadcastStatus::Sent,
-        Err(TrySendError::Full(_)) => BroadcastStatus::Dropped(BroadcastDropReason::QueueFull),
-        Err(TrySendError::Closed(_)) => BroadcastStatus::Dropped(BroadcastDropReason::QueueClosed),
-    }
-}
-
-fn try_send_sync_text_strict(state: &ControlState, sync_request: SendTextRequest) -> AppResult<()> {
-    match try_send_sync_text_best_effort(state, sync_request) {
-        BroadcastStatus::Sent => Ok(()),
-        BroadcastStatus::Dropped(BroadcastDropReason::NoEligiblePeer) => Ok(()),
-        BroadcastStatus::Dropped(BroadcastDropReason::EngineNotRunning) => {
-            Err(AppError::EngineNotRunning)
-        }
-        BroadcastStatus::Dropped(BroadcastDropReason::QueueFull) => Err(AppError::ChannelClosed(
+        Ok(()) => Ok(()),
+        Err(TrySendError::Full(_)) => Err(AppError::ChannelClosed(
             "sync text_tx queue is full".to_string(),
         )),
-        BroadcastStatus::Dropped(BroadcastDropReason::QueueClosed) => Err(AppError::ChannelClosed(
+        Err(TrySendError::Closed(_)) => Err(AppError::ChannelClosed(
             "sync text_tx is closed".to_string(),
         )),
-        BroadcastStatus::Dropped(BroadcastDropReason::NetworkDisabled)
-        | BroadcastStatus::NotRequested => Ok(()),
     }
 }
 
-fn has_eligible_peer(connected_peer_ids: &[String], targets: Option<&[String]>) -> bool {
-    if connected_peer_ids.is_empty() {
+fn has_eligible_peer(connected_peer_noob_ids: &[String], targets: Option<&[String]>) -> bool {
+    if connected_peer_noob_ids.is_empty() {
         return false;
     }
 
     match targets {
         None => true,
         Some(targets) => targets.iter().any(|target| {
-            connected_peer_ids
+            connected_peer_noob_ids
                 .iter()
-                .any(|peer_id| peer_id == target.trim())
+                .any(|peer_noob_id| peer_noob_id == target.trim())
         }),
     }
 }

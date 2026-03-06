@@ -6,10 +6,7 @@ mod identity;
 mod network;
 mod time;
 
-pub use clipboard::{
-    BroadcastDropReason, BroadcastStatus, LocalClipboardChangeRequest, LocalClipboardChangeResult,
-    RebroadcastHistoryRequest, RemoteTextRequest,
-};
+pub use clipboard::{IngestTextRequest, RebroadcastEventRequest, TextSource};
 pub use events::{
     AppEvent, EventStream, EventSubscription, EventSubscriptionItem, SubscriptionCloseReason,
     SubscriptionLifecycle, SyncEvent,
@@ -17,7 +14,6 @@ pub use events::{
 pub use file_transfer::{
     FileDecisionRequest, SendFileRequest, TransferDirection, TransferState, TransferUpdate,
 };
-pub(crate) use history::find_recent_record;
 pub use history::{HistoryCursor, HistoryPage, HistoryRecord, ListHistoryRequest};
 pub use identity::{EventId, NoobId, Targets};
 pub use network::{

@@ -1,7 +1,5 @@
 use nooboard_storage::HistoryCursor as StorageHistoryCursor;
 
-use crate::{AppError, AppResult};
-
 use super::EventId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,19 +37,4 @@ pub struct HistoryPage {
 pub struct ListHistoryRequest {
     pub limit: usize,
     pub cursor: Option<HistoryCursor>,
-}
-
-pub(crate) fn find_recent_record(
-    records: Vec<nooboard_storage::HistoryRecord>,
-    event_id: EventId,
-    recent_limit: usize,
-) -> AppResult<nooboard_storage::HistoryRecord> {
-    let target = *event_id.as_uuid().as_bytes();
-    records
-        .into_iter()
-        .find(|record| record.event_id == target)
-        .ok_or(AppError::NotFoundInRecentWindow {
-            event_id: event_id.to_string(),
-            limit: recent_limit,
-        })
 }

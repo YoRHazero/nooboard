@@ -28,8 +28,8 @@
 4. 持久化策略：修改配置文件后调用 `restart_engine` 应用变更。
 
 ## 3. 关键技术决策
-1. `node_id` 与 `device_id` 分离：
-   1. `node_id` 用于连接去重与路由。
+1. `noob_id` 与 `device_id` 分离：
+   1. `noob_id` 用于连接去重与路由。
    2. `device_id` 为人类可读标识，不要求唯一。
 2. 配置变更统一走“配置事务”流程：
    1. 读取配置。
@@ -132,7 +132,7 @@ max_packet_size = 8388608
    6. `accept_remote_text_to_clipboard(remote_text)`
 3. 文件业务
    1. `send_file(path, targets)`
-   2. `respond_file_decision(peer_node_id, transfer_id, accept, reason)`
+   2. `respond_file_decision(peer_noob_id, transfer_id, accept, reason)`
    3. `subscribe_transfer_updates()`
 4. 广播配置业务
    1. `set_mdns_enabled(enabled)`

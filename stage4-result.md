@@ -241,7 +241,7 @@ pub trait AppService {
 
 请求：
 
-1. `peer_node_id`
+1. `peer_noob_id`
 2. `transfer_id`
 3. `accept`
 4. `reason`
@@ -272,15 +272,15 @@ pub trait AppService {
 2. 支持 `EventId::new()`
 3. 支持 `TryFrom<&str>`（无效字符串返回 `InvalidEventId`）
 
-`NodeId`：
+`NoobId`：
 
 1. 字符串封装
-2. `NodeId::new(...)` / `as_str()`
+2. `NoobId::new(...)` / `as_str()`
 
 `Targets`：
 
 1. `All`
-2. `Nodes(Vec<NodeId>)`
+2. `Nodes(Vec<NoobId>)`
 
 `Nodes` 在发送前会做 trim、去空字符串、去重。
 
@@ -304,7 +304,7 @@ pub trait AppService {
 `TransferUpdate`：
 
 1. `transfer_id`
-2. `peer_node_id`
+2. `peer_noob_id`
 3. `direction`（`Incoming | Outgoing`）
 4. `state`
 
@@ -357,7 +357,7 @@ pub trait AppService {
 4. `to_storage_config()`
 5. `to_sync_config()`
 6. `recent_event_lookup_limit()`
-7. `node_id()`
+7. `noob_id()`
 8. `regenerate_node_id(config_path)`
 
 ## 6.1 常量
@@ -371,7 +371,7 @@ pub trait AppService {
 
 1. 解析 TOML
 2. 将相对路径转成配置文件目录下绝对路径（`identity.noob_id_file`、`storage.db_root`、`sync.file.download_dir`）
-3. 读取或初始化 `node_id` 文件
+3. 读取或初始化 `noob_id` 文件
 4. 执行校验
 
 ## 6.3 校验规则（摘要）

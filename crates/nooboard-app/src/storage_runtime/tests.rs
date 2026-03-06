@@ -71,6 +71,14 @@ async fn append_and_list_history_roundtrip() {
     assert_eq!(records[0].content, "alpha");
     assert_eq!(records[0].origin_noob_id, "noob-a");
     assert_eq!(records[0].origin_device_id, "device-a");
+
+    let loaded = runtime
+        .get_event_by_id(event_id)
+        .await
+        .expect("get by id")
+        .expect("record exists");
+    assert_eq!(Uuid::from_bytes(loaded.event_id), event_id);
+    assert_eq!(loaded.content, "alpha");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

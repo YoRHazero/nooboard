@@ -5,7 +5,7 @@ use crate::clipboard_runtime::ClipboardRuntime;
 use crate::config::AppConfig;
 use crate::service::events::SubscriptionHub;
 use crate::service::types::{
-    AppServiceSnapshot, ConnectedPeer, StorageConfigView, SyncDesiredState,
+    AppServiceSnapshot, ConnectedPeer, NoobId, StorageConfigView, SyncDesiredState,
 };
 use crate::storage_runtime::StorageRuntime;
 use crate::sync_runtime::SyncRuntime;
@@ -42,6 +42,7 @@ impl ControlState {
 
     pub(super) fn snapshot(&self) -> AppServiceSnapshot {
         AppServiceSnapshot {
+            local_noob_id: NoobId::new(self.config.noob_id().unwrap_or_default().to_string()),
             desired_state: self.desired_state,
             actual_sync_status: self.sync_runtime.status().into(),
             connected_peers: self

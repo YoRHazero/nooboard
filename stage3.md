@@ -67,7 +67,7 @@ pub enum Packet {
 pub enum HandshakePacket {
     Hello {
         protocol_version: u16,
-        node_id: String,
+        noob_id: String,
     },
     Challenge { nonce: String },
     AuthResponse { hash: String },
@@ -108,7 +108,7 @@ pub enum DataPacket {
 ```
 
 ### 3.4 握手与认证
-1. 连接建立后，客户端先发 `HandshakePacket::Hello { protocol_version, node_id }`。
+1. 连接建立后，客户端先发 `HandshakePacket::Hello { protocol_version, noob_id }`。
 2. 服务端首先校验 `protocol_version`，不匹配立即断开，不进入数据层处理。
 3. 服务端生成单次 `nonce` 并发送 `Challenge`。
 4. 服务端将 `nonce` 与当前 socket 绑定并放入 `pending_challenges`，附带超时信息。
@@ -118,9 +118,9 @@ pub enum DataPacket {
 
 ### 3.5 连接建立与去重
 1. 支持 mDNS 自动发现与手动 peer（地址:端口）并存。
-2. mDNS 记录携带 `node_id`。
-3. 强约束：连接去重规则固定为 `node_id` 小的节点主动连接 `node_id` 大的节点。
-4. 若 `node_id` 相同，视为冲突，拒绝连接并记录错误。
+2. mDNS 记录携带 `noob_id`。
+3. 强约束：连接去重规则固定为 `noob_id` 小的节点主动连接 `noob_id` 大的节点。
+4. 若 `noob_id` 相同，视为冲突，拒绝连接并记录错误。
 
 ### 3.6 调度与流控（Traffic Shaping）
 1. 通道分离：`Control Queue` 产生 `Packet::Handshake`、`Packet::Ping/Pong`；`Data Queue` 产生 `Packet::Data(...)`（文本与文件块）。
@@ -211,7 +211,7 @@ pub enum SyncEvent {
 2. 两台设备可同时进行文本同步和文件传输。
 3. 握手阶段必须严格校验 `protocol_version`，版本不一致立即断开。
 4. 强约束（更新）：未完成握手认证前，只允许 `Packet::Handshake(...)`；收到 `Ping/Pong/Data` 必须直接拒绝并断开。
-5. 强约束：mDNS 去重按 `node_id` 小连大规则执行，且可在自动发现与手动 peer 并存场景下稳定去重。
+5. 强约束：mDNS 去重按 `noob_id` 小连大规则执行，且可在自动发现与手动 peer 并存场景下稳定去重。
 6. 强约束：Challenge 必须与 socket 绑定，且在成功/失败/超时三种路径都能释放内存。
 7. 强约束：离线期间不缓存待补发事件，重连后只同步新事件。
 8. 强约束：`FileStart` 后必须收到 `FileDecision { accept: true }` 才允许发送 `FileChunk`/`FileEnd`。

@@ -34,8 +34,8 @@ pub enum AppError {
     SyncDisabled,
     #[error("sync channel closed: {0}")]
     ChannelClosed(String),
-    #[error("history event `{event_id}` was not found in latest {limit} records")]
-    NotFoundInRecentWindow { event_id: String, limit: usize },
+    #[error("history event `{event_id}` was not found")]
+    EventNotFound { event_id: String },
     #[error("invalid event id `{event_id}`: expected UUID string")]
     InvalidEventId { event_id: String },
     #[error("manual peer `{peer}` already exists")]

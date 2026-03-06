@@ -70,6 +70,7 @@ pub enum SyncDesiredState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppServiceSnapshot {
+    pub local_noob_id: NoobId,
     pub desired_state: SyncDesiredState,
     pub actual_sync_status: AppSyncStatus,
     pub connected_peers: Vec<ConnectedPeer>,

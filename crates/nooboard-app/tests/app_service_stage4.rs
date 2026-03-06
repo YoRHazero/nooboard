@@ -3,11 +3,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use nooboard_app::{
-    AppConfig, AppError, AppEvent, AppPatch, AppResult, AppService, AppServiceImpl,
-    BroadcastDropReason, BroadcastStatus, ClipboardPort, EventId, EventSubscriptionItem,
-    FileDecisionRequest, ListHistoryRequest, LocalClipboardChangeRequest, NetworkPatch, NoobId,
-    RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest, SubscriptionCloseReason,
-    SubscriptionLifecycle, SyncDesiredState, SyncEvent, Targets, TransferState,
+    AppConfig, AppError, AppEvent, AppPatch, AppResult, AppService, AppServiceImpl, ClipboardPort,
+    EventId, EventSubscriptionItem, FileDecisionRequest, IngestTextRequest, ListHistoryRequest,
+    NetworkPatch, NoobId, RebroadcastEventRequest, SendFileRequest, SubscriptionCloseReason,
+    SubscriptionLifecycle, SyncDesiredState, SyncEvent, Targets, TextSource, TransferState,
 };
 use tempfile::TempDir;
 use tokio::time::{Duration, Instant, timeout};
@@ -161,6 +160,43 @@ fn new_service_with_network(
     Ok((service, backend, dir, config_path))
 }
 
+async fn ingest_local_manual(
+    service: &impl AppService,
+    event_id: EventId,
+    content: impl Into<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let local_noob_id = service.snapshot().await?.local_noob_id;
+    service
+        .ingest_text_event(IngestTextRequest {
+            event_id,
+            content: content.into(),
+            origin_noob_id: local_noob_id,
+            origin_device_id: "test-device".to_string(),
+            source: TextSource::LocalManual,
+        })
+        .await?;
+    Ok(())
+}
+
+async fn ingest_remote_sync(
+    service: &impl AppService,
+    event_id: EventId,
+    content: impl Into<String>,
+    origin_noob_id: &str,
+    origin_device_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    service
+        .ingest_text_event(IngestTextRequest {
+            event_id,
+            content: content.into(),
+            origin_noob_id: NoobId::new(origin_noob_id),
+            origin_device_id: origin_device_id.to_string(),
+            source: TextSource::RemoteSync,
+        })
+        .await?;
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn clipboard_flow_covers_a1_a2_a3_a4() -> Result<(), Box<dyn std::error::Error>> {
     let (service, backend, _dir, _config_path) = new_service(50)?;
@@ -168,18 +204,8 @@ async fn clipboard_flow_covers_a1_a2_a3_a4() -> Result<(), Box<dyn std::error::E
         .set_sync_desired_state(SyncDesiredState::Running)
         .await?;
 
-    let result = service
-        .apply_local_clipboard_change(LocalClipboardChangeRequest {
-            event_id: EventId::new(),
-            text: "alpha".to_string(),
-            targets: Targets::all(),
-        })
-        .await?;
-    assert_eq!(
-        result.broadcast_status,
-        BroadcastStatus::Dropped(BroadcastDropReason::NoEligiblePeer)
-    );
-    let event_id = result.event_id;
+    let event_id = EventId::new();
+    ingest_local_manual(&service, event_id, "alpha").await?;
 
     let history = service
         .list_history(ListHistoryRequest {
@@ -191,11 +217,11 @@ async fn clipboard_flow_covers_a1_a2_a3_a4() -> Result<(), Box<dyn std::error::E
     assert_eq!(history.records[0].event_id, event_id);
     assert_eq!(history.records[0].content, "alpha");
 
-    service.apply_history_entry_to_clipboard(event_id).await?;
+    service.write_event_to_clipboard(event_id).await?;
     assert_eq!(backend.last_written().as_deref(), Some("alpha"));
 
     service
-        .rebroadcast_history_entry(RebroadcastHistoryRequest {
+        .rebroadcast_event(RebroadcastEventRequest {
             event_id,
             targets: Targets::nodes(vec![NoobId::new("peer-node-x")]),
         })
@@ -218,17 +244,8 @@ async fn local_clipboard_change_succeeds_when_network_disabled()
         .apply_config_patch(AppPatch::Network(NetworkPatch::SetNetworkEnabled(false)))
         .await?;
 
-    let result = service
-        .apply_local_clipboard_change(LocalClipboardChangeRequest {
-            event_id: EventId::new(),
-            text: "offline-local".to_string(),
-            targets: Targets::all(),
-        })
-        .await?;
-    assert_eq!(
-        result.broadcast_status,
-        BroadcastStatus::Dropped(BroadcastDropReason::NetworkDisabled)
-    );
+    let event_id = EventId::new();
+    ingest_local_manual(&service, event_id, "offline-local").await?;
 
     let history = service
         .list_history(ListHistoryRequest {
@@ -237,8 +254,51 @@ async fn local_clipboard_change_succeeds_when_network_disabled()
         })
         .await?;
     assert_eq!(history.records.len(), 1);
-    assert_eq!(history.records[0].event_id, result.event_id);
+    assert_eq!(history.records[0].event_id, event_id);
     assert_eq!(history.records[0].content, "offline-local");
+
+    service
+        .set_sync_desired_state(SyncDesiredState::Stopped)
+        .await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ingest_emits_text_ingested_event() -> Result<(), Box<dyn std::error::Error>> {
+    let (service, _backend, _dir, _config_path) = new_service(50)?;
+    service
+        .set_sync_desired_state(SyncDesiredState::Running)
+        .await?;
+    let mut subscription = service.subscribe_events().await?;
+    let _ = subscription.recv().await?;
+
+    let event_id = EventId::new();
+    ingest_local_manual(&service, event_id, "ingested-event").await?;
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut observed = false;
+    while Instant::now() < deadline {
+        let remain = deadline.saturating_duration_since(Instant::now());
+        if remain.is_zero() {
+            break;
+        }
+        let item = timeout(remain, subscription.recv()).await??;
+        if let EventSubscriptionItem::Event {
+            event:
+                AppEvent::TextIngested {
+                    event_id: observed_id,
+                    source: TextSource::LocalManual,
+                    ..
+                },
+            ..
+        } = item
+            && observed_id == event_id
+        {
+            observed = true;
+            break;
+        }
+    }
+    assert!(observed, "must observe TextIngested after ingest");
 
     service
         .set_sync_desired_state(SyncDesiredState::Stopped)
@@ -265,17 +325,7 @@ async fn queued_local_change_is_not_dispatched_after_engine_start()
     let mut receiver_b = service_b.subscribe_events().await?;
 
     let marker = "queued-before-start";
-    let result = service_a
-        .apply_local_clipboard_change(LocalClipboardChangeRequest {
-            event_id: EventId::new(),
-            text: marker.to_string(),
-            targets: Targets::all(),
-        })
-        .await?;
-    assert_eq!(
-        result.broadcast_status,
-        BroadcastStatus::Dropped(BroadcastDropReason::EngineNotRunning)
-    );
+    ingest_local_manual(&service_a, EventId::new(), marker).await?;
 
     service_a
         .set_sync_desired_state(SyncDesiredState::Running)
@@ -336,14 +386,14 @@ async fn disabled_network_fails_send_usecases_fast() -> Result<(), Box<dyn std::
         .await?;
 
     let event_id = EventId::new();
-    service
-        .store_remote_text(RemoteTextRequest {
-            event_id,
-            content: "stored-before-disable".to_string(),
-            noob_id: "remote-a".to_string(),
-            device_id: "remote-a".to_string(),
-        })
-        .await?;
+    ingest_remote_sync(
+        &service,
+        event_id,
+        "stored-before-disable",
+        "remote-a",
+        "remote-a",
+    )
+    .await?;
     service
         .apply_config_patch(AppPatch::Network(NetworkPatch::SetNetworkEnabled(false)))
         .await?;
@@ -370,7 +420,7 @@ async fn disabled_network_fails_send_usecases_fast() -> Result<(), Box<dyn std::
     assert!(matches!(decision_result, Err(AppError::SyncDisabled)));
 
     let rebroadcast_result = service
-        .rebroadcast_history_entry(RebroadcastHistoryRequest {
+        .rebroadcast_event(RebroadcastEventRequest {
             event_id,
             targets: Targets::all(),
         })
@@ -384,63 +434,40 @@ async fn disabled_network_fails_send_usecases_fast() -> Result<(), Box<dyn std::
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn recent_window_not_found_returns_business_error() -> Result<(), Box<dyn std::error::Error>>
-{
+async fn missing_event_returns_business_error() -> Result<(), Box<dyn std::error::Error>> {
     let (service, _backend, _dir, _config_path) = new_service(1)?;
 
-    let old_event_id = EventId::from(uuid::Uuid::now_v7());
-    let new_event_id = EventId::from(uuid::Uuid::now_v7());
-
-    service
-        .store_remote_text(RemoteTextRequest {
-            event_id: old_event_id,
-            content: "old".to_string(),
-            noob_id: "remote-a".to_string(),
-            device_id: "remote-a".to_string(),
-        })
-        .await?;
-    service
-        .store_remote_text(RemoteTextRequest {
-            event_id: new_event_id,
-            content: "new".to_string(),
-            noob_id: "remote-b".to_string(),
-            device_id: "remote-b".to_string(),
-        })
-        .await?;
-
-    let apply_result = service.apply_history_entry_to_clipboard(old_event_id).await;
-    assert!(matches!(
-        apply_result,
-        Err(AppError::NotFoundInRecentWindow { .. })
-    ));
+    let missing_event_id = EventId::new();
+    let apply_result = service.write_event_to_clipboard(missing_event_id).await;
+    assert!(matches!(apply_result, Err(AppError::EventNotFound { .. })));
 
     let rebroadcast_result = service
-        .rebroadcast_history_entry(RebroadcastHistoryRequest {
-            event_id: old_event_id,
+        .rebroadcast_event(RebroadcastEventRequest {
+            event_id: missing_event_id,
             targets: Targets::nodes(vec![NoobId::new("peer-node-y")]),
         })
         .await;
     assert!(matches!(
         rebroadcast_result,
-        Err(AppError::NotFoundInRecentWindow { .. })
+        Err(AppError::EventNotFound { .. })
     ));
 
     Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn remote_storage_and_clipboard_apis_are_decoupled() -> Result<(), Box<dyn std::error::Error>>
-{
+async fn write_event_to_clipboard_reads_from_storage() -> Result<(), Box<dyn std::error::Error>> {
     let (service, backend, _dir, _config_path) = new_service(50)?;
+    let event_id = EventId::new();
 
-    service
-        .store_remote_text(RemoteTextRequest {
-            event_id: EventId::new(),
-            content: "from-remote-storage".to_string(),
-            noob_id: "remote-node".to_string(),
-            device_id: "remote-node".to_string(),
-        })
-        .await?;
+    ingest_remote_sync(
+        &service,
+        event_id,
+        "from-remote-storage",
+        "remote-node",
+        "remote-node",
+    )
+    .await?;
 
     let before = service
         .list_history(ListHistoryRequest {
@@ -450,14 +477,7 @@ async fn remote_storage_and_clipboard_apis_are_decoupled() -> Result<(), Box<dyn
         .await?;
     assert_eq!(before.records.len(), 1);
 
-    service
-        .write_remote_text_to_clipboard(RemoteTextRequest {
-            event_id: EventId::new(),
-            content: "from-remote-clipboard".to_string(),
-            noob_id: "remote-node".to_string(),
-            device_id: "remote-node".to_string(),
-        })
-        .await?;
+    service.write_event_to_clipboard(event_id).await?;
 
     let after = service
         .list_history(ListHistoryRequest {
@@ -468,7 +488,7 @@ async fn remote_storage_and_clipboard_apis_are_decoupled() -> Result<(), Box<dyn
     assert_eq!(after.records.len(), 1);
     assert_eq!(
         backend.last_written().as_deref(),
-        Some("from-remote-clipboard")
+        Some("from-remote-storage")
     );
     Ok(())
 }
@@ -675,15 +695,17 @@ async fn transfer_events_do_not_break_sync_event_bridge() -> Result<(), Box<dyn 
                 }
             }
             AppEvent::Sync(_) => {}
+            AppEvent::TextIngested { .. } => {}
         }
     }
     assert!(transfer_finished, "must observe transfer finished event");
 
     let marker = "after-transfer";
+    let marker_event_id = EventId::new();
+    ingest_local_manual(&service_a, marker_event_id, marker).await?;
     service_a
-        .apply_local_clipboard_change(LocalClipboardChangeRequest {
-            event_id: EventId::new(),
-            text: marker.to_string(),
+        .rebroadcast_event(RebroadcastEventRequest {
+            event_id: marker_event_id,
             targets: Targets::all(),
         })
         .await?;
@@ -733,13 +755,7 @@ async fn repeated_subscribe_uses_shared_hub() -> Result<(), Box<dyn std::error::
         drop(receiver);
     }
 
-    service
-        .apply_local_clipboard_change(LocalClipboardChangeRequest {
-            event_id: EventId::new(),
-            text: "ping".to_string(),
-            targets: Targets::all(),
-        })
-        .await?;
+    ingest_local_manual(&service, EventId::new(), "ping").await?;
 
     let mut receiver = service.subscribe_events().await?;
     assert!(matches!(
@@ -928,10 +944,11 @@ async fn restart_rebinds_old_stream_and_keeps_new_stream_usable()
     );
 
     let marker = format!("post-restart-{new_session_id}");
+    let marker_event_id = EventId::new();
+    ingest_local_manual(&service_a, marker_event_id, marker.clone()).await?;
     service_a
-        .apply_local_clipboard_change(LocalClipboardChangeRequest {
-            event_id: EventId::new(),
-            text: marker.clone(),
+        .rebroadcast_event(RebroadcastEventRequest {
+            event_id: marker_event_id,
             targets: Targets::all(),
         })
         .await?;

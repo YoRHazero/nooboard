@@ -66,6 +66,13 @@ pub(super) fn run_actor(
                     .map_err(Into::into);
                 let _ = reply.send(result);
             }
+            StorageCommand::GetEventById { event_id, reply } => {
+                let result = state
+                    .repository
+                    .get_event_by_id(event_id)
+                    .map_err(Into::into);
+                let _ = reply.send(result);
+            }
             StorageCommand::Shutdown => break,
         }
     }

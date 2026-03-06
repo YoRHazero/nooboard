@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use nooboard_app::{
     AppConfig, AppError, AppPatch, AppResult, AppService, AppServiceImpl, AppSyncStatus,
-    ClipboardPort, EventId, ListHistoryRequest, NetworkPatch, RemoteTextRequest, StoragePatch,
-    SyncDesiredState,
+    ClipboardPort, EventId, IngestTextRequest, ListHistoryRequest, NetworkPatch, NoobId,
+    StoragePatch, SyncDesiredState, TextSource,
 };
 use tempfile::TempDir;
 
@@ -104,6 +104,25 @@ fn new_service(
     Ok((service, dir, config_path))
 }
 
+async fn ingest_remote_sync(
+    service: &impl AppService,
+    event_id: EventId,
+    content: impl Into<String>,
+    origin_noob_id: &str,
+    origin_device_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    service
+        .ingest_text_event(IngestTextRequest {
+            event_id,
+            content: content.into(),
+            origin_noob_id: NoobId::new(origin_noob_id),
+            origin_device_id: origin_device_id.to_string(),
+            source: TextSource::RemoteSync,
+        })
+        .await?;
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn storage_patch_switches_active_database() -> Result<(), Box<dyn std::error::Error>> {
     let root = TempDir::new()?;
@@ -111,14 +130,7 @@ async fn storage_patch_switches_active_database() -> Result<(), Box<dyn std::err
     let db_b = root.path().join("db-b");
     let (service, _dir, config_path) = new_service(&db_a)?;
 
-    service
-        .store_remote_text(RemoteTextRequest {
-            event_id: EventId::new(),
-            content: "from-a".to_string(),
-            noob_id: "remote-a".to_string(),
-            device_id: "remote-a".to_string(),
-        })
-        .await?;
+    ingest_remote_sync(&service, EventId::new(), "from-a", "remote-a", "remote-a").await?;
     let before = service
         .list_history(ListHistoryRequest {
             limit: 10,
@@ -144,14 +156,7 @@ async fn storage_patch_switches_active_database() -> Result<(), Box<dyn std::err
         .await?;
     assert!(after_switch.records.is_empty());
 
-    service
-        .store_remote_text(RemoteTextRequest {
-            event_id: EventId::new(),
-            content: "from-b".to_string(),
-            noob_id: "remote-b".to_string(),
-            device_id: "remote-b".to_string(),
-        })
-        .await?;
+    ingest_remote_sync(&service, EventId::new(), "from-b", "remote-b", "remote-b").await?;
     let b_records = service
         .list_history(ListHistoryRequest {
             limit: 10,
@@ -209,14 +214,14 @@ async fn storage_patch_resolves_relative_db_root_from_config_dir()
         .await?;
     assert_eq!(applied.storage.db_root, expected_db_root);
 
-    service
-        .store_remote_text(RemoteTextRequest {
-            event_id: EventId::new(),
-            content: "from-relative".to_string(),
-            noob_id: "remote-a".to_string(),
-            device_id: "remote-a".to_string(),
-        })
-        .await?;
+    ingest_remote_sync(
+        &service,
+        EventId::new(),
+        "from-relative",
+        "remote-a",
+        "remote-a",
+    )
+    .await?;
 
     let before_restart = service
         .list_history(ListHistoryRequest {
@@ -259,14 +264,7 @@ async fn network_patch_does_not_reconfigure_storage_runtime()
     let db_b = root.path().join("db-b");
     let (service, _dir, config_path) = new_service(&db_a)?;
 
-    service
-        .store_remote_text(RemoteTextRequest {
-            event_id: EventId::new(),
-            content: "from-a".to_string(),
-            noob_id: "remote-a".to_string(),
-            device_id: "remote-a".to_string(),
-        })
-        .await?;
+    ingest_remote_sync(&service, EventId::new(), "from-a", "remote-a", "remote-a").await?;
 
     let mut external_config = AppConfig::load(&config_path)?;
     external_config.storage.db_root = db_b;
@@ -298,14 +296,7 @@ async fn restart_engine_ignores_external_file_edits_without_patch()
     service
         .set_sync_desired_state(SyncDesiredState::Running)
         .await?;
-    service
-        .store_remote_text(RemoteTextRequest {
-            event_id: EventId::new(),
-            content: "from-a".to_string(),
-            noob_id: "remote-a".to_string(),
-            device_id: "remote-a".to_string(),
-        })
-        .await?;
+    ingest_remote_sync(&service, EventId::new(), "from-a", "remote-a", "remote-a").await?;
 
     let blocked_download_dir = root.path().join("blocked-download-dir");
     std::fs::write(&blocked_download_dir, b"occupied-by-file")?;
@@ -326,14 +317,14 @@ async fn restart_engine_ignores_external_file_edits_without_patch()
         "unexpected restart result: {restart_result:?}"
     );
 
-    service
-        .store_remote_text(RemoteTextRequest {
-            event_id: EventId::new(),
-            content: "after-failed-restart".to_string(),
-            noob_id: "remote-b".to_string(),
-            device_id: "remote-b".to_string(),
-        })
-        .await?;
+    ingest_remote_sync(
+        &service,
+        EventId::new(),
+        "after-failed-restart",
+        "remote-b",
+        "remote-b",
+    )
+    .await?;
 
     let records = service
         .list_history(ListHistoryRequest {
@@ -378,14 +369,14 @@ async fn set_sync_desired_state_running_is_idempotent() -> Result<(), Box<dyn st
     let snapshot = start_result?;
     assert_eq!(snapshot.desired_state, SyncDesiredState::Running);
 
-    service
-        .store_remote_text(RemoteTextRequest {
-            event_id: EventId::new(),
-            content: "after-already-running".to_string(),
-            noob_id: "remote-a".to_string(),
-            device_id: "remote-a".to_string(),
-        })
-        .await?;
+    ingest_remote_sync(
+        &service,
+        EventId::new(),
+        "after-already-running",
+        "remote-a",
+        "remote-a",
+    )
+    .await?;
     let records = service
         .list_history(ListHistoryRequest {
             limit: 10,
@@ -473,14 +464,14 @@ async fn network_patch_returns_config_rollback_failed_when_sync_rollback_fails()
         .set_sync_desired_state(SyncDesiredState::Running)
         .await?;
 
-    service
-        .store_remote_text(RemoteTextRequest {
-            event_id: EventId::new(),
-            content: "before-failure".to_string(),
-            noob_id: "remote-a".to_string(),
-            device_id: "remote-a".to_string(),
-        })
-        .await?;
+    ingest_remote_sync(
+        &service,
+        EventId::new(),
+        "before-failure",
+        "remote-a",
+        "remote-a",
+    )
+    .await?;
 
     let loaded = AppConfig::load(&config_path)?;
     let download_dir = loaded.sync.file.download_dir;

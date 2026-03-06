@@ -112,6 +112,18 @@ impl SubscriptionHub {
             close_session(active, reason).await;
         }
     }
+
+    pub(super) async fn publish_app_event(&self, event: AppEvent) {
+        let (session_id, events_tx) = {
+            let state = self.state.lock().await;
+            let Some(active) = state.active.as_ref() else {
+                return;
+            };
+            (active.session_id, active.events_tx.clone())
+        };
+
+        let _ = events_tx.send(EventSubscriptionItem::Event { session_id, event });
+    }
 }
 
 async fn close_session(active: ActiveSession, reason: SubscriptionCloseReason) {

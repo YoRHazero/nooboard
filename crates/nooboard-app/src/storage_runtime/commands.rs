@@ -23,5 +23,9 @@ pub(super) enum StorageCommand {
         cursor: Option<HistoryCursor>,
         reply: oneshot::Sender<AppResult<Vec<HistoryRecord>>>,
     },
+    GetEventById {
+        event_id: Uuid,
+        reply: oneshot::Sender<AppResult<Option<HistoryRecord>>>,
+    },
     Shutdown,
 }

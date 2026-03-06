@@ -491,7 +491,7 @@ struct UiStore {
     workspace_route: WorkspaceRoute,
     quick_panel_tab: QuickPanelTab,
     selected_history_event: Option<EventId>,
-    selected_peer_ids: Vec<NodeId>,
+    selected_peer_ids: Vec<NoobId>,
     clipboard_draft: String,
     quick_send_draft: String,
     workspace_visible: bool,

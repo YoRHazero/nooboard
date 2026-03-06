@@ -112,6 +112,20 @@ impl SqliteEventRepository {
         }
     }
 
+    pub fn get_event_by_id(
+        &self,
+        event_id: uuid::Uuid,
+    ) -> Result<Option<HistoryRecord>, StorageError> {
+        self.conn
+            .query_row(
+                &self.sql.select_event_by_id,
+                params![event_id.as_bytes().as_slice(), EventState::Active.as_str()],
+                map_history_row,
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
     pub fn search_history(
         &self,
         limit: usize,
@@ -360,6 +374,36 @@ mod tests {
         assert_eq!(records[0].created_at_ms, 200);
         assert_eq!(records[1].content, "first");
         assert_eq!(records[1].created_at_ms, 100);
+
+        let _ = fs::remove_dir_all(repository.storage.db_root.clone());
+        Ok(())
+    }
+
+    #[test]
+    fn get_event_by_id_returns_record() -> Result<(), StorageError> {
+        let mut repository =
+            SqliteEventRepository::open(make_config("get-by-id", LifecycleConfig::default(), 0))?;
+        repository.init_storage()?;
+
+        let event_id = uuid::Uuid::now_v7();
+        assert!(repository.append_text(
+            "record",
+            Some(event_id),
+            Some("noob-a"),
+            Some("device-a"),
+            100,
+            100
+        )?);
+
+        let record = repository
+            .get_event_by_id(event_id)?
+            .expect("record should exist");
+        assert_eq!(uuid::Uuid::from_bytes(record.event_id), event_id);
+        assert_eq!(record.content, "record");
+        assert_eq!(record.origin_noob_id, "noob-a");
+
+        let missing = repository.get_event_by_id(uuid::Uuid::now_v7())?;
+        assert!(missing.is_none());
 
         let _ = fs::remove_dir_all(repository.storage.db_root.clone());
         Ok(())

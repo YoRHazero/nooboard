@@ -19,7 +19,7 @@
 
 ### 3) mDNS 与去重
 - 新增 mDNS 发现实现。
-- 去重规则按 `node_id` 字典序：小连大（small connect large）。
+- 去重规则按 `noob_id` 字典序：小连大（small connect large）。
 
 ### 4) 文件传输状态机
 - 发送与接收严格遵循：
@@ -37,7 +37,7 @@
   - 调用方通过 `decision_tx` 回传 accept/reject
 
 ### 7) 控制通道（手动断连）
-- 新增 `SyncControlCommand::DisconnectPeer { peer_node_id }`。
+- 新增 `SyncControlCommand::DisconnectPeer { peer_noob_id }`。
 - `SyncEngineHandle` 暴露 `control_tx`，可手动断开指定 peer。
 
 ## 模块重构
