@@ -2,6 +2,7 @@ use super::{EventId, Targets};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalClipboardChangeRequest {
+    pub event_id: EventId,
     pub text: String,
     pub targets: Targets,
 }
@@ -38,5 +39,6 @@ pub struct RebroadcastHistoryRequest {
 pub struct RemoteTextRequest {
     pub event_id: EventId,
     pub content: String,
+    pub noob_id: String,
     pub device_id: String,
 }

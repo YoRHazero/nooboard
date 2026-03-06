@@ -50,24 +50,26 @@ impl WorkspaceView {
                 self.settings_page_state.storage_gc_batch_size.clone(),
             ))
             .child(
-                div()
-                    .pt(px(8.0))
-                    .child(
-                        self.settings_action_button(
-                            "settings-save-storage-patch",
-                            "Save Storage Patch",
-                            theme::accent_cyan(),
-                            cx,
-                        )
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.save_storage_patch(cx);
-                            })),
-                    ),
+                div().pt(px(8.0)).child(
+                    self.settings_action_button(
+                        "settings-save-storage-patch",
+                        "Save Storage Patch",
+                        theme::accent_cyan(),
+                        cx,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.save_storage_patch(cx);
+                    })),
+                ),
             )
     }
 
     fn settings_db_root_row(&self, cx: &mut Context<Self>) -> Div {
-        let folder_label = self.settings_page_state.storage_db_root.display().to_string();
+        let folder_label = self
+            .settings_page_state
+            .storage_db_root
+            .display()
+            .to_string();
 
         div()
             .v_flex()

@@ -1,6 +1,7 @@
 use tokio::sync::oneshot;
 
 use crate::AppResult;
+use crate::clipboard_runtime::LocalClipboardSubscription;
 use crate::service::types::{
     AppPatch, AppServiceSnapshot, EventId, EventSubscription, FileDecisionRequest, HistoryPage,
     ListHistoryRequest, LocalClipboardChangeRequest, LocalClipboardChangeResult,
@@ -59,5 +60,8 @@ pub(crate) enum ControlCommand {
 
     SubscribeEvents {
         reply: oneshot::Sender<AppResult<EventSubscription>>,
+    },
+    SubscribeLocalClipboard {
+        reply: oneshot::Sender<AppResult<LocalClipboardSubscription>>,
     },
 }

@@ -40,10 +40,10 @@ pub(super) fn schedule_connect_attempts(
         tokio::spawn(async move {
             let result = connect_outbound_peer(&config, &tls, target.clone()).await;
             match result {
-                Ok((peer_node_id, peer_device_id, framed)) => {
+                Ok((peer_noob_id, peer_device_id, framed)) => {
                     let _ = control_tx
                         .send(EngineControl::Connected {
-                            peer_node_id,
+                            peer_noob_id,
                             peer_device_id,
                             addr: target.addr,
                             outbound: true,
@@ -90,9 +90,9 @@ pub(super) async fn connect_outbound_peer(
     let tls_stream = tls.connect(stream, "nooboard.local").await?;
     let mut framed = framed_with_max_packet(tls_stream, config.max_packet_size);
 
-    let (peer_node_id, peer_device_id) =
-        perform_client_handshake(config, target.addr, &mut framed, target.expected_node_id).await?;
-    Ok((peer_node_id, peer_device_id, framed))
+    let (peer_noob_id, peer_device_id) =
+        perform_client_handshake(config, target.addr, &mut framed, target.expected_noob_id).await?;
+    Ok((peer_noob_id, peer_device_id, framed))
 }
 
 pub(super) async fn accept_inbound_peer(
@@ -113,9 +113,9 @@ pub(super) async fn accept_inbound_peer(
     let tls_stream = tls.accept(stream).await?;
     let mut framed = framed_with_max_packet(tls_stream, config.max_packet_size);
 
-    let (peer_node_id, peer_device_id) =
+    let (peer_noob_id, peer_device_id) =
         perform_server_handshake(config, socket_id, &challenge_registry, &mut framed).await?;
-    Ok((peer_node_id, peer_device_id, framed))
+    Ok((peer_noob_id, peer_device_id, framed))
 }
 
 pub(super) fn connection_direction_allowed(outbound: bool, decision: DedupeDecision) -> bool {

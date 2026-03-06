@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use nooboard_app::{
     AppConfig, AppError, AppEvent, AppPatch, AppResult, AppService, AppServiceImpl,
     BroadcastDropReason, BroadcastStatus, ClipboardPort, EventId, EventSubscriptionItem,
-    FileDecisionRequest, ListHistoryRequest, LocalClipboardChangeRequest, NetworkPatch, NodeId,
+    FileDecisionRequest, ListHistoryRequest, LocalClipboardChangeRequest, NetworkPatch, NoobId,
     RebroadcastHistoryRequest, RemoteTextRequest, SendFileRequest, SubscriptionCloseReason,
     SubscriptionLifecycle, SyncDesiredState, SyncEvent, Targets, TransferState,
 };
@@ -64,7 +64,7 @@ fn write_test_config(
     manual_peers: &[SocketAddr],
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let config_path = dir.path().join("app.toml");
-    let noob_id_file = dir.path().join("node_id");
+    let noob_id_file = dir.path().join("noob_id");
     let db_root = dir.path().join("db");
     let download_dir = dir.path().join("downloads");
     let manual_peers = manual_peers
@@ -170,6 +170,7 @@ async fn clipboard_flow_covers_a1_a2_a3_a4() -> Result<(), Box<dyn std::error::E
 
     let result = service
         .apply_local_clipboard_change(LocalClipboardChangeRequest {
+            event_id: EventId::new(),
             text: "alpha".to_string(),
             targets: Targets::all(),
         })
@@ -196,7 +197,7 @@ async fn clipboard_flow_covers_a1_a2_a3_a4() -> Result<(), Box<dyn std::error::E
     service
         .rebroadcast_history_entry(RebroadcastHistoryRequest {
             event_id,
-            targets: Targets::nodes(vec![NodeId::new("peer-node-x")]),
+            targets: Targets::nodes(vec![NoobId::new("peer-node-x")]),
         })
         .await?;
 
@@ -219,6 +220,7 @@ async fn local_clipboard_change_succeeds_when_network_disabled()
 
     let result = service
         .apply_local_clipboard_change(LocalClipboardChangeRequest {
+            event_id: EventId::new(),
             text: "offline-local".to_string(),
             targets: Targets::all(),
         })
@@ -265,6 +267,7 @@ async fn queued_local_change_is_not_dispatched_after_engine_start()
     let marker = "queued-before-start";
     let result = service_a
         .apply_local_clipboard_change(LocalClipboardChangeRequest {
+            event_id: EventId::new(),
             text: marker.to_string(),
             targets: Targets::all(),
         })
@@ -337,6 +340,7 @@ async fn disabled_network_fails_send_usecases_fast() -> Result<(), Box<dyn std::
         .store_remote_text(RemoteTextRequest {
             event_id,
             content: "stored-before-disable".to_string(),
+            noob_id: "remote-a".to_string(),
             device_id: "remote-a".to_string(),
         })
         .await?;
@@ -357,7 +361,7 @@ async fn disabled_network_fails_send_usecases_fast() -> Result<(), Box<dyn std::
 
     let decision_result = service
         .respond_file_decision(FileDecisionRequest {
-            peer_node_id: NodeId::new("peer-a"),
+            peer_noob_id: NoobId::new("peer-a"),
             transfer_id: 1,
             accept: true,
             reason: None,
@@ -391,6 +395,7 @@ async fn recent_window_not_found_returns_business_error() -> Result<(), Box<dyn 
         .store_remote_text(RemoteTextRequest {
             event_id: old_event_id,
             content: "old".to_string(),
+            noob_id: "remote-a".to_string(),
             device_id: "remote-a".to_string(),
         })
         .await?;
@@ -398,6 +403,7 @@ async fn recent_window_not_found_returns_business_error() -> Result<(), Box<dyn 
         .store_remote_text(RemoteTextRequest {
             event_id: new_event_id,
             content: "new".to_string(),
+            noob_id: "remote-b".to_string(),
             device_id: "remote-b".to_string(),
         })
         .await?;
@@ -411,7 +417,7 @@ async fn recent_window_not_found_returns_business_error() -> Result<(), Box<dyn 
     let rebroadcast_result = service
         .rebroadcast_history_entry(RebroadcastHistoryRequest {
             event_id: old_event_id,
-            targets: Targets::nodes(vec![NodeId::new("peer-node-y")]),
+            targets: Targets::nodes(vec![NoobId::new("peer-node-y")]),
         })
         .await;
     assert!(matches!(
@@ -431,6 +437,7 @@ async fn remote_storage_and_clipboard_apis_are_decoupled() -> Result<(), Box<dyn
         .store_remote_text(RemoteTextRequest {
             event_id: EventId::new(),
             content: "from-remote-storage".to_string(),
+            noob_id: "remote-node".to_string(),
             device_id: "remote-node".to_string(),
         })
         .await?;
@@ -447,6 +454,7 @@ async fn remote_storage_and_clipboard_apis_are_decoupled() -> Result<(), Box<dyn
         .write_remote_text_to_clipboard(RemoteTextRequest {
             event_id: EventId::new(),
             content: "from-remote-clipboard".to_string(),
+            noob_id: "remote-node".to_string(),
             device_id: "remote-node".to_string(),
         })
         .await?;
@@ -493,7 +501,7 @@ async fn file_api_supports_normal_and_error_paths() -> Result<(), Box<dyn std::e
         .await?;
     service
         .respond_file_decision(FileDecisionRequest {
-            peer_node_id: NodeId::new("ghost-peer"),
+            peer_noob_id: NoobId::new("ghost-peer"),
             transfer_id: 1,
             accept: false,
             reason: Some("reject".to_string()),
@@ -647,13 +655,13 @@ async fn transfer_events_do_not_break_sync_event_bridge() -> Result<(), Box<dyn 
         };
         match event {
             AppEvent::Sync(SyncEvent::FileDecisionRequired {
-                peer_node_id,
+                peer_noob_id,
                 transfer_id,
                 ..
             }) => {
                 service_b
                     .respond_file_decision(FileDecisionRequest {
-                        peer_node_id,
+                        peer_noob_id,
                         transfer_id,
                         accept: true,
                         reason: None,
@@ -674,6 +682,7 @@ async fn transfer_events_do_not_break_sync_event_bridge() -> Result<(), Box<dyn 
     let marker = "after-transfer";
     service_a
         .apply_local_clipboard_change(LocalClipboardChangeRequest {
+            event_id: EventId::new(),
             text: marker.to_string(),
             targets: Targets::all(),
         })
@@ -726,6 +735,7 @@ async fn repeated_subscribe_uses_shared_hub() -> Result<(), Box<dyn std::error::
 
     service
         .apply_local_clipboard_change(LocalClipboardChangeRequest {
+            event_id: EventId::new(),
             text: "ping".to_string(),
             targets: Targets::all(),
         })
@@ -920,6 +930,7 @@ async fn restart_rebinds_old_stream_and_keeps_new_stream_usable()
     let marker = format!("post-restart-{new_session_id}");
     service_a
         .apply_local_clipboard_change(LocalClipboardChangeRequest {
+            event_id: EventId::new(),
             text: marker.clone(),
             targets: Targets::all(),
         })

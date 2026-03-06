@@ -421,14 +421,14 @@ mod tests {
 
         sync_tx
             .send(nooboard_sync::SyncEvent::ConnectionError {
-                peer_node_id: None,
+                peer_noob_id: None,
                 addr: None,
                 error: "first".to_string(),
             })
             .expect("event send");
         sync_tx
             .send(nooboard_sync::SyncEvent::ConnectionError {
-                peer_node_id: None,
+                peer_noob_id: None,
                 addr: None,
                 error: "second".to_string(),
             })
@@ -477,6 +477,7 @@ mod tests {
             .send(nooboard_sync::SyncEvent::TextReceived {
                 event_id: "not-a-uuid".to_string(),
                 content: "bad".to_string(),
+                noob_id: "peer-a".to_string(),
                 device_id: "peer-a".to_string(),
             })
             .expect("event send");
@@ -493,6 +494,7 @@ mod tests {
             .send(nooboard_sync::SyncEvent::TextReceived {
                 event_id: Uuid::now_v7().to_string(),
                 content: "good".to_string(),
+                noob_id: "peer-b".to_string(),
                 device_id: "peer-b".to_string(),
             })
             .expect("event send");

@@ -1,6 +1,6 @@
 use gpui::{
-    Context, Div, Hsla, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, div, px,
+    Context, Div, Hsla, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+    Styled, div, px,
 };
 use gpui_component::{Icon, IconName, StyledExt};
 
@@ -145,7 +145,11 @@ impl WorkspaceView {
                 div()
                     .text_size(px(11.0))
                     .font_semibold()
-                    .text_color(if active { accent } else { theme::fg_secondary() })
+                    .text_color(if active {
+                        accent
+                    } else {
+                        theme::fg_secondary()
+                    })
                     .child(filter.label()),
             )
             .child(

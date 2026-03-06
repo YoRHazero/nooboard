@@ -5,7 +5,7 @@ use super::*;
 pub(crate) struct ClipboardPageState {
     history_items: Vec<ClipboardTextItem>,
     remaining_history_pages: VecDeque<ClipboardHistoryPage>,
-    selected_target_node_ids: BTreeSet<String>,
+    selected_target_noob_ids: BTreeSet<String>,
     selection: ClipboardSelection,
     history_load_state: ClipboardHistoryLoadState,
     action_feedback: Option<String>,
@@ -34,8 +34,8 @@ impl ClipboardPageState {
         Self {
             history_items,
             remaining_history_pages: pages.cloned().collect(),
-            selected_target_node_ids: store
-                .default_selected_target_node_ids
+            selected_target_noob_ids: store
+                .default_selected_target_noob_ids
                 .iter()
                 .cloned()
                 .collect(),
@@ -62,7 +62,7 @@ impl ClipboardPageState {
     }
 
     pub(super) fn selected_target_count(&self) -> usize {
-        self.selected_target_node_ids.len()
+        self.selected_target_noob_ids.len()
     }
 
     pub(super) fn action_feedback(&self) -> Option<&str> {
@@ -73,8 +73,8 @@ impl ClipboardPageState {
         self.selection == ClipboardSelection::History { event_id }
     }
 
-    pub(super) fn target_is_selected(&self, node_id: &str) -> bool {
-        self.selected_target_node_ids.contains(node_id)
+    pub(super) fn target_is_selected(&self, noob_id: &str) -> bool {
+        self.selected_target_noob_ids.contains(noob_id)
     }
 
     pub(super) fn can_load_more(&self) -> bool {
@@ -94,17 +94,17 @@ impl WorkspaceView {
         self.clipboard_page.action_feedback = Some(message.into());
     }
 
-    pub(super) fn toggle_clipboard_target(&mut self, node_id: &str, cx: &mut Context<Self>) {
+    pub(super) fn toggle_clipboard_target(&mut self, noob_id: &str, cx: &mut Context<Self>) {
         if self
             .clipboard_page
-            .selected_target_node_ids
-            .contains(node_id)
+            .selected_target_noob_ids
+            .contains(noob_id)
         {
-            self.clipboard_page.selected_target_node_ids.remove(node_id);
+            self.clipboard_page.selected_target_noob_ids.remove(noob_id);
         } else {
             self.clipboard_page
-                .selected_target_node_ids
-                .insert(node_id.to_string());
+                .selected_target_noob_ids
+                .insert(noob_id.to_string());
         }
 
         self.set_clipboard_feedback(format!(
@@ -182,11 +182,7 @@ impl WorkspaceView {
         cx.notify();
     }
 
-    pub(super) fn delete_history_clipboard_item(
-        &mut self,
-        event_id: Uuid,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn delete_history_clipboard_item(&mut self, event_id: Uuid, cx: &mut Context<Self>) {
         let before = self.clipboard_page.history_items.len();
         self.clipboard_page
             .history_items

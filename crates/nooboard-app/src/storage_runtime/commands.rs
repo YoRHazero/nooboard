@@ -12,6 +12,7 @@ pub(super) enum StorageCommand {
     AppendText {
         text: String,
         event_id: Option<Uuid>,
+        origin_noob_id: Option<String>,
         origin_device_id: Option<String>,
         created_at_ms: i64,
         applied_at_ms: i64,

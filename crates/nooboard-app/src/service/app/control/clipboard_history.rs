@@ -14,8 +14,11 @@ pub(super) async fn apply_local_clipboard_change(
     state: &ControlState,
     request: LocalClipboardChangeRequest,
 ) -> AppResult<LocalClipboardChangeResult> {
-    let LocalClipboardChangeRequest { text, targets } = request;
-    let event_id = EventId::new();
+    let LocalClipboardChangeRequest {
+        event_id,
+        text,
+        targets,
+    } = request;
     let now_ms = now_millis_i64();
 
     let _ = state
@@ -23,6 +26,7 @@ pub(super) async fn apply_local_clipboard_change(
         .append_text(
             &text,
             Some(event_id.as_uuid()),
+            state.config.noob_id(),
             Some(state.config.identity.device_id.as_str()),
             now_ms,
             now_ms,
@@ -121,6 +125,7 @@ pub(super) async fn store_remote_text(
         .append_text(
             &request.content,
             Some(request.event_id.as_uuid()),
+            Some(request.noob_id.as_str()),
             Some(request.device_id.as_str()),
             now_ms,
             now_ms,
@@ -154,7 +159,7 @@ fn try_send_sync_text_best_effort(
         .sync_runtime
         .connected_peers()
         .into_iter()
-        .map(|peer| peer.peer_node_id)
+        .map(|peer| peer.peer_noob_id)
         .collect::<Vec<_>>();
     if !has_eligible_peer(&connected_peer_ids, sync_request.targets.as_deref()) {
         return BroadcastStatus::Dropped(BroadcastDropReason::NoEligiblePeer);

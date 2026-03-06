@@ -74,7 +74,7 @@ pub enum SessionCommand {
 }
 
 pub struct SessionActorContext {
-    pub peer_node_id: String,
+    pub peer_noob_id: String,
     pub peer_device_id: String,
     pub config: SyncConfig,
     pub framed: Framed<tokio_rustls::TlsStream<tokio::net::TcpStream>, LengthDelimitedCodec>,
@@ -127,7 +127,7 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
         sender
             .tick(
                 &ctx.config,
-                &ctx.peer_node_id,
+                &ctx.peer_noob_id,
                 outbox.remaining_data_capacity() > 0,
             )
             .await?;
@@ -150,7 +150,7 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
 
         while let Some(update) = sender.pop_update() {
             emit_transfer_update(
-                &ctx.peer_node_id,
+                &ctx.peer_noob_id,
                 TransferDirection::Outgoing,
                 update.transfer_id,
                 update.state,
@@ -197,7 +197,7 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                             .map_err(ConnectionError::from)?;
 
                         if handle_incoming_packet(
-                            &ctx.peer_node_id,
+                            &ctx.peer_noob_id,
                             &ctx.peer_device_id,
                             packet,
                             &mut outbox,
@@ -217,14 +217,14 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
 
             // 3. Command from peer
             _ = ctx.shutdown_rx.recv() => {
-                debug!(peer=%ctx.peer_node_id, "shutdown signal received");
+                debug!(peer=%ctx.peer_noob_id, "shutdown signal received");
                 break;
             }
 
             // 4. periodic ping
             _ = ping_timer.tick() => {
                 if !outbox.queue_control(Packet::Ping { timestamp: now_millis_u64() }) {
-                    warn!(peer=%ctx.peer_node_id, "drop ping because control queue is full");
+                    warn!(peer=%ctx.peer_noob_id, "drop ping because control queue is full");
                 }
             }
 
@@ -241,10 +241,10 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                                 accept: false,
                                 reason: Some(reason.clone()),
                             })).is_err() {
-                                warn!(peer=%ctx.peer_node_id, transfer_id, "drop timeout FileDecision because data queue is full");
+                                warn!(peer=%ctx.peer_noob_id, transfer_id, "drop timeout FileDecision because data queue is full");
                             }
                             emit_transfer_update(
-                                &ctx.peer_node_id,
+                                &ctx.peer_noob_id,
                                 TransferDirection::Incoming,
                                 transfer_id,
                                 TransferState::Cancelled {
@@ -255,12 +255,12 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                             .await;
                         }
                         IdleTimeoutAction::CancelTransfer { transfer_id, reason } => {
-                            warn!(peer=%ctx.peer_node_id, transfer_id, "{reason}");
+                            warn!(peer=%ctx.peer_noob_id, transfer_id, "{reason}");
                             if outbox.queue_data(Packet::Data(DataPacket::FileCancel { transfer_id })).is_err() {
-                                warn!(peer=%ctx.peer_node_id, transfer_id, "drop timeout FileCancel because data queue is full");
+                                warn!(peer=%ctx.peer_noob_id, transfer_id, "drop timeout FileCancel because data queue is full");
                             }
                             emit_transfer_update(
-                                &ctx.peer_node_id,
+                                &ctx.peer_noob_id,
                                 TransferDirection::Incoming,
                                 transfer_id,
                                 TransferState::Failed { reason },
@@ -280,7 +280,7 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                             event_id: request.event_id,
                             content: request.content,
                         })).is_err() {
-                            warn!(peer=%ctx.peer_node_id, "drop outgoing text because data queue is full");
+                            warn!(peer=%ctx.peer_noob_id, "drop outgoing text because data queue is full");
                         }
                     }
                     Some(SessionCommand::SendFile(request)) => {
@@ -294,11 +294,11 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                                     accept,
                                     reason: reason.clone(),
                                 })).is_err() {
-                                    warn!(peer=%ctx.peer_node_id, transfer_id, "drop local FileDecision because data queue is full");
+                                    warn!(peer=%ctx.peer_noob_id, transfer_id, "drop local FileDecision because data queue is full");
                                 }
                                 if !accept {
                                     emit_transfer_update(
-                                        &ctx.peer_node_id,
+                                        &ctx.peer_noob_id,
                                         TransferDirection::Incoming,
                                         transfer_id,
                                         TransferState::Cancelled { reason },
@@ -308,7 +308,7 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                                 }
                             }
                             Err(error) => {
-                                warn!(peer=%ctx.peer_node_id, transfer_id, "invalid local file decision: {error}");
+                                warn!(peer=%ctx.peer_noob_id, transfer_id, "invalid local file decision: {error}");
                             }
                         }
                     }
@@ -336,7 +336,7 @@ fn now_millis_u64() -> u64 {
 }
 
 async fn handle_incoming_packet(
-    peer_node_id: &str,
+    peer_noob_id: &str,
     peer_device_id: &str,
     packet: Packet,
     outbox: &mut PacketOutbox,
@@ -354,7 +354,7 @@ async fn handle_incoming_packet(
         }
         Packet::Ping { timestamp } => {
             if !outbox.queue_control(Packet::Pong { timestamp }) {
-                warn!(peer=%peer_node_id, "drop pong because control queue is full");
+                warn!(peer=%peer_noob_id, "drop pong because control queue is full");
             }
             return Ok(false);
         }
@@ -368,6 +368,7 @@ async fn handle_incoming_packet(
                         .send(SyncEvent::TextReceived {
                             event_id,
                             content,
+                            noob_id: peer_noob_id.to_string(),
                             device_id: peer_device_id.to_string(),
                         })
                         .await;
@@ -386,7 +387,7 @@ async fn handle_incoming_packet(
                     Ok(request) => {
                         let _ = event_tx
                             .send(SyncEvent::FileDecisionRequired {
-                                peer_node_id: peer_node_id.to_string(),
+                                peer_noob_id: peer_noob_id.to_string(),
                                 transfer_id: request.transfer_id,
                                 file_name: request.file_name,
                                 file_size: request.file_size,
@@ -394,7 +395,7 @@ async fn handle_incoming_packet(
                             })
                             .await;
                         emit_transfer_update(
-                            peer_node_id,
+                            peer_noob_id,
                             TransferDirection::Incoming,
                             transfer_id,
                             TransferState::Started {
@@ -413,10 +414,10 @@ async fn handle_incoming_packet(
                         });
 
                         if outbox.queue_data(packet).is_err() {
-                            warn!(peer=%peer_node_id, transfer_id, "drop auto-reject FileDecision");
+                            warn!(peer=%peer_noob_id, transfer_id, "drop auto-reject FileDecision");
                         }
                         emit_transfer_update(
-                            peer_node_id,
+                            peer_noob_id,
                             TransferDirection::Incoming,
                             transfer_id,
                             TransferState::Failed {
@@ -442,7 +443,7 @@ async fn handle_incoming_packet(
             } => match receiver.handle_file_chunk(transfer_id, seq, &data).await {
                 Ok(progress) => {
                     emit_transfer_update(
-                        peer_node_id,
+                        peer_noob_id,
                         TransferDirection::Incoming,
                         transfer_id,
                         TransferState::Progress {
@@ -461,11 +462,11 @@ async fn handle_incoming_packet(
                         .queue_data(Packet::Data(DataPacket::FileCancel { transfer_id }))
                         .is_err()
                     {
-                        warn!(peer=%peer_node_id, transfer_id, "drop FileCancel after chunk failure because data queue is full");
+                        warn!(peer=%peer_noob_id, transfer_id, "drop FileCancel after chunk failure because data queue is full");
                     }
                     let _ = receiver.abort_transfer(transfer_id).await;
                     emit_transfer_update(
-                        peer_node_id,
+                        peer_noob_id,
                         TransferDirection::Incoming,
                         transfer_id,
                         TransferState::Failed {
@@ -482,7 +483,7 @@ async fn handle_incoming_packet(
             } => match receiver.handle_file_end(transfer_id, &checksum).await {
                 Ok(downloaded) => {
                     emit_transfer_update(
-                        peer_node_id,
+                        peer_noob_id,
                         TransferDirection::Incoming,
                         transfer_id,
                         TransferState::Finished {
@@ -498,11 +499,11 @@ async fn handle_incoming_packet(
                         .queue_data(Packet::Data(DataPacket::FileCancel { transfer_id }))
                         .is_err()
                     {
-                        warn!(peer=%peer_node_id, transfer_id, "drop FileCancel after file end failure because data queue is full");
+                        warn!(peer=%peer_noob_id, transfer_id, "drop FileCancel after file end failure because data queue is full");
                     }
                     let _ = receiver.abort_transfer(transfer_id).await;
                     emit_transfer_update(
-                        peer_node_id,
+                        peer_noob_id,
                         TransferDirection::Incoming,
                         transfer_id,
                         TransferState::Failed {
@@ -520,7 +521,7 @@ async fn handle_incoming_packet(
                     .unwrap_or(false)
                 {
                     emit_transfer_update(
-                        peer_node_id,
+                        peer_noob_id,
                         TransferDirection::Incoming,
                         transfer_id,
                         TransferState::Cancelled {
@@ -538,7 +539,7 @@ async fn handle_incoming_packet(
 }
 
 async fn emit_transfer_update(
-    peer_node_id: &str,
+    peer_noob_id: &str,
     direction: TransferDirection,
     transfer_id: u32,
     state: TransferState,
@@ -546,7 +547,7 @@ async fn emit_transfer_update(
 ) {
     let update = TransferUpdate {
         transfer_id,
-        peer_node_id: peer_node_id.to_string(),
+        peer_noob_id: peer_noob_id.to_string(),
         direction,
         state,
     };

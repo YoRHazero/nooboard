@@ -62,11 +62,11 @@ impl WorkspaceView {
         } else {
             theme::fg_muted()
         };
-        let selected = self.clipboard_page.target_is_selected(&target.node_id);
-        let node_id = target.node_id.clone();
-        let tooltip = format!("node_id: {}", target.node_id);
+        let selected = self.clipboard_page.target_is_selected(&target.noob_id);
+        let noob_id = target.noob_id.clone();
+        let tooltip = format!("noob_id: {}", target.noob_id);
         let mut chip = div()
-            .id(format!("clipboard-target-chip-{}", target.node_id))
+            .id(format!("clipboard-target-chip-{}", target.noob_id))
             .min_w(px(152.0))
             .px(px(14.0))
             .py(px(12.0))
@@ -141,7 +141,7 @@ impl WorkspaceView {
                 })
                 .active(|this| this.bg(theme::bg_panel()))
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.toggle_clipboard_target(&node_id, cx);
+                    this.toggle_clipboard_target(&noob_id, cx);
                 }));
         } else {
             chip = chip.opacity(0.72);

@@ -5,12 +5,12 @@ pub(super) enum DedupeDecision {
     RejectConflict,
 }
 
-pub(super) fn dedupe_decision(local_node_id: &str, peer_node_id: &str) -> DedupeDecision {
-    if local_node_id == peer_node_id {
+pub(super) fn dedupe_decision(local_noob_id: &str, peer_noob_id: &str) -> DedupeDecision {
+    if local_noob_id == peer_noob_id {
         return DedupeDecision::RejectConflict;
     }
 
-    if local_node_id < peer_node_id {
+    if local_noob_id < peer_noob_id {
         DedupeDecision::ConnectOut
     } else {
         DedupeDecision::WaitInbound
@@ -22,7 +22,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn smaller_node_id_must_initiate_connection() {
+    fn smaller_noob_id_must_initiate_connection() {
         assert_eq!(dedupe_decision("a", "b"), DedupeDecision::ConnectOut);
         assert_eq!(dedupe_decision("z", "b"), DedupeDecision::WaitInbound);
         assert_eq!(

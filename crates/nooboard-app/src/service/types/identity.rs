@@ -43,9 +43,9 @@ impl TryFrom<&str> for EventId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct NodeId(String);
+pub struct NoobId(String);
 
-impl NodeId {
+impl NoobId {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
     }
@@ -59,7 +59,7 @@ impl NodeId {
 pub enum Targets {
     #[default]
     All,
-    Nodes(Vec<NodeId>),
+    Nodes(Vec<NoobId>),
 }
 
 impl Targets {
@@ -67,7 +67,7 @@ impl Targets {
         Self::All
     }
 
-    pub fn nodes(nodes: Vec<NodeId>) -> Self {
+    pub fn nodes(nodes: Vec<NoobId>) -> Self {
         Self::Nodes(nodes)
     }
 

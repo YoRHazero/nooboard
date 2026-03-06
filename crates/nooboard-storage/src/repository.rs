@@ -12,6 +12,7 @@ pub struct SqliteEventRepository {
     conn: Connection,
     storage: StorageConfig,
     sql: SqlCatalog,
+    local_noob_id: String,
     local_device_id: String,
     inserts_since_gc: usize,
 }
@@ -30,12 +31,15 @@ impl SqliteEventRepository {
 
         let sql = SqlCatalog::load();
         let conn = Connection::open(storage.db_path())?;
+        let local_device_id = resolve_local_device_id();
+        let local_noob_id = resolve_local_noob_id(&local_device_id);
 
         Ok(Self {
             conn,
             storage,
             sql,
-            local_device_id: resolve_local_device_id(),
+            local_noob_id,
+            local_device_id,
             inserts_since_gc: 0,
         })
     }
@@ -51,6 +55,7 @@ impl SqliteEventRepository {
         &mut self,
         text: &str,
         event_id: Option<uuid::Uuid>,
+        origin_noob_id: Option<&str>,
         origin_device_id: Option<&str>,
         created_at_ms: i64,
         applied_at_ms: i64,
@@ -58,6 +63,7 @@ impl SqliteEventRepository {
         let inserted = self.insert_text_event(
             text,
             event_id,
+            origin_noob_id,
             origin_device_id,
             created_at_ms,
             applied_at_ms,
@@ -175,11 +181,13 @@ impl SqliteEventRepository {
         &mut self,
         text: &str,
         event_id: Option<uuid::Uuid>,
+        origin_noob_id: Option<&str>,
         origin_device_id: Option<&str>,
         created_at_ms: i64,
         applied_at_ms: i64,
     ) -> Result<bool, StorageError> {
-        let should_skip_duplicate = event_id.is_none() && origin_device_id.is_none();
+        let should_skip_duplicate =
+            event_id.is_none() && origin_noob_id.is_none() && origin_device_id.is_none();
         if should_skip_duplicate {
             let latest_content = self.latest_active_content()?;
             if latest_content.as_deref() == Some(text) {
@@ -188,6 +196,10 @@ impl SqliteEventRepository {
         }
 
         let event_id = event_id.unwrap_or_else(uuid::Uuid::now_v7);
+        let origin_noob_id = origin_noob_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(self.local_noob_id.as_str());
         let origin_device_id = origin_device_id
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -197,6 +209,7 @@ impl SqliteEventRepository {
             &self.sql.insert_event,
             params![
                 event_id.as_bytes().as_slice(),
+                origin_noob_id,
                 origin_device_id,
                 created_at_ms,
                 applied_at_ms,
@@ -224,10 +237,11 @@ fn map_history_row(row: &Row<'_>) -> rusqlite::Result<HistoryRecord> {
 
     Ok(HistoryRecord {
         event_id,
-        origin_device_id: row.get(1)?,
-        created_at_ms: row.get(2)?,
-        applied_at_ms: row.get(3)?,
-        content: row.get(4)?,
+        origin_noob_id: row.get(1)?,
+        origin_device_id: row.get(2)?,
+        created_at_ms: row.get(3)?,
+        applied_at_ms: row.get(4)?,
+        content: row.get(5)?,
     })
 }
 
@@ -245,6 +259,14 @@ fn resolve_local_device_id() -> String {
         .or_else(|| std::env::var("HOSTNAME").ok())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "local-device".to_string())
+}
+
+fn resolve_local_noob_id(local_device_id: &str) -> String {
+    std::env::var("NOOBOARD_NOOB_ID")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| local_device_id.to_string())
 }
 
 fn prune_old_versions(storage: &StorageConfig) -> Result<(), StorageError> {
@@ -329,8 +351,8 @@ mod tests {
             SqliteEventRepository::open(make_config("append-list", LifecycleConfig::default(), 0))?;
         repository.init_storage()?;
 
-        assert!(repository.append_text("first", None, None, 100, 100)?);
-        assert!(repository.append_text("second", None, None, 200, 200)?);
+        assert!(repository.append_text("first", None, None, None, 100, 100)?);
+        assert!(repository.append_text("second", None, None, None, 200, 200)?);
 
         let records = repository.list_history(10, None)?;
         assert_eq!(records.len(), 2);
@@ -349,9 +371,9 @@ mod tests {
             SqliteEventRepository::open(make_config("search", LifecycleConfig::default(), 0))?;
         repository.init_storage()?;
 
-        assert!(repository.append_text("alpha", None, None, 100, 100)?);
-        assert!(repository.append_text("beta", None, None, 200, 200)?);
-        assert!(repository.append_text("alphabet", None, None, 300, 300)?);
+        assert!(repository.append_text("alpha", None, None, None, 100, 100)?);
+        assert!(repository.append_text("beta", None, None, None, 200, 200)?);
+        assert!(repository.append_text("alphabet", None, None, None, 300, 300)?);
 
         let records = repository.search_history(10, "alpha")?;
         assert_eq!(records.len(), 2);
@@ -368,8 +390,8 @@ mod tests {
             SqliteEventRepository::open(make_config("dedup", LifecycleConfig::default(), 0))?;
         repository.init_storage()?;
 
-        assert!(repository.append_text("dup", None, None, 100, 100)?);
-        assert!(!repository.append_text("dup", None, None, 200, 200)?);
+        assert!(repository.append_text("dup", None, None, None, 100, 100)?);
+        assert!(!repository.append_text("dup", None, None, None, 200, 200)?);
 
         let records = repository.list_history(10, None)?;
         assert_eq!(records.len(), 1);
@@ -398,6 +420,7 @@ mod tests {
             "expired",
             None,
             None,
+            None,
             now_ms - 3 * DAY_MS,
             now_ms - 3 * DAY_MS
         )?);
@@ -405,10 +428,11 @@ mod tests {
             "tombstone",
             None,
             None,
+            None,
             now_ms - (DAY_MS + DAY_MS / 2),
             now_ms - (DAY_MS + DAY_MS / 2)
         )?);
-        assert!(repository.append_text("fresh", None, None, now_ms, now_ms)?);
+        assert!(repository.append_text("fresh", None, None, None, now_ms, now_ms)?);
 
         let records = repository.list_history(10, None)?;
         assert_eq!(records.len(), 1);
@@ -424,9 +448,9 @@ mod tests {
             SqliteEventRepository::open(make_config("cursor-page", LifecycleConfig::default(), 0))?;
         repository.init_storage()?;
 
-        assert!(repository.append_text("first", None, None, 100, 100)?);
-        assert!(repository.append_text("second", None, None, 200, 200)?);
-        assert!(repository.append_text("third", None, None, 300, 300)?);
+        assert!(repository.append_text("first", None, None, None, 100, 100)?);
+        assert!(repository.append_text("second", None, None, None, 200, 200)?);
+        assert!(repository.append_text("third", None, None, None, 300, 300)?);
 
         let first_page = repository.list_history(2, None)?;
         assert_eq!(first_page.len(), 2);
@@ -443,7 +467,8 @@ mod tests {
     }
 
     #[test]
-    fn append_text_accepts_explicit_event_id_and_origin_device() -> Result<(), StorageError> {
+    fn append_text_accepts_explicit_origin_noob_id_and_origin_device_id() -> Result<(), StorageError>
+    {
         let mut repository = SqliteEventRepository::open(make_config(
             "append-explicit-event",
             LifecycleConfig::default(),
@@ -455,7 +480,8 @@ mod tests {
         assert!(repository.append_text(
             "remote-text",
             Some(event_id),
-            Some("remote-node"),
+            Some("remote-noob"),
+            Some("remote-device"),
             100,
             100
         )?);
@@ -463,12 +489,14 @@ mod tests {
         let records = repository.list_history(10, None)?;
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].event_id, *event_id.as_bytes());
-        assert_eq!(records[0].origin_device_id, "remote-node");
+        assert_eq!(records[0].origin_noob_id, "remote-noob");
+        assert_eq!(records[0].origin_device_id, "remote-device");
 
         assert!(!repository.append_text(
             "remote-text",
             Some(event_id),
-            Some("remote-node"),
+            Some("remote-noob"),
+            Some("remote-device"),
             100,
             100
         )?);

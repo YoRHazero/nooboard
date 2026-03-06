@@ -16,13 +16,13 @@ pub(super) async fn perform_client_handshake(
     config: &SyncConfig,
     peer_addr: SocketAddr,
     framed: &mut Framed<TlsStream<TcpStream>, LengthDelimitedCodec>,
-    expected_node_id: Option<String>,
+    expected_noob_id: Option<String>,
 ) -> Result<(String, String), SyncError> {
     send_packet(
         framed,
         &Packet::Handshake(HandshakePacket::Hello {
             protocol_version: config.protocol_version,
-            node_id: config.noob_id.clone(),
+            noob_id: config.noob_id.clone(),
             device_id: config.device_id.clone(),
         }),
     )
@@ -33,12 +33,12 @@ pub(super) async fn perform_client_handshake(
         .await
         .map_err(|_| SyncError::HandshakeMessage("wait challenge timeout".to_string()))??;
 
-    let mut peer_node_id = expected_node_id;
+    let mut peer_noob_id = expected_noob_id;
     let mut peer_device_id = None;
     let challenge = match first_packet {
         HandshakePacket::Hello {
             protocol_version,
-            node_id,
+            noob_id,
             device_id,
         } => {
             if protocol_version != config.protocol_version {
@@ -47,7 +47,7 @@ pub(super) async fn perform_client_handshake(
                     config.protocol_version
                 )));
             }
-            peer_node_id = Some(node_id);
+            peer_noob_id = Some(noob_id);
             peer_device_id = Some(device_id);
             timeout(handshake_timeout, recv_handshake_only(framed))
                 .await
@@ -75,9 +75,9 @@ pub(super) async fn perform_client_handshake(
 
     match auth_result {
         HandshakePacket::AuthResult { ok: true } => {
-            let peer_node_id = peer_node_id.unwrap_or_else(|| format!("addr-{peer_addr}"));
-            let peer_device_id = peer_device_id.unwrap_or_else(|| peer_node_id.clone());
-            Ok((peer_node_id, peer_device_id))
+            let peer_noob_id = peer_noob_id.unwrap_or_else(|| format!("addr-{peer_addr}"));
+            let peer_device_id = peer_device_id.unwrap_or_else(|| peer_noob_id.clone());
+            Ok((peer_noob_id, peer_device_id))
         }
         HandshakePacket::AuthResult { ok: false } => Err(SyncError::HandshakeMessage(
             "auth rejected by peer".to_string(),
@@ -100,12 +100,12 @@ pub(super) async fn perform_server_handshake(
         .await
         .map_err(|_| SyncError::HandshakeMessage("wait hello timeout".to_string()))??;
 
-    let (protocol_version, peer_node_id, peer_device_id) = match hello {
+    let (protocol_version, peer_noob_id, peer_device_id) = match hello {
         HandshakePacket::Hello {
             protocol_version,
-            node_id,
+            noob_id,
             device_id,
-        } => (protocol_version, node_id, device_id),
+        } => (protocol_version, noob_id, device_id),
         _ => {
             return Err(SyncError::HandshakeMessage(
                 "expected Handshake::Hello".to_string(),
@@ -124,7 +124,7 @@ pub(super) async fn perform_server_handshake(
         framed,
         &Packet::Handshake(HandshakePacket::Hello {
             protocol_version: config.protocol_version,
-            node_id: config.noob_id.clone(),
+            noob_id: config.noob_id.clone(),
             device_id: config.device_id.clone(),
         }),
     )
@@ -190,7 +190,7 @@ pub(super) async fn perform_server_handshake(
                 &Packet::Handshake(HandshakePacket::AuthResult { ok: true }),
             )
             .await?;
-            Ok((peer_node_id, peer_device_id))
+            Ok((peer_noob_id, peer_device_id))
         }
         AuthCheck::Rejected | AuthCheck::Timeout | AuthCheck::Missing => {
             let _ = send_packet(

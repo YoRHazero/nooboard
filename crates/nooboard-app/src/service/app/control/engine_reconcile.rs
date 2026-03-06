@@ -49,9 +49,13 @@ pub(super) async fn shutdown(state: &mut ControlState) -> AppResult<()> {
         .subscriptions
         .deactivate(SubscriptionCloseReason::EngineStopped)
         .await;
+    let clipboard_result = state.clipboard.stop_watch().await;
     let stop_result = state.sync_runtime.stop().await;
     let storage_result = state.storage_runtime.shutdown().await;
 
+    if let Err(error) = clipboard_result {
+        return Err(error);
+    }
     if let Err(error) = stop_result {
         return Err(error);
     }

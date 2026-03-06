@@ -34,7 +34,7 @@ pub(super) async fn respond_file_decision(
     }
 
     let input = FileDecisionInput {
-        peer_node_id: request.peer_node_id.as_str().to_string(),
+        peer_noob_id: request.peer_noob_id.as_str().to_string(),
         transfer_id: request.transfer_id,
         accept: request.accept,
         reason: request.reason,

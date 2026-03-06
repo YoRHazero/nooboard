@@ -5,22 +5,22 @@ use uuid::Uuid;
 
 use crate::{AppError, AppResult};
 
-pub(super) fn resolve_or_init_node_id(path: &Path) -> AppResult<String> {
+pub(super) fn resolve_or_init_noob_id(path: &Path) -> AppResult<String> {
     match fs::read_to_string(path) {
         Ok(raw) => {
-            let node_id = raw.trim();
-            if !node_id.is_empty() {
-                return Ok(node_id.to_string());
+            let noob_id = raw.trim();
+            if !noob_id.is_empty() {
+                return Ok(noob_id.to_string());
             }
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.into()),
     }
 
-    regenerate_node_id(path)
+    regenerate_noob_id(path)
 }
 
-pub(super) fn regenerate_node_id(path: &Path) -> AppResult<String> {
+pub(super) fn regenerate_noob_id(path: &Path) -> AppResult<String> {
     let parent = path.parent().ok_or_else(|| {
         AppError::InvalidConfig(format!(
             "identity.noob_id_file `{}` has no parent",

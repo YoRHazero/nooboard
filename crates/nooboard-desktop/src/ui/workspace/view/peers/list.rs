@@ -79,7 +79,11 @@ impl WorkspaceView {
             .border_color(theme::border_soft())
             .rounded(px(14.0))
             .child(self.peers_header_cell("device_id", DEVICE_COL_WIDTH))
-            .child(self.peers_header_cell("node_id", 0.0).flex_1().min_w(px(220.0)))
+            .child(
+                self.peers_header_cell("noob_id", 0.0)
+                    .flex_1()
+                    .min_w(px(220.0)),
+            )
             .child(self.peers_header_cell("ip", IP_COL_WIDTH))
             .child(self.peers_header_cell("status", STATUS_COL_WIDTH))
     }
@@ -117,7 +121,7 @@ impl WorkspaceView {
                     .text_size(px(12.0))
                     .text_color(theme::fg_secondary())
                     .truncate()
-                    .child(peer.node_id.clone()),
+                    .child(peer.noob_id.clone()),
             )
             .child(
                 div()

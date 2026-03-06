@@ -10,19 +10,19 @@ use crate::error::DiscoveryError;
 use super::DiscoveredPeer;
 
 pub const NOOBOARD_SERVICE_TYPE: &str = "_nooboard-sync._tcp.local.";
-const NODE_ID_PROPERTY: &str = "node_id";
+const NODE_ID_PROPERTY: &str = "noob_id";
 
 #[derive(Debug, Clone)]
 pub struct MdnsDiscoveryConfig {
-    pub node_id: String,
+    pub noob_id: String,
     pub listen_addr: SocketAddr,
     pub service_type: String,
 }
 
 impl MdnsDiscoveryConfig {
-    pub fn new(node_id: String, listen_addr: SocketAddr) -> Self {
+    pub fn new(noob_id: String, listen_addr: SocketAddr) -> Self {
         Self {
-            node_id,
+            noob_id,
             listen_addr,
             service_type: NOOBOARD_SERVICE_TYPE.to_string(),
         }
@@ -55,7 +55,7 @@ pub fn start_mdns_discovery(
         .browse(&config.service_type)
         .map_err(|error| DiscoveryError::Mdns(error.to_string()))?;
 
-    let local_node_id = config.node_id;
+    let local_noob_id = config.noob_id;
     let task = tokio::spawn(async move {
         loop {
             tokio::select! {
@@ -72,14 +72,14 @@ pub fn start_mdns_discovery(
                             continue;
                         }
 
-                        let Some(node_id) = resolved
+                        let Some(noob_id) = resolved
                             .get_property_val_str(NODE_ID_PROPERTY)
                             .map(ToOwned::to_owned)
                         else {
                             continue;
                         };
 
-                        if node_id == local_node_id {
+                        if noob_id == local_noob_id {
                             continue;
                         }
 
@@ -90,7 +90,7 @@ pub fn start_mdns_discovery(
                             }
 
                             let peer = DiscoveredPeer {
-                                node_id: node_id.clone(),
+                                noob_id: noob_id.clone(),
                                 addr: SocketAddr::new(ip, resolved.get_port()),
                             };
 
@@ -113,14 +113,14 @@ pub fn start_mdns_discovery(
 }
 
 fn build_service_info(config: &MdnsDiscoveryConfig) -> Result<ServiceInfo, DiscoveryError> {
-    let mut instance_name = config.node_id.clone();
+    let mut instance_name = config.noob_id.clone();
     if instance_name.trim().is_empty() {
         instance_name = "nooboard".to_string();
     }
 
     let host_name = format!("{}.local.", sanitize_label(&instance_name));
     let addresses = local_service_addresses(config.listen_addr);
-    let properties = [(NODE_ID_PROPERTY, config.node_id.as_str())];
+    let properties = [(NODE_ID_PROPERTY, config.noob_id.as_str())];
 
     ServiceInfo::new(
         &config.service_type,

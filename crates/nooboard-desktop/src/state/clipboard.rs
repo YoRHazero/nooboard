@@ -3,7 +3,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct ClipboardStore {
     pub targets: Vec<ClipboardTarget>,
-    pub default_selected_target_node_ids: Vec<String>,
+    pub default_selected_target_noob_ids: Vec<String>,
     pub local_live: ClipboardTextItem,
     pub latest_remote_live: Option<ClipboardTextItem>,
     pub history_pages: Vec<ClipboardHistoryPage>,
@@ -187,23 +187,23 @@ pub enum ClipboardTextResidency {
 
 #[derive(Clone)]
 pub struct ClipboardTarget {
-    pub node_id: String,
+    pub noob_id: String,
     pub device_id: String,
     pub status: ClipboardTargetStatus,
 }
 
 impl ClipboardTarget {
-    pub fn connected(node_id: impl Into<String>, device_id: impl Into<String>) -> Self {
+    pub fn connected(noob_id: impl Into<String>, device_id: impl Into<String>) -> Self {
         Self {
-            node_id: node_id.into(),
+            noob_id: noob_id.into(),
             device_id: device_id.into(),
             status: ClipboardTargetStatus::Connected,
         }
     }
 
-    pub fn offline(node_id: impl Into<String>, device_id: impl Into<String>) -> Self {
+    pub fn offline(noob_id: impl Into<String>, device_id: impl Into<String>) -> Self {
         Self {
-            node_id: node_id.into(),
+            noob_id: noob_id.into(),
             device_id: device_id.into(),
             status: ClipboardTargetStatus::Offline,
         }

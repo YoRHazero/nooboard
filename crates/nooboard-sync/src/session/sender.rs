@@ -91,13 +91,13 @@ impl FileSender {
     pub async fn tick(
         &mut self,
         config: &SyncConfig,
-        peer_node_id: &str,
+        peer_noob_id: &str,
         allow_new_data: bool,
     ) -> SessionResult<()> {
         if self.upload.is_none() && allow_new_data {
             if let Some(path) = self.pending_files.pop_front() {
                 match self
-                    .start_upload(config, &path, self.transfer_id_seed, peer_node_id)
+                    .start_upload(config, &path, self.transfer_id_seed, peer_noob_id)
                     .await
                 {
                     Ok(()) => {
@@ -105,7 +105,7 @@ impl FileSender {
                     }
                     Err(error) => {
                         warn!(
-                            peer = %peer_node_id,
+                            peer = %peer_noob_id,
                             path = %path.display(),
                             "skip file upload: {error}"
                         );
@@ -129,7 +129,7 @@ impl FileSender {
         config: &SyncConfig,
         path: &Path,
         transfer_id: u32,
-        peer_node_id: &str,
+        peer_noob_id: &str,
     ) -> SessionResult<()> {
         let metadata = fs::metadata(path).await.map_err(ConnectionError::Io)?;
         if !metadata.is_file() {
@@ -178,7 +178,7 @@ impl FileSender {
         });
 
         debug!(
-            peer = %peer_node_id,
+            peer = %peer_noob_id,
             transfer_id,
             path = %path.display(),
             "created outgoing transfer, waiting for decision"

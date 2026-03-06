@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tokio::sync::{mpsc, oneshot};
 
-use crate::clipboard_runtime::{ClipboardPort, ClipboardRuntime};
+use crate::clipboard_runtime::{ClipboardPort, ClipboardRuntime, LocalClipboardSubscription};
 use crate::config::AppConfig;
 use crate::service::events::SubscriptionHub;
 use crate::storage_runtime::StorageRuntime;
@@ -44,6 +44,7 @@ pub trait AppService {
     async fn respond_file_decision(&self, request: FileDecisionRequest) -> AppResult<()>;
 
     async fn subscribe_events(&self) -> AppResult<EventSubscription>;
+    async fn subscribe_local_clipboard(&self) -> AppResult<LocalClipboardSubscription>;
 }
 
 pub struct AppServiceImpl {
@@ -199,6 +200,14 @@ impl AppService for AppServiceImpl {
         self.request(
             |reply| ControlCommand::SubscribeEvents { reply },
             "subscribe_events",
+        )
+        .await
+    }
+
+    async fn subscribe_local_clipboard(&self) -> AppResult<LocalClipboardSubscription> {
+        self.request(
+            |reply| ControlCommand::SubscribeLocalClipboard { reply },
+            "subscribe_local_clipboard",
         )
         .await
     }

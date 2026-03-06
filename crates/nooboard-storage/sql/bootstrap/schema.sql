@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS events (
     event_id BLOB(16) PRIMARY KEY,
+    origin_noob_id TEXT NOT NULL,
     origin_device_id TEXT NOT NULL,
     created_at_ms INTEGER NOT NULL,
     applied_at_ms INTEGER NOT NULL,

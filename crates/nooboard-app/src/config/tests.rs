@@ -20,7 +20,7 @@ fn write_base_config(dir: &Path, include_app_clipboard: bool) -> AppResult<PathB
     fs::create_dir_all(dir)?;
     let config_path = dir.join("app.toml");
     let db_root = dir.join("db");
-    let noob_id_file = dir.join("node_id");
+    let noob_id_file = dir.join("noob_id");
     let download_dir = dir.join("downloads");
 
     let mut raw = format!(
@@ -86,16 +86,16 @@ recent_event_lookup_limit = 25
 }
 
 #[test]
-fn load_initializes_node_id_file_when_missing() -> AppResult<()> {
+fn load_initializes_noob_id_file_when_missing() -> AppResult<()> {
     let dir = temp_dir("node-id-init");
     let config_path = write_base_config(&dir, true)?;
 
     let config = AppConfig::load(&config_path)?;
-    let node_id = config.node_id().unwrap_or_default().to_string();
-    assert!(!node_id.is_empty());
+    let noob_id = config.noob_id().unwrap_or_default().to_string();
+    assert!(!noob_id.is_empty());
 
-    let node_id_file = fs::read_to_string(dir.join("node_id"))?;
-    assert_eq!(node_id_file.trim(), node_id);
+    let noob_id_file = fs::read_to_string(dir.join("noob_id"))?;
+    assert_eq!(noob_id_file.trim(), noob_id);
 
     let _ = fs::remove_dir_all(dir);
     Ok(())
@@ -117,16 +117,16 @@ fn load_uses_default_recent_lookup_limit_when_omitted() -> AppResult<()> {
 }
 
 #[test]
-fn load_fails_when_existing_node_id_file_is_not_readable_text() -> AppResult<()> {
+fn load_fails_when_existing_noob_id_file_is_not_readable_text() -> AppResult<()> {
     let dir = temp_dir("node-id-invalid-utf8");
     let config_path = write_base_config(&dir, true)?;
-    let node_id_path = dir.join("node_id");
-    fs::write(&node_id_path, [0xFF_u8, 0xFE_u8])?;
+    let noob_id_path = dir.join("noob_id");
+    fs::write(&noob_id_path, [0xFF_u8, 0xFE_u8])?;
 
     let result = AppConfig::load(&config_path);
     assert!(matches!(result, Err(AppError::Io(_))));
 
-    let written = fs::read(&node_id_path)?;
+    let written = fs::read(&noob_id_path)?;
     assert_eq!(written, vec![0xFF_u8, 0xFE_u8]);
 
     let _ = fs::remove_dir_all(dir);
@@ -134,21 +134,21 @@ fn load_fails_when_existing_node_id_file_is_not_readable_text() -> AppResult<()>
 }
 
 #[test]
-fn regenerate_node_id_recovers_from_corrupted_node_id_file() -> AppResult<()> {
+fn regenerate_noob_id_recovers_from_corrupted_noob_id_file() -> AppResult<()> {
     let dir = temp_dir("node-id-recover");
     let config_path = write_base_config(&dir, true)?;
-    let node_id_path = dir.join("node_id");
-    fs::write(&node_id_path, [0xFF_u8, 0xFE_u8])?;
+    let noob_id_path = dir.join("noob_id");
+    fs::write(&noob_id_path, [0xFF_u8, 0xFE_u8])?;
 
-    let regenerated = AppConfig::regenerate_node_id(&config_path)?;
+    let regenerated = AppConfig::regenerate_noob_id(&config_path)?;
     assert!(!regenerated.trim().is_empty());
     assert!(uuid::Uuid::parse_str(&regenerated).is_ok());
 
-    let persisted = fs::read_to_string(&node_id_path)?;
+    let persisted = fs::read_to_string(&noob_id_path)?;
     assert_eq!(persisted.trim(), regenerated);
 
     let loaded = AppConfig::load(&config_path)?;
-    assert_eq!(loaded.node_id(), Some(regenerated.as_str()));
+    assert_eq!(loaded.noob_id(), Some(regenerated.as_str()));
 
     let _ = fs::remove_dir_all(dir);
     Ok(())

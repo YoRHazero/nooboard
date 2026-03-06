@@ -21,7 +21,7 @@ fn free_port() -> u16 {
 }
 
 fn make_config(
-    node_id: &str,
+    noob_id: &str,
     listen_port: u16,
     peer_port: u16,
     download_dir: PathBuf,
@@ -51,8 +51,8 @@ fn make_config(
         download_dir,
         max_file_size,
         active_downloads: 4,
-        noob_id: node_id.to_string(),
-        device_id: format!("device-{node_id}"),
+        noob_id: noob_id.to_string(),
+        device_id: format!("device-{noob_id}"),
     }
 }
 
@@ -146,14 +146,14 @@ async fn file_transfer_accept_path_works() -> Result<(), Box<dyn std::error::Err
             maybe_event = timeout(remain, handle_b.event_rx.recv()) => {
                 let event = maybe_event?;
                 if let Some(SyncEvent::FileDecisionRequired {
-                    peer_node_id,
+                    peer_noob_id,
                     transfer_id,
                     ..
                 }) = event {
                     handle_b
                         .decision_tx
                         .send(nooboard_sync::FileDecisionInput {
-                            peer_node_id,
+                            peer_noob_id,
                             transfer_id,
                             accept: true,
                             reason: None,
@@ -233,7 +233,7 @@ async fn file_reject_cleans_tmp_file() -> Result<(), Box<dyn std::error::Error>>
         let event = timeout(remain, handle_b.event_rx.recv()).await?;
         if let Some(event) = event {
             if let SyncEvent::FileDecisionRequired {
-                peer_node_id,
+                peer_noob_id,
                 transfer_id,
                 ..
             } = event
@@ -242,7 +242,7 @@ async fn file_reject_cleans_tmp_file() -> Result<(), Box<dyn std::error::Error>>
                 handle_b
                     .decision_tx
                     .send(nooboard_sync::FileDecisionInput {
-                        peer_node_id,
+                        peer_noob_id,
                         transfer_id,
                         accept: false,
                         reason: Some("rejected in test".to_string()),
@@ -309,7 +309,7 @@ async fn control_channel_can_disconnect_specific_peer() -> Result<(), Box<dyn st
     handle_a
         .control_tx
         .send(SyncControlCommand::DisconnectPeer {
-            peer_node_id: "node-b".to_string(),
+            peer_noob_id: "node-b".to_string(),
         })
         .await?;
 
@@ -377,13 +377,13 @@ async fn peers_snapshot_updates_on_connect_and_disconnect() -> Result<(), Box<dy
     wait_running(&mut handle_b.status_rx).await?;
 
     let peers_a = wait_peer_count(&mut handle_a.peers_rx, 1, Duration::from_secs(3)).await?;
-    assert_eq!(peers_a[0].peer_node_id, "node-b");
+    assert_eq!(peers_a[0].peer_noob_id, "node-b");
     assert_eq!(peers_a[0].addr.port(), port_b);
     assert!(peers_a[0].outbound);
     assert!(peers_a[0].connected_at_ms > 0);
 
     let peers_b = wait_peer_count(&mut handle_b.peers_rx, 1, Duration::from_secs(3)).await?;
-    assert_eq!(peers_b[0].peer_node_id, "node-a");
+    assert_eq!(peers_b[0].peer_noob_id, "node-a");
     assert_eq!(peers_b[0].addr.ip().to_string(), "127.0.0.1");
     assert!(!peers_b[0].outbound);
     assert!(peers_b[0].connected_at_ms > 0);
@@ -391,7 +391,7 @@ async fn peers_snapshot_updates_on_connect_and_disconnect() -> Result<(), Box<dy
     handle_a
         .control_tx
         .send(SyncControlCommand::DisconnectPeer {
-            peer_node_id: "node-b".to_string(),
+            peer_noob_id: "node-b".to_string(),
         })
         .await?;
 
@@ -425,7 +425,7 @@ async fn missing_peer_file_decision_emits_connection_error_event()
     handle
         .decision_tx
         .send(nooboard_sync::FileDecisionInput {
-            peer_node_id: "ghost-peer".to_string(),
+            peer_noob_id: "ghost-peer".to_string(),
             transfer_id: 42,
             accept: true,
             reason: None,
@@ -438,12 +438,12 @@ async fn missing_peer_file_decision_emits_connection_error_event()
         let remain = deadline.duration_since(Instant::now());
         let event = timeout(remain, handle.event_rx.recv()).await?;
         if let Some(SyncEvent::ConnectionError {
-            peer_node_id,
+            peer_noob_id,
             addr: _,
             error,
         }) = event
         {
-            if peer_node_id.as_deref() == Some("ghost-peer")
+            if peer_noob_id.as_deref() == Some("ghost-peer")
                 && error.contains("connection error")
                 && error.contains("not connected")
             {

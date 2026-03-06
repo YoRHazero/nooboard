@@ -34,6 +34,7 @@ async fn run_control_actor(
         .subscriptions
         .deactivate(crate::service::types::SubscriptionCloseReason::EngineStopped)
         .await;
+    let _ = state.clipboard.stop_watch().await;
     let _ = state.sync_runtime.stop().await;
 }
 
@@ -100,6 +101,10 @@ async fn handle_control_command(state: &mut ControlState, command: ControlComman
 
         ControlCommand::SubscribeEvents { reply } => {
             let _ = reply.send(subscriptions::subscribe_events(state).await);
+            false
+        }
+        ControlCommand::SubscribeLocalClipboard { reply } => {
+            let _ = reply.send(subscriptions::subscribe_local_clipboard(state));
             false
         }
     }

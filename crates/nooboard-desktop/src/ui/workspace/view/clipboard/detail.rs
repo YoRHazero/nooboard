@@ -213,13 +213,15 @@ impl WorkspaceView {
                                 write_disabled,
                                 cx,
                             )
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.set_clipboard_feedback(format!(
-                                    "Wrote {} to the clipboard.",
-                                    this.clipboard_short_event_id(write_item.event_id)
-                                ));
-                                cx.notify();
-                            })),
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.set_clipboard_feedback(format!(
+                                        "Wrote {} to the clipboard.",
+                                        this.clipboard_short_event_id(write_item.event_id)
+                                    ));
+                                    cx.notify();
+                                },
+                            )),
                             Some(write_tooltip),
                         ),
                     )
@@ -233,16 +235,18 @@ impl WorkspaceView {
                                 broadcast_disabled,
                                 cx,
                             )
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                let count = this.clipboard_page.selected_target_count();
-                                this.set_clipboard_feedback(format!(
-                                    "Queued {} to {} target{}.",
-                                    this.clipboard_short_event_id(broadcast_item.event_id),
-                                    count,
-                                    if count == 1 { "" } else { "s" }
-                                ));
-                                cx.notify();
-                            })),
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    let count = this.clipboard_page.selected_target_count();
+                                    this.set_clipboard_feedback(format!(
+                                        "Queued {} to {} target{}.",
+                                        this.clipboard_short_event_id(broadcast_item.event_id),
+                                        count,
+                                        if count == 1 { "" } else { "s" }
+                                    ));
+                                    cx.notify();
+                                },
+                            )),
                             Some(broadcast_tooltip),
                         ),
                     )
@@ -256,9 +260,11 @@ impl WorkspaceView {
                                 store_disabled,
                                 cx,
                             )
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.store_remote_clipboard_item(store_item.clone(), cx);
-                            })),
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.store_remote_clipboard_item(store_item.clone(), cx);
+                                },
+                            )),
                             Some(store_tooltip),
                         ),
                     )
@@ -272,9 +278,11 @@ impl WorkspaceView {
                                 delete_disabled,
                                 cx,
                             )
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.delete_history_clipboard_item(delete_event_id, cx);
-                            })),
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.delete_history_clipboard_item(delete_event_id, cx);
+                                },
+                            )),
                             Some(delete_tooltip),
                         ),
                     ),

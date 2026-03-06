@@ -36,6 +36,7 @@ pub(super) fn run_actor(
             StorageCommand::AppendText {
                 text,
                 event_id,
+                origin_noob_id,
                 origin_device_id,
                 created_at_ms,
                 applied_at_ms,
@@ -46,6 +47,7 @@ pub(super) fn run_actor(
                     .append_text(
                         &text,
                         event_id,
+                        origin_noob_id.as_deref(),
                         origin_device_id.as_deref(),
                         created_at_ms,
                         applied_at_ms,

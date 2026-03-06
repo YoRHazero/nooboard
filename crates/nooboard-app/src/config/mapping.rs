@@ -21,12 +21,12 @@ impl AppConfig {
     }
 
     pub fn to_sync_config(&self) -> AppResult<SyncConfig> {
-        let node_id = self.node_id.clone().ok_or_else(|| {
-            AppError::InvalidConfig("identity.node_id was not initialized".to_string())
+        let noob_id = self.noob_id.clone().ok_or_else(|| {
+            AppError::InvalidConfig("identity.noob_id was not initialized".to_string())
         })?;
-        if node_id.trim().is_empty() {
+        if noob_id.trim().is_empty() {
             return Err(AppError::InvalidConfig(
-                "identity.noob_id_file produced empty node_id".to_string(),
+                "identity.noob_id_file produced empty noob_id".to_string(),
             ));
         }
 
@@ -48,7 +48,7 @@ impl AppConfig {
             download_dir: self.sync.file.download_dir.clone(),
             max_file_size: self.sync.file.max_file_size,
             active_downloads: self.sync.file.active_downloads,
-            noob_id: node_id,
+            noob_id: noob_id,
             device_id: self.identity.device_id.clone(),
         };
 
@@ -62,7 +62,7 @@ impl AppConfig {
         self.app.clipboard.recent_event_lookup_limit
     }
 
-    pub fn node_id(&self) -> Option<&str> {
-        self.node_id.as_deref()
+    pub fn noob_id(&self) -> Option<&str> {
+        self.noob_id.as_deref()
     }
 }

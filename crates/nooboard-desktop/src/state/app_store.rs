@@ -92,19 +92,19 @@ impl SharedState {
                     auto_bridge_remote_text: false,
                     peers: vec![
                         SystemPeer {
-                            node_id: "b71d8bb8-e35b-4e2e-9278-6d99ab77b6cf".into(),
+                            noob_id: "b71d8bb8-e35b-4e2e-9278-6d99ab77b6cf".into(),
                             device_id: "mbp-lab".into(),
                             ip: "192.168.31.18:17890".into(),
                             status: SystemPeerStatus::Connected,
                         },
                         SystemPeer {
-                            node_id: "3177c7f4-d664-4a5a-823e-8e5a962f34f1".into(),
+                            noob_id: "3177c7f4-d664-4a5a-823e-8e5a962f34f1".into(),
                             device_id: "render-node".into(),
                             ip: "192.168.31.44:17890".into(),
                             status: SystemPeerStatus::Transferring,
                         },
                         SystemPeer {
-                            node_id: "8d9c9bc0-b070-4b7e-89f9-4712929b89b5".into(),
+                            noob_id: "8d9c9bc0-b070-4b7e-89f9-4712929b89b5".into(),
                             device_id: "mbp-lab".into(),
                             ip: "192.168.31.52:17890".into(),
                             status: SystemPeerStatus::Connected,
@@ -113,7 +113,7 @@ impl SharedState {
                 },
                 clipboard: ClipboardStore {
                     targets: clipboard_targets,
-                    default_selected_target_node_ids: vec![
+                    default_selected_target_noob_ids: vec![
                         "b71d8bb8-e35b-4e2e-9278-6d99ab77b6cf".into(),
                         "3177c7f4-d664-4a5a-823e-8e5a962f34f1".into(),
                     ],
@@ -225,7 +225,7 @@ pub struct SystemCoreStore {
 
 #[derive(Clone)]
 pub struct SystemPeer {
-    pub node_id: String,
+    pub noob_id: String,
     pub device_id: String,
     pub ip: String,
     pub status: SystemPeerStatus,

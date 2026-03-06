@@ -33,7 +33,7 @@ fn toml_path(path: &Path) -> String {
 
 fn write_test_config(dir: &TempDir, db_root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let config_path = dir.path().join("app.toml");
-    let noob_id_file = dir.path().join("node_id");
+    let noob_id_file = dir.path().join("noob_id");
     let download_dir = dir.path().join("downloads");
     let listen_addr: SocketAddr = "127.0.0.1:0".parse()?;
 
@@ -115,6 +115,7 @@ async fn storage_patch_switches_active_database() -> Result<(), Box<dyn std::err
         .store_remote_text(RemoteTextRequest {
             event_id: EventId::new(),
             content: "from-a".to_string(),
+            noob_id: "remote-a".to_string(),
             device_id: "remote-a".to_string(),
         })
         .await?;
@@ -147,6 +148,7 @@ async fn storage_patch_switches_active_database() -> Result<(), Box<dyn std::err
         .store_remote_text(RemoteTextRequest {
             event_id: EventId::new(),
             content: "from-b".to_string(),
+            noob_id: "remote-b".to_string(),
             device_id: "remote-b".to_string(),
         })
         .await?;
@@ -211,6 +213,7 @@ async fn storage_patch_resolves_relative_db_root_from_config_dir()
         .store_remote_text(RemoteTextRequest {
             event_id: EventId::new(),
             content: "from-relative".to_string(),
+            noob_id: "remote-a".to_string(),
             device_id: "remote-a".to_string(),
         })
         .await?;
@@ -260,6 +263,7 @@ async fn network_patch_does_not_reconfigure_storage_runtime()
         .store_remote_text(RemoteTextRequest {
             event_id: EventId::new(),
             content: "from-a".to_string(),
+            noob_id: "remote-a".to_string(),
             device_id: "remote-a".to_string(),
         })
         .await?;
@@ -298,6 +302,7 @@ async fn restart_engine_ignores_external_file_edits_without_patch()
         .store_remote_text(RemoteTextRequest {
             event_id: EventId::new(),
             content: "from-a".to_string(),
+            noob_id: "remote-a".to_string(),
             device_id: "remote-a".to_string(),
         })
         .await?;
@@ -325,6 +330,7 @@ async fn restart_engine_ignores_external_file_edits_without_patch()
         .store_remote_text(RemoteTextRequest {
             event_id: EventId::new(),
             content: "after-failed-restart".to_string(),
+            noob_id: "remote-b".to_string(),
             device_id: "remote-b".to_string(),
         })
         .await?;
@@ -376,6 +382,7 @@ async fn set_sync_desired_state_running_is_idempotent() -> Result<(), Box<dyn st
         .store_remote_text(RemoteTextRequest {
             event_id: EventId::new(),
             content: "after-already-running".to_string(),
+            noob_id: "remote-a".to_string(),
             device_id: "remote-a".to_string(),
         })
         .await?;
@@ -470,6 +477,7 @@ async fn network_patch_returns_config_rollback_failed_when_sync_rollback_fails()
         .store_remote_text(RemoteTextRequest {
             event_id: EventId::new(),
             content: "before-failure".to_string(),
+            noob_id: "remote-a".to_string(),
             device_id: "remote-a".to_string(),
         })
         .await?;

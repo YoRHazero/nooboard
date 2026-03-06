@@ -54,7 +54,14 @@ async fn append_and_list_history_roundtrip() {
 
     let event_id = Uuid::now_v7();
     runtime
-        .append_text("alpha", Some(event_id), Some("device-a"), 1000, 1000)
+        .append_text(
+            "alpha",
+            Some(event_id),
+            Some("noob-a"),
+            Some("device-a"),
+            1000,
+            1000,
+        )
         .await
         .expect("append");
 
@@ -62,6 +69,7 @@ async fn append_and_list_history_roundtrip() {
     assert_eq!(records.len(), 1);
     assert_eq!(Uuid::from_bytes(records[0].event_id), event_id);
     assert_eq!(records[0].content, "alpha");
+    assert_eq!(records[0].origin_noob_id, "noob-a");
     assert_eq!(records[0].origin_device_id, "device-a");
 }
 
@@ -73,7 +81,14 @@ async fn reconfigure_switches_active_database() {
     let runtime = StorageRuntime::new(config_a.clone()).expect("runtime");
 
     runtime
-        .append_text("from-a", Some(Uuid::now_v7()), Some("device-a"), 1000, 1000)
+        .append_text(
+            "from-a",
+            Some(Uuid::now_v7()),
+            Some("noob-a"),
+            Some("device-a"),
+            1000,
+            1000,
+        )
         .await
         .expect("append a");
     assert_eq!(
@@ -93,7 +108,14 @@ async fn reconfigure_switches_active_database() {
     assert!(after_switch.is_empty());
 
     runtime
-        .append_text("from-b", Some(Uuid::now_v7()), Some("device-b"), 2000, 2000)
+        .append_text(
+            "from-b",
+            Some(Uuid::now_v7()),
+            Some("noob-b"),
+            Some("device-b"),
+            2000,
+            2000,
+        )
         .await
         .expect("append b");
     let b_records = runtime.list_history(10, None).await.expect("list b after");
@@ -116,7 +138,14 @@ async fn reconfigure_with_same_config_is_safe() {
     let runtime = StorageRuntime::new(config.clone()).expect("runtime");
 
     runtime
-        .append_text("before", Some(Uuid::now_v7()), Some("device-a"), 1000, 1000)
+        .append_text(
+            "before",
+            Some(Uuid::now_v7()),
+            Some("noob-a"),
+            Some("device-a"),
+            1000,
+            1000,
+        )
         .await
         .expect("append before");
     runtime.reconfigure(config).await.expect("reconfigure same");

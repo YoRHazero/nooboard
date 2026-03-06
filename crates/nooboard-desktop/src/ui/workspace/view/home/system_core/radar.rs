@@ -121,13 +121,13 @@ impl WorkspaceView {
                 "{}\n{}\nnode {}\nshared device_id",
                 peer.ip,
                 peer.device_id,
-                Self::short_node_id(&peer.node_id)
+                Self::short_noob_id(&peer.noob_id)
             ),
             _ => format!(
                 "{}\n{}\nnode {}",
                 peer.ip,
                 peer.device_id,
-                Self::short_node_id(&peer.node_id)
+                Self::short_noob_id(&peer.noob_id)
             ),
         };
 

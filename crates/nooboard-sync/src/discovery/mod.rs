@@ -6,6 +6,6 @@ pub use mdns::{MdnsDiscoveryConfig, MdnsHandle, NOOBOARD_SERVICE_TYPE, start_mdn
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DiscoveredPeer {
-    pub node_id: String,
+    pub noob_id: String,
     pub addr: SocketAddr,
 }

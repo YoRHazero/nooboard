@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use super::NodeId;
+use super::NoobId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NetworkPatch {
@@ -53,7 +53,7 @@ pub enum PeerConnectionState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectedPeer {
-    pub peer_node_id: NodeId,
+    pub peer_noob_id: NoobId,
     pub peer_device_id: String,
     pub addr: SocketAddr,
     pub outbound: bool,

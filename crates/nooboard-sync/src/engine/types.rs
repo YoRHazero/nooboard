@@ -20,7 +20,7 @@ pub enum PeerConnectionState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectedPeerInfo {
-    pub peer_node_id: String,
+    pub peer_noob_id: String,
     pub peer_device_id: String,
     pub addr: SocketAddr,
     pub outbound: bool,
@@ -60,7 +60,7 @@ pub enum TransferDirection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransferUpdate {
     pub transfer_id: u32,
-    pub peer_node_id: String,
+    pub peer_noob_id: String,
     pub direction: TransferDirection,
     pub state: TransferState,
 }
@@ -70,17 +70,18 @@ pub enum SyncEvent {
     TextReceived {
         event_id: String,
         content: String,
+        noob_id: String,
         device_id: String,
     },
     FileDecisionRequired {
-        peer_node_id: String,
+        peer_noob_id: String,
         transfer_id: u32,
         file_name: String,
         file_size: u64,
         total_chunks: u32,
     },
     ConnectionError {
-        peer_node_id: Option<String>,
+        peer_noob_id: Option<String>,
         addr: Option<SocketAddr>,
         error: String,
     },
@@ -88,7 +89,7 @@ pub enum SyncEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileDecisionInput {
-    pub peer_node_id: String,
+    pub peer_noob_id: String,
     pub transfer_id: u32,
     pub accept: bool,
     pub reason: Option<String>,
@@ -109,7 +110,7 @@ pub struct SendFileRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncControlCommand {
-    DisconnectPeer { peer_node_id: String },
+    DisconnectPeer { peer_noob_id: String },
 }
 
 pub struct SyncEngineHandle {

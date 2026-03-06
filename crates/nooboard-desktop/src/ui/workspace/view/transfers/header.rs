@@ -2,8 +2,8 @@ use gpui::{
     AnyElement, Context, Div, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, div, px,
 };
-use gpui_component::scroll::ScrollableElement;
 use gpui_component::StyledExt;
+use gpui_component::scroll::ScrollableElement;
 
 use crate::state::{ClipboardTarget, ClipboardTargetStatus};
 use crate::ui::theme;
@@ -138,16 +138,16 @@ impl WorkspaceView {
 
     fn transfer_target_chip(&self, target: &ClipboardTarget, cx: &mut Context<Self>) -> AnyElement {
         let connected = target.status == ClipboardTargetStatus::Connected;
-        let selected = self.transfer_target_is_selected(&target.node_id);
+        let selected = self.transfer_target_is_selected(&target.noob_id);
         let accent = if connected {
             theme::accent_cyan()
         } else {
             theme::fg_muted()
         };
-        let node_id = target.node_id.clone();
+        let noob_id = target.noob_id.clone();
 
         let mut chip = div()
-            .id(format!("transfer-target-chip-{}", target.node_id))
+            .id(format!("transfer-target-chip-{}", target.noob_id))
             .min_w(px(146.0))
             .px(px(12.0))
             .py(px(10.0))
@@ -205,7 +205,7 @@ impl WorkspaceView {
                 })
                 .active(|this| this.bg(theme::bg_panel()))
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.toggle_transfer_target(&node_id, cx);
+                    this.toggle_transfer_target(&noob_id, cx);
                 }));
         } else {
             chip = chip.opacity(0.72);

@@ -19,7 +19,7 @@ pub use file_transfer::{
 };
 pub(crate) use history::find_recent_record;
 pub use history::{HistoryCursor, HistoryPage, HistoryRecord, ListHistoryRequest};
-pub use identity::{EventId, NodeId, Targets};
+pub use identity::{EventId, NoobId, Targets};
 pub use network::{
     AppPatch, AppServiceSnapshot, AppSyncStatus, ConnectedPeer, NetworkPatch, PeerConnectionState,
     StorageConfigView, StoragePatch, SyncDesiredState,

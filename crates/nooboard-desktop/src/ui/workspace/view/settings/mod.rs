@@ -4,8 +4,8 @@ mod page_state;
 mod storage;
 
 use gpui::{Context, Div, Hsla, ParentElement, Styled, div, px};
-use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::StyledExt;
+use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 
 use crate::ui::theme;
 

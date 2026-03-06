@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::Path;
 
-use super::node_id::{
-    absolutize_if_relative, regenerate_node_id as regenerate_node_id_file, resolve_or_init_node_id,
+use super::noob_id::{
+    absolutize_if_relative, regenerate_noob_id as regenerate_noob_id_file, resolve_or_init_noob_id,
 };
 use super::schema::AppConfig;
 use crate::{AppError, AppResult};
@@ -18,7 +18,7 @@ impl AppConfig {
 
         let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
         config.resolve_relative_paths(base_dir);
-        config.ensure_node_id_loaded()?;
+        config.ensure_noob_id_loaded()?;
         config.validate()?;
         Ok(config)
     }
@@ -44,7 +44,7 @@ impl AppConfig {
         Ok(())
     }
 
-    pub fn regenerate_node_id(config_path: impl AsRef<Path>) -> AppResult<String> {
+    pub fn regenerate_noob_id(config_path: impl AsRef<Path>) -> AppResult<String> {
         let config_path = config_path.as_ref();
         let raw = fs::read_to_string(config_path)?;
         let mut config: Self = toml::from_str(&raw).map_err(|source| AppError::ConfigParse {
@@ -54,7 +54,7 @@ impl AppConfig {
 
         let base_dir = config_path.parent().unwrap_or_else(|| Path::new("."));
         config.resolve_relative_paths(base_dir);
-        let generated = regenerate_node_id_file(&config.identity.noob_id_file)?;
+        let generated = regenerate_noob_id_file(&config.identity.noob_id_file)?;
         Ok(generated)
     }
 
@@ -64,9 +64,9 @@ impl AppConfig {
         absolutize_if_relative(&mut self.sync.file.download_dir, base_dir);
     }
 
-    fn ensure_node_id_loaded(&mut self) -> AppResult<()> {
-        let node_id = resolve_or_init_node_id(&self.identity.noob_id_file)?;
-        self.node_id = Some(node_id);
+    fn ensure_noob_id_loaded(&mut self) -> AppResult<()> {
+        let noob_id = resolve_or_init_noob_id(&self.identity.noob_id_file)?;
+        self.noob_id = Some(noob_id);
         Ok(())
     }
 }

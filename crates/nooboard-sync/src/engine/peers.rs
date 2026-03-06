@@ -29,7 +29,7 @@ pub(super) struct PeerHandle {
 #[derive(Debug)]
 pub(super) enum EngineControl {
     Connected {
-        peer_node_id: String,
+        peer_noob_id: String,
         peer_device_id: String,
         addr: SocketAddr,
         outbound: bool,
@@ -43,12 +43,12 @@ pub(super) enum EngineControl {
         addr: SocketAddr,
     },
     PeerFailed {
-        peer_node_id: String,
+        peer_noob_id: String,
         session_id: u64,
         error: ConnectionError,
     },
     PeerDisconnected {
-        peer_node_id: String,
+        peer_noob_id: String,
         session_id: u64,
     },
     DiscoveredPeer(DiscoveredPeer),
@@ -96,11 +96,11 @@ impl PeerRegistry {
 
         match targets {
             None => {
-                for (peer_node_id, peer) in &self.peers {
+                for (peer_noob_id, peer) in &self.peers {
                     let _ = try_send_session_command(
                         &peer.command_tx,
                         SessionCommand::SendText(session_request.clone()),
-                        peer_node_id,
+                        peer_noob_id,
                         "send text",
                     );
                 }
@@ -133,11 +133,11 @@ impl PeerRegistry {
 
         match targets {
             None => {
-                for (peer_node_id, peer) in &self.peers {
+                for (peer_noob_id, peer) in &self.peers {
                     let _ = try_send_session_command(
                         &peer.command_tx,
                         SessionCommand::SendFile(session_request.clone()),
-                        peer_node_id,
+                        peer_noob_id,
                         "send file",
                     );
                 }
@@ -165,7 +165,7 @@ impl PeerRegistry {
         &self,
         decision: FileDecisionInput,
     ) -> Result<(), ConnectionError> {
-        if let Some(peer) = self.peers.get(&decision.peer_node_id) {
+        if let Some(peer) = self.peers.get(&decision.peer_noob_id) {
             try_send_session_command(
                 &peer.command_tx,
                 SessionCommand::FileDecision {
@@ -173,75 +173,75 @@ impl PeerRegistry {
                     accept: decision.accept,
                     reason: decision.reason,
                 },
-                &decision.peer_node_id,
+                &decision.peer_noob_id,
                 "forward file decision",
             )?;
             Ok(())
         } else {
             Err(ConnectionError::State(format!(
                 "peer {} is not connected",
-                decision.peer_node_id
+                decision.peer_noob_id
             )))
         }
     }
 
-    pub(super) fn disconnect_peer(&mut self, peer_node_id: &str) -> Option<SocketAddr> {
-        let peer = self.peers.remove(peer_node_id)?;
+    pub(super) fn disconnect_peer(&mut self, peer_noob_id: &str) -> Option<SocketAddr> {
+        let peer = self.peers.remove(peer_noob_id)?;
         let addr = peer.addr;
         let _ = try_send_session_command(
             &peer.command_tx,
             SessionCommand::Shutdown,
-            peer_node_id,
+            peer_noob_id,
             "disconnect peer",
         );
         Some(addr)
     }
 
     pub(super) fn shutdown_all(&self) {
-        for (peer_node_id, peer) in &self.peers {
+        for (peer_noob_id, peer) in &self.peers {
             let _ = try_send_session_command(
                 &peer.command_tx,
                 SessionCommand::Shutdown,
-                peer_node_id,
+                peer_noob_id,
                 "shutdown engine",
             );
         }
     }
 
-    pub(super) fn remove_peer_if_session(&mut self, peer_node_id: &str, session_id: u64) -> bool {
+    pub(super) fn remove_peer_if_session(&mut self, peer_noob_id: &str, session_id: u64) -> bool {
         let should_remove = self
             .peers
-            .get(peer_node_id)
+            .get(peer_noob_id)
             .map(|peer| peer.session_id == session_id)
             .unwrap_or(false);
         if should_remove {
-            self.peers.remove(peer_node_id);
+            self.peers.remove(peer_noob_id);
             true
         } else {
             false
         }
     }
 
-    pub(super) fn insert_peer(&mut self, peer_node_id: String, handle: PeerHandle) {
-        self.peers.insert(peer_node_id, handle);
+    pub(super) fn insert_peer(&mut self, peer_noob_id: String, handle: PeerHandle) {
+        self.peers.insert(peer_noob_id, handle);
     }
 
-    pub(super) fn peer_outbound(&self, peer_node_id: &str) -> Option<bool> {
-        self.peers.get(peer_node_id).map(|peer| peer.outbound)
+    pub(super) fn peer_outbound(&self, peer_noob_id: &str) -> Option<bool> {
+        self.peers.get(peer_noob_id).map(|peer| peer.outbound)
     }
 
     pub(super) fn peer_command_tx(
         &self,
-        peer_node_id: &str,
+        peer_noob_id: &str,
     ) -> Option<mpsc::Sender<SessionCommand>> {
         self.peers
-            .get(peer_node_id)
+            .get(peer_noob_id)
             .map(|peer| peer.command_tx.clone())
     }
 
-    pub(super) fn peer_matches_session(&self, peer_node_id: &str, session_id: u64) -> bool {
+    pub(super) fn peer_matches_session(&self, peer_noob_id: &str, session_id: u64) -> bool {
         self.peers
-            .get(peer_node_id)
+            .get(peer_noob_id)
             .map(|peer| peer.session_id == session_id)
             .unwrap_or(false)
     }
@@ -250,8 +250,8 @@ impl PeerRegistry {
         let mut peers: Vec<ConnectedPeerInfo> = self
             .peers
             .iter()
-            .map(|(peer_node_id, handle)| ConnectedPeerInfo {
-                peer_node_id: peer_node_id.clone(),
+            .map(|(peer_noob_id, handle)| ConnectedPeerInfo {
+                peer_noob_id: peer_noob_id.clone(),
                 peer_device_id: handle.device_id.clone(),
                 addr: handle.addr,
                 outbound: handle.outbound,
@@ -259,7 +259,7 @@ impl PeerRegistry {
                 state: PeerConnectionState::Connected,
             })
             .collect();
-        peers.sort_unstable_by(|left, right| left.peer_node_id.cmp(&right.peer_node_id));
+        peers.sort_unstable_by(|left, right| left.peer_noob_id.cmp(&right.peer_noob_id));
         peers
     }
 
@@ -269,25 +269,25 @@ impl PeerRegistry {
 
     pub(super) fn apply_discovered_peer(
         &mut self,
-        local_node_id: &str,
+        local_noob_id: &str,
         peer: &DiscoveredPeer,
     ) -> DedupeDecision {
-        self.candidates.apply_discovered_peer(local_node_id, peer)
+        self.candidates.apply_discovered_peer(local_noob_id, peer)
     }
 }
 
 fn try_send_session_command(
     command_tx: &mpsc::Sender<SessionCommand>,
     command: SessionCommand,
-    peer_node_id: &str,
+    peer_noob_id: &str,
     op: &'static str,
 ) -> Result<(), ConnectionError> {
     command_tx.try_send(command).map_err(|error| match error {
         mpsc::error::TrySendError::Full(_) => ConnectionError::State(format!(
-            "peer {peer_node_id} session queue is full while {op}"
+            "peer {peer_noob_id} session queue is full while {op}"
         )),
         mpsc::error::TrySendError::Closed(_) => ConnectionError::State(format!(
-            "peer {peer_node_id} session queue is closed while {op}"
+            "peer {peer_noob_id} session queue is closed while {op}"
         )),
     })
 }
@@ -301,18 +301,18 @@ mod tests {
 
     fn insert_peer_for_test(
         registry: &mut PeerRegistry,
-        peer_node_id: &str,
+        peer_noob_id: &str,
     ) -> mpsc::Receiver<SessionCommand> {
         let (command_tx, command_rx) = mpsc::channel(4);
         registry.insert_peer(
-            peer_node_id.to_string(),
+            peer_noob_id.to_string(),
             PeerHandle {
                 command_tx,
                 addr: "127.0.0.1:10001"
                     .parse()
                     .expect("test addr should be valid"),
                 outbound: true,
-                device_id: peer_node_id.to_string(),
+                device_id: peer_noob_id.to_string(),
                 session_id: 1,
                 connected_at_ms: 1,
             },
@@ -324,7 +324,7 @@ mod tests {
     async fn forward_file_decision_returns_error_when_peer_missing() {
         let registry = PeerRegistry::new();
         let result = registry.forward_file_decision(FileDecisionInput {
-            peer_node_id: "missing-peer".to_string(),
+            peer_noob_id: "missing-peer".to_string(),
             transfer_id: 1,
             accept: true,
             reason: None,
@@ -354,7 +354,7 @@ mod tests {
         );
 
         let result = registry.forward_file_decision(FileDecisionInput {
-            peer_node_id: "node-b".to_string(),
+            peer_noob_id: "node-b".to_string(),
             transfer_id: 7,
             accept: false,
             reason: Some("reject".to_string()),

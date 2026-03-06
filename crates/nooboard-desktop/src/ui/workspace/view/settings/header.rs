@@ -54,7 +54,9 @@ impl WorkspaceView {
                                 div()
                                     .text_size(px(12.0))
                                     .text_color(theme::fg_muted())
-                                    .child("Storage and network patches (stage5 wireframe layout)."),
+                                    .child(
+                                        "Storage and network patches (stage5 wireframe layout).",
+                                    ),
                             ),
                     ),
             )

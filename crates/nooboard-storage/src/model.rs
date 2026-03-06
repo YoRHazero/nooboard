@@ -16,6 +16,7 @@ impl EventState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HistoryRecord {
     pub event_id: [u8; 16],
+    pub origin_noob_id: String,
     pub origin_device_id: String,
     pub created_at_ms: i64,
     pub applied_at_ms: i64,

@@ -40,8 +40,8 @@ enum RadarPeerVisualState {
 }
 
 impl WorkspaceView {
-    fn short_node_id(node_id: &str) -> String {
-        node_id.chars().take(8).collect()
+    fn short_noob_id(noob_id: &str) -> String {
+        noob_id.chars().take(8).collect()
     }
 
     fn stable_unit(value: &str, salt: u64) -> f32 {
@@ -91,8 +91,8 @@ impl WorkspaceView {
     }
 
     fn peer_position(peer: &SystemPeer) -> (f32, f32, f32) {
-        let angular = Self::stable_unit(&peer.node_id, 0x1A11CE);
-        let radial = Self::stable_unit(&peer.node_id, 0xC0FFEE).sqrt();
+        let angular = Self::stable_unit(&peer.noob_id, 0x1A11CE);
+        let radial = Self::stable_unit(&peer.noob_id, 0xC0FFEE).sqrt();
         let theta = -std::f32::consts::FRAC_PI_2 + TAU * angular;
         let radius = RADAR_MIN_RADIUS + (RADAR_MAX_RADIUS - RADAR_MIN_RADIUS) * radial;
         let x = RADAR_CENTER + theta.cos() * radius;

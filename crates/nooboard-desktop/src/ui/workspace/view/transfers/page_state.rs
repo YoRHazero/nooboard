@@ -60,7 +60,7 @@ pub(super) struct LocalUploadCard {
 }
 
 pub(in crate::ui::workspace::view) struct TransfersPageState {
-    pub(super) selected_target_node_ids: BTreeSet<String>,
+    pub(super) selected_target_noob_ids: BTreeSet<String>,
     pub(super) global_folder: PathBuf,
     pub(super) uploads: Vec<LocalUploadCard>,
     pub(super) feedback: Option<String>,
@@ -72,8 +72,8 @@ pub(in crate::ui::workspace::view) struct TransfersPageState {
 impl TransfersPageState {
     pub(in crate::ui::workspace::view) fn new(clipboard: &ClipboardStore) -> Self {
         Self {
-            selected_target_node_ids: clipboard
-                .default_selected_target_node_ids
+            selected_target_noob_ids: clipboard
+                .default_selected_target_noob_ids
                 .iter()
                 .cloned()
                 .collect(),
@@ -87,7 +87,7 @@ impl TransfersPageState {
     }
 
     pub(super) fn selected_target_count(&self) -> usize {
-        self.selected_target_node_ids.len()
+        self.selected_target_noob_ids.len()
     }
 
     fn next_upload_id(&mut self) -> String {
@@ -102,29 +102,29 @@ impl WorkspaceView {
         self.transfers_page_state.feedback = Some(message.into());
     }
 
-    pub(super) fn transfer_target_is_selected(&self, node_id: &str) -> bool {
+    pub(super) fn transfer_target_is_selected(&self, noob_id: &str) -> bool {
         self.transfers_page_state
-            .selected_target_node_ids
-            .contains(node_id)
+            .selected_target_noob_ids
+            .contains(noob_id)
     }
 
     pub(super) fn selected_transfer_target_count(&self) -> usize {
         self.transfers_page_state.selected_target_count()
     }
 
-    pub(super) fn toggle_transfer_target(&mut self, node_id: &str, cx: &mut Context<Self>) {
+    pub(super) fn toggle_transfer_target(&mut self, noob_id: &str, cx: &mut Context<Self>) {
         if self
             .transfers_page_state
-            .selected_target_node_ids
-            .contains(node_id)
+            .selected_target_noob_ids
+            .contains(noob_id)
         {
             self.transfers_page_state
-                .selected_target_node_ids
-                .remove(node_id);
+                .selected_target_noob_ids
+                .remove(noob_id);
         } else {
             self.transfers_page_state
-                .selected_target_node_ids
-                .insert(node_id.to_string());
+                .selected_target_noob_ids
+                .insert(noob_id.to_string());
         }
 
         let count = self.transfers_page_state.selected_target_count();
@@ -146,8 +146,8 @@ impl WorkspaceView {
                 target.is_connected()
                     && self
                         .transfers_page_state
-                        .selected_target_node_ids
-                        .contains(&target.node_id)
+                        .selected_target_noob_ids
+                        .contains(&target.noob_id)
             })
             .cloned()
             .collect()
@@ -299,7 +299,7 @@ impl WorkspaceView {
         let item_id = card.id.clone();
         let target_lines = selected_targets
             .iter()
-            .map(|target| format!("• {} ({})", target.device_id, target.node_id))
+            .map(|target| format!("• {} ({})", target.device_id, target.noob_id))
             .collect::<Vec<_>>()
             .join("\n");
         let description = format!(
@@ -333,7 +333,7 @@ impl WorkspaceView {
         let selected_target_ids = self
             .transfer_selected_targets()
             .into_iter()
-            .map(|target| target.node_id)
+            .map(|target| target.noob_id)
             .collect::<Vec<_>>();
         let target_count = selected_target_ids.len();
 
@@ -416,8 +416,7 @@ impl WorkspaceView {
     pub(super) fn reject_download_transfer(&mut self, item_id: &str, cx: &mut Context<Self>) {
         let before = self.transfer_items.len();
         self.transfer_items.retain(|item| {
-            !(item.id == item_id
-                && matches!(item.status, TransferStatus::AwaitingReview { .. }))
+            !(item.id == item_id && matches!(item.status, TransferStatus::AwaitingReview { .. }))
         });
         if self.transfer_items.len() != before {
             self.set_transfers_feedback("Incoming file rejected.");

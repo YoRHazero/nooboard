@@ -17,7 +17,7 @@ pub enum Packet {
 pub enum HandshakePacket {
     Hello {
         protocol_version: u16,
-        node_id: String,
+        noob_id: String,
         device_id: String,
     },
     Challenge {

@@ -139,7 +139,7 @@ async fn run_engine_inner(
     let local_addr = listener.local_addr()?;
 
     info!(
-        node_id = %config.noob_id,
+        noob_id = %config.noob_id,
         listen_addr = %local_addr,
         "sync engine listening"
     );
@@ -226,17 +226,17 @@ async fn run_engine_inner(
             maybe_decision = decision_rx.recv() => {
                 match maybe_decision {
                     Some(decision) => {
-                        let peer_node_id = decision.peer_node_id.clone();
+                        let peer_noob_id = decision.peer_noob_id.clone();
                         let transfer_id = decision.transfer_id;
                         if let Err(error) = registry.forward_file_decision(decision) {
                             warn!(
-                                peer=%peer_node_id,
+                                peer=%peer_noob_id,
                                 transfer_id,
                                 "drop file decision: {error}"
                             );
                             emit_connection_error_event(
                                 &event_tx,
-                                Some(peer_node_id),
+                                Some(peer_noob_id),
                                 None,
                                 SyncError::Connection(error),
                             );
@@ -293,12 +293,12 @@ async fn run_engine_inner(
 
 fn handle_sync_control_command(command: SyncControlCommand, registry: &mut PeerRegistry) -> bool {
     match command {
-        SyncControlCommand::DisconnectPeer { peer_node_id } => {
-            if let Some(addr) = registry.disconnect_peer(&peer_node_id) {
-                info!(peer=%peer_node_id, addr=%addr, "disconnect peer requested by control channel");
+        SyncControlCommand::DisconnectPeer { peer_noob_id } => {
+            if let Some(addr) = registry.disconnect_peer(&peer_noob_id) {
+                info!(peer=%peer_noob_id, addr=%addr, "disconnect peer requested by control channel");
                 true
             } else {
-                warn!(peer=%peer_node_id, "disconnect peer requested but peer is not connected");
+                warn!(peer=%peer_noob_id, "disconnect peer requested but peer is not connected");
                 false
             }
         }
@@ -317,7 +317,7 @@ async fn handle_engine_control(
 ) -> bool {
     match control {
         EngineControl::Connected {
-            peer_node_id,
+            peer_noob_id,
             peer_device_id,
             addr,
             outbound,
@@ -325,24 +325,24 @@ async fn handle_engine_control(
         } => {
             registry.clear_connecting(&addr);
 
-            if peer_node_id == config.noob_id {
-                error!(peer=%peer_node_id, "node_id conflict: local and remote are identical");
+            if peer_noob_id == config.noob_id {
+                error!(peer=%peer_noob_id, "noob_id conflict: local and remote are identical");
                 return false;
             }
 
-            let decision = dedupe_decision(&config.noob_id, &peer_node_id);
+            let decision = dedupe_decision(&config.noob_id, &peer_noob_id);
             if !connection_direction_allowed(outbound, decision) {
-                debug!(peer=%peer_node_id, outbound, "drop connection due to node_id dedupe direction");
+                debug!(peer=%peer_noob_id, outbound, "drop connection due to noob_id dedupe direction");
                 return false;
             }
 
-            if let Some(existing_outbound) = registry.peer_outbound(&peer_node_id) {
+            if let Some(existing_outbound) = registry.peer_outbound(&peer_noob_id) {
                 if existing_outbound == outbound {
-                    debug!(peer=%peer_node_id, "drop duplicate connection in same direction");
+                    debug!(peer=%peer_noob_id, "drop duplicate connection in same direction");
                     return false;
                 }
 
-                if let Some(command_tx) = registry.peer_command_tx(&peer_node_id) {
+                if let Some(command_tx) = registry.peer_command_tx(&peer_noob_id) {
                     let _ = command_tx.try_send(SessionCommand::Shutdown);
                 }
             }
@@ -355,14 +355,14 @@ async fn handle_engine_control(
                 progress_tx,
                 shutdown_tx,
                 engine_control_tx,
-                &peer_node_id,
+                &peer_noob_id,
                 &peer_device_id,
                 session_id,
                 framed,
             );
 
             registry.insert_peer(
-                peer_node_id,
+                peer_noob_id,
                 PeerHandle {
                     command_tx,
                     addr,
@@ -384,31 +384,31 @@ async fn handle_engine_control(
             false
         }
         EngineControl::PeerFailed {
-            peer_node_id,
+            peer_noob_id,
             session_id,
             error,
         } => {
-            if !registry.peer_matches_session(&peer_node_id, session_id) {
-                debug!(peer=%peer_node_id, session_id, "ignore stale peer failure from closed session");
+            if !registry.peer_matches_session(&peer_noob_id, session_id) {
+                debug!(peer=%peer_noob_id, session_id, "ignore stale peer failure from closed session");
                 return false;
             }
-            warn!(peer=%peer_node_id, "session actor failed: {error}");
+            warn!(peer=%peer_noob_id, "session actor failed: {error}");
             emit_connection_error_event(
                 event_tx,
-                Some(peer_node_id),
+                Some(peer_noob_id),
                 None,
                 SyncError::Connection(error),
             );
             false
         }
         EngineControl::PeerDisconnected {
-            peer_node_id,
+            peer_noob_id,
             session_id,
         } => {
-            if registry.remove_peer_if_session(&peer_node_id, session_id) {
+            if registry.remove_peer_if_session(&peer_noob_id, session_id) {
                 true
             } else {
-                debug!(peer=%peer_node_id, session_id, "ignore stale peer disconnected from old session");
+                debug!(peer=%peer_noob_id, session_id, "ignore stale peer disconnected from old session");
                 false
             }
         }
@@ -417,7 +417,7 @@ async fn handle_engine_control(
                 registry.apply_discovered_peer(&config.noob_id, &peer),
                 DedupeDecision::RejectConflict
             ) {
-                error!(peer=%peer.node_id, "discovery conflict: local node_id equals remote node_id");
+                error!(peer=%peer.noob_id, "discovery conflict: local noob_id equals remote noob_id");
             }
             false
         }
@@ -430,14 +430,14 @@ fn spawn_session_actor_for_peer(
     progress_tx: &broadcast::Sender<TransferUpdate>,
     shutdown_tx: &broadcast::Sender<()>,
     engine_control_tx: &mpsc::Sender<EngineControl>,
-    peer_node_id: &str,
+    peer_noob_id: &str,
     peer_device_id: &str,
     session_id: u64,
     framed: Framed<TlsStream<TcpStream>, LengthDelimitedCodec>,
 ) -> mpsc::Sender<SessionCommand> {
     let (command_tx, command_rx) = mpsc::channel(128);
     let disconnect_tx = engine_control_tx.clone();
-    let peer_node_id_for_task = peer_node_id.to_string();
+    let peer_noob_id_for_task = peer_noob_id.to_string();
     let peer_device_id_for_task = peer_device_id.to_string();
 
     let actor_config = config.clone();
@@ -447,7 +447,7 @@ fn spawn_session_actor_for_peer(
 
     tokio::spawn(async move {
         let actor_result = run_session_actor(SessionActorContext {
-            peer_node_id: peer_node_id_for_task.clone(),
+            peer_noob_id: peer_noob_id_for_task.clone(),
             peer_device_id: peer_device_id_for_task.clone(),
             config: actor_config,
             framed,
@@ -461,7 +461,7 @@ fn spawn_session_actor_for_peer(
         if let Err(error) = actor_result {
             let _ = disconnect_tx
                 .send(EngineControl::PeerFailed {
-                    peer_node_id: peer_node_id_for_task.clone(),
+                    peer_noob_id: peer_noob_id_for_task.clone(),
                     session_id,
                     error,
                 })
@@ -470,7 +470,7 @@ fn spawn_session_actor_for_peer(
 
         let _ = disconnect_tx
             .send(EngineControl::PeerDisconnected {
-                peer_node_id: peer_node_id_for_task,
+                peer_noob_id: peer_noob_id_for_task,
                 session_id,
             })
             .await;
@@ -481,12 +481,12 @@ fn spawn_session_actor_for_peer(
 
 fn emit_connection_error_event(
     event_tx: &mpsc::Sender<SyncEvent>,
-    peer_node_id: Option<String>,
+    peer_noob_id: Option<String>,
     addr: Option<std::net::SocketAddr>,
     error: SyncError,
 ) {
     if let Err(send_error) = event_tx.try_send(SyncEvent::ConnectionError {
-        peer_node_id,
+        peer_noob_id,
         addr,
         error: error.to_string(),
     }) {

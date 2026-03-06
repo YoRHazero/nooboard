@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use tokio::sync::broadcast;
 
-use super::{EventId, NodeId, TransferUpdate};
+use super::{EventId, NoobId, TransferUpdate};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventStream {
@@ -15,17 +15,18 @@ pub enum SyncEvent {
     TextReceived {
         event_id: EventId,
         content: String,
+        noob_id: NoobId,
         device_id: String,
     },
     FileDecisionRequired {
-        peer_node_id: NodeId,
+        peer_noob_id: NoobId,
         transfer_id: u32,
         file_name: String,
         file_size: u64,
         total_chunks: u32,
     },
     ConnectionError {
-        peer_node_id: Option<NodeId>,
+        peer_noob_id: Option<NoobId>,
         addr: Option<SocketAddr>,
         error: String,
     },

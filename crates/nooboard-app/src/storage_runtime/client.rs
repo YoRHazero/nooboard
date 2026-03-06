@@ -63,6 +63,7 @@ impl StorageRuntime {
         &self,
         text: &str,
         event_id: Option<Uuid>,
+        origin_noob_id: Option<&str>,
         origin_device_id: Option<&str>,
         created_at_ms: i64,
         applied_at_ms: i64,
@@ -71,6 +72,7 @@ impl StorageRuntime {
             |reply| StorageCommand::AppendText {
                 text: text.to_string(),
                 event_id,
+                origin_noob_id: origin_noob_id.map(ToString::to_string),
                 origin_device_id: origin_device_id.map(ToString::to_string),
                 created_at_ms,
                 applied_at_ms,

@@ -50,19 +50,17 @@ impl WorkspaceView {
                 cx,
             ))
             .child(
-                div()
-                    .pt(px(8.0))
-                    .child(
-                        self.settings_action_button(
-                            "settings-save-network-patch",
-                            "Save Network Patch",
-                            theme::accent_blue(),
-                            cx,
-                        )
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.save_network_patch(cx);
-                            })),
-                    ),
+                div().pt(px(8.0)).child(
+                    self.settings_action_button(
+                        "settings-save-network-patch",
+                        "Save Network Patch",
+                        theme::accent_blue(),
+                        cx,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.save_network_patch(cx);
+                    })),
+                ),
             )
     }
 
@@ -127,12 +125,11 @@ impl WorkspaceView {
                 ToggleKind::NetworkEnabled => this.toggle_settings_network_enabled(cx),
                 ToggleKind::MdnsEnabled => this.toggle_settings_mdns_enabled(cx),
             }))
-            .child(
-                div()
-                    .size(px(6.0))
-                    .rounded(px(999.0))
-                    .bg(if enabled { accent } else { theme::fg_muted() }),
-            )
+            .child(div().size(px(6.0)).rounded(px(999.0)).bg(if enabled {
+                accent
+            } else {
+                theme::fg_muted()
+            }))
             .child(
                 div()
                     .text_size(px(10.0))

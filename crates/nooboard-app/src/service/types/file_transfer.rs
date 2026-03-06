@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::{NodeId, Targets};
+use super::{NoobId, Targets};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendFileRequest {
@@ -10,7 +10,7 @@ pub struct SendFileRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileDecisionRequest {
-    pub peer_node_id: NodeId,
+    pub peer_noob_id: NoobId,
     pub transfer_id: u32,
     pub accept: bool,
     pub reason: Option<String>,
@@ -48,7 +48,7 @@ pub enum TransferState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransferUpdate {
     pub transfer_id: u32,
-    pub peer_node_id: NodeId,
+    pub peer_noob_id: NoobId,
     pub direction: TransferDirection,
     pub state: TransferState,
 }
