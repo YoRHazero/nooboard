@@ -48,7 +48,12 @@ pub struct AppServiceImpl {
 }
 
 impl AppServiceImpl {
-    pub fn new(
+    pub fn new(config_path: impl AsRef<Path>) -> AppResult<Self> {
+        Self::new_with_clipboard(config_path, default_clipboard_port()?)
+    }
+
+    #[doc(hidden)]
+    pub fn new_with_clipboard(
         config_path: impl AsRef<Path>,
         clipboard: Arc<dyn ClipboardPort>,
     ) -> AppResult<Self> {
@@ -89,6 +94,21 @@ impl AppServiceImpl {
         reply_rx.await.map_err(|_| {
             AppError::ChannelClosed(format!("control response channel closed: {op}"))
         })?
+    }
+}
+
+fn default_clipboard_port() -> AppResult<Arc<dyn ClipboardPort>> {
+    #[cfg(target_os = "macos")]
+    {
+        return Ok(Arc::new(
+            nooboard_platform_macos::MacOsClipboardBackend::new(),
+        ));
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err(AppError::Platform(
+            nooboard_platform::NooboardError::UnsupportedPlatform,
+        ))
     }
 }
 

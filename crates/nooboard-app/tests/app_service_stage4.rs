@@ -143,7 +143,7 @@ fn new_service(
         &[],
     )?;
     let backend = Arc::new(MockClipboardBackend::default());
-    let service = AppServiceImpl::new(&config_path, backend.clone())?;
+    let service = AppServiceImpl::new_with_clipboard(&config_path, backend.clone())?;
     Ok((service, backend, dir, config_path))
 }
 
@@ -156,7 +156,7 @@ fn new_service_with_network(
     let dir = TempDir::new()?;
     let config_path = write_test_config(&dir, recent_limit, listen_addr, &manual_peers)?;
     let backend = Arc::new(MockClipboardBackend::default());
-    let service = AppServiceImpl::new(&config_path, backend.clone())?;
+    let service = AppServiceImpl::new_with_clipboard(&config_path, backend.clone())?;
     Ok((service, backend, dir, config_path))
 }
 

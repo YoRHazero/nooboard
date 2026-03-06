@@ -3811,6 +3811,7 @@ name = "nooboard-app"
 version = "0.1.0"
 dependencies = [
  "nooboard-platform",
+ "nooboard-platform-macos",
  "nooboard-storage",
  "nooboard-sync",
  "serde",

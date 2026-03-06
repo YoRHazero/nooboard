@@ -100,7 +100,7 @@ fn new_service(
     let dir = TempDir::new()?;
     let config_path = write_test_config(&dir, db_root)?;
     let backend = Arc::new(MockClipboardBackend::default());
-    let service = AppServiceImpl::new(&config_path, backend)?;
+    let service = AppServiceImpl::new_with_clipboard(&config_path, backend)?;
     Ok((service, dir, config_path))
 }
 

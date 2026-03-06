@@ -15,5 +15,8 @@ tokio.workspace = true
 toml.workspace = true
 uuid.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+nooboard-platform-macos = { path = "../nooboard-platform-macos" }
+
 [dev-dependencies]
 tempfile.workspace = true
