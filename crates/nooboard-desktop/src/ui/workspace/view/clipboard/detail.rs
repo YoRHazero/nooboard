@@ -153,12 +153,8 @@ impl WorkspaceView {
         let selected_targets = self.clipboard_page.selected_target_count();
         let broadcast_disabled = !active_item.can_broadcast() || selected_targets == 0;
         let write_disabled = !active_item.can_write_to_clipboard();
-        let store_disabled = !active_item.can_store();
-        let delete_disabled = !active_item.can_delete();
-        let store_item = active_item.clone();
         let write_item = active_item.clone();
         let broadcast_item = active_item.clone();
-        let delete_event_id = active_item.event_id;
         let write_tooltip = if write_disabled {
             "Remote live or history only.".to_string()
         } else {
@@ -170,16 +166,6 @@ impl WorkspaceView {
             "Select at least one connected target.".to_string()
         } else {
             "Broadcast to selected targets.".to_string()
-        };
-        let store_tooltip = if store_disabled {
-            "Remote live only.".to_string()
-        } else {
-            "Store this remote text into history.".to_string()
-        };
-        let delete_tooltip = if delete_disabled {
-            "History only.".to_string()
-        } else {
-            "Delete this history item.".to_string()
         };
 
         div()
@@ -248,42 +234,6 @@ impl WorkspaceView {
                                 },
                             )),
                             Some(broadcast_tooltip),
-                        ),
-                    )
-                    .child(
-                        self.clipboard_action_with_tooltip(
-                            "clipboard-action-store-tooltip-shell",
-                            self.clipboard_action_button(
-                                "clipboard-action-store",
-                                "Store",
-                                theme::accent_amber(),
-                                store_disabled,
-                                cx,
-                            )
-                            .on_click(cx.listener(
-                                move |this, _, _, cx| {
-                                    this.store_remote_clipboard_item(store_item.clone(), cx);
-                                },
-                            )),
-                            Some(store_tooltip),
-                        ),
-                    )
-                    .child(
-                        self.clipboard_action_with_tooltip(
-                            "clipboard-action-delete-tooltip-shell",
-                            self.clipboard_action_button(
-                                "clipboard-action-delete",
-                                "Delete",
-                                theme::accent_rose(),
-                                delete_disabled,
-                                cx,
-                            )
-                            .on_click(cx.listener(
-                                move |this, _, _, cx| {
-                                    this.delete_history_clipboard_item(delete_event_id, cx);
-                                },
-                            )),
-                            Some(delete_tooltip),
                         ),
                     ),
             )

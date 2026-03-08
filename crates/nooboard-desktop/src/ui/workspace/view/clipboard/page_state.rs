@@ -152,49 +152,4 @@ impl WorkspaceView {
             cx.notify();
         }
     }
-
-    pub(super) fn store_remote_clipboard_item(
-        &mut self,
-        item: ClipboardTextItem,
-        cx: &mut Context<Self>,
-    ) {
-        if !item.can_store() {
-            return;
-        }
-
-        if self
-            .clipboard_page
-            .history_items
-            .iter()
-            .all(|history_item| history_item.event_id != item.event_id)
-        {
-            let stored_item = ClipboardTextItem {
-                residency: ClipboardTextResidency::History,
-                ..item.clone()
-            };
-            self.clipboard_page.history_items.insert(0, stored_item);
-        }
-
-        self.clipboard_page.selection = ClipboardSelection::History {
-            event_id: item.event_id,
-        };
-        self.set_clipboard_feedback("Stored and selected.");
-        cx.notify();
-    }
-
-    pub(super) fn delete_history_clipboard_item(&mut self, event_id: Uuid, cx: &mut Context<Self>) {
-        let before = self.clipboard_page.history_items.len();
-        self.clipboard_page
-            .history_items
-            .retain(|item| item.event_id != event_id);
-
-        if self.clipboard_page.history_items.len() != before {
-            self.clipboard_page.selection = ClipboardSelection::LatestLive;
-            self.set_clipboard_feedback(format!(
-                "Deleted {}.",
-                self.clipboard_short_event_id(event_id)
-            ));
-            cx.notify();
-        }
-    }
 }

@@ -144,14 +144,6 @@ impl ClipboardTextItem {
             || self.residency == ClipboardTextResidency::History
     }
 
-    pub fn can_store(&self) -> bool {
-        self.origin == ClipboardTextOrigin::Remote && self.residency == ClipboardTextResidency::Live
-    }
-
-    pub fn can_delete(&self) -> bool {
-        self.residency == ClipboardTextResidency::History
-    }
-
     fn new(
         event_id: Uuid,
         device_id: impl Into<String>,

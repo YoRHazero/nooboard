@@ -49,7 +49,7 @@ impl WorkspaceView {
                     .flex_1()
                     .min_h(px(0.0))
                     .overflow_y_scrollbar()
-                    .child(div().v_flex().gap(px(12.0)).children(history_rows)),
+                    .child(div().w_full().v_flex().gap(px(12.0)).children(history_rows)),
             )
             .child(
                 self.clipboard_action_button(
@@ -105,37 +105,49 @@ impl WorkspaceView {
             }))
             .child(
                 div()
+                    .w_full()
                     .v_flex()
                     .gap(px(10.0))
                     .child(
                         div()
+                            .w_full()
                             .h_flex()
-                            .items_center()
-                            .justify_between()
+                            .items_start()
                             .gap(px(12.0))
                             .child(
                                 div()
+                                    .flex_1()
+                                    .min_w(px(0.0))
                                     .v_flex()
                                     .gap(px(5.0))
                                     .child(
                                         div()
+                                            .w_full()
                                             .text_size(px(12.0))
                                             .font_semibold()
                                             .text_color(theme::fg_primary())
+                                            .line_clamp(1)
+                                            .text_ellipsis()
                                             .child(item.device_id.clone()),
                                     )
                                     .child(
                                         div()
+                                            .w_full()
                                             .text_size(px(10.0))
                                             .font_semibold()
                                             .text_color(theme::fg_muted())
+                                            .line_clamp(1)
+                                            .text_ellipsis()
                                             .child(item.recorded_at_label.clone()),
                                     ),
                             )
-                            .child(self.clipboard_badge(self.clipboard_origin_label(item), accent)),
+                            .child(div().flex_shrink_0().child(
+                                self.clipboard_badge(self.clipboard_origin_label(item), accent),
+                            )),
                     )
                     .child(
                         div()
+                            .w_full()
                             .text_size(px(12.0))
                             .text_color(theme::fg_secondary())
                             .line_clamp(2)
