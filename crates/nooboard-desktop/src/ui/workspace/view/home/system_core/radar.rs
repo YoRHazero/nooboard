@@ -175,20 +175,7 @@ impl WorkspaceView {
     pub(super) fn radar_panel(&self) -> Div {
         let duplicate_device_ids = self.duplicate_device_ids();
 
-        div()
-            .w(px(RADAR_PANEL_WIDTH))
-            .h(px(RADAR_PANEL_HEIGHT))
-            .bg(theme::bg_console())
-            .border_1()
-            .border_color(if self.network_service_enabled {
-                theme::border_strong()
-            } else {
-                theme::border_soft()
-            })
-            .rounded(px(28.0))
-            .flex()
-            .items_center()
-            .justify_center()
+        radar_panel_shell(self.network_service_enabled)
             .child(
                 div()
                     .relative()

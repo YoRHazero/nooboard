@@ -2,12 +2,16 @@ use gpui::{
     Context, Div, ExternalPaths, InteractiveElement, IntoElement, ParentElement, Styled, div,
     prelude::FluentBuilder as _, px,
 };
-use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
+use gpui_component::button::Button;
 use gpui_component::progress::Progress;
 use gpui_component::{Disableable, Sizable, StyledExt};
 
 use crate::ui::theme;
 
+use super::components::{
+    local_upload_status_badge, transfer_action_button, transfers_card_shell, transfers_empty_notice,
+    transfers_panel_header, transfers_panel_shell,
+};
 use super::WorkspaceView;
 use super::page_state::{LocalUploadCard, LocalUploadStatus, UploadSource};
 
@@ -20,53 +24,18 @@ impl WorkspaceView {
             .map(|item| self.local_upload_card(item, cx))
             .collect::<Vec<_>>();
 
-        div()
-            .v_flex()
-            .gap(px(14.0))
-            .p(px(18.0))
-            .bg(theme::bg_panel())
-            .border_1()
-            .border_color(theme::border_base())
-            .rounded(px(24.0))
-            .shadow_xs()
-            .child(
-                div()
-                    .h_flex()
-                    .items_center()
-                    .justify_between()
-                    .gap(px(12.0))
-                    .child(
-                        div()
-                            .text_size(px(18.0))
-                            .font_semibold()
-                            .text_color(theme::fg_primary())
-                            .child("Local Upload Queue"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .text_color(theme::fg_muted())
-                            .child(format!("{} items", self.transfers_page_state.uploads.len())),
-                    ),
-            )
+        transfers_panel_shell()
+            .child(transfers_panel_header(
+                "Local Upload Queue",
+                format!("{} items", self.transfers_page_state.uploads.len()),
+            ))
             .child(self.transfer_upload_drop_zone(cx))
             .child(
                 div()
                     .v_flex()
                     .gap(px(10.0))
                     .children(if upload_cards.is_empty() {
-                        vec![
-                            div()
-                                .p(px(14.0))
-                                .bg(theme::bg_activity())
-                                .border_1()
-                                .border_color(theme::border_soft())
-                                .rounded(px(18.0))
-                                .text_size(px(12.0))
-                                .text_color(theme::fg_muted())
-                                .child("No local files queued yet.")
-                                .into_any_element(),
-                        ]
+                        vec![transfers_empty_notice("No local files queued yet.").into_any_element()]
                     } else {
                         upload_cards
                             .into_iter()
@@ -143,14 +112,7 @@ impl WorkspaceView {
         let send_id = item.id.clone();
         let dismiss_id = item.id.clone();
 
-        div()
-            .v_flex()
-            .gap(px(10.0))
-            .p(px(14.0))
-            .bg(theme::bg_rail_panel())
-            .border_1()
-            .border_color(theme::border_soft())
-            .rounded(px(18.0))
+        transfers_card_shell()
             .child(
                 div()
                     .h_flex()
@@ -166,7 +128,7 @@ impl WorkspaceView {
                             .text_ellipsis()
                             .child(item.file_name.clone()),
                     )
-                    .child(self.local_upload_status_badge(&item.status)),
+                    .child(local_upload_status_badge(&item.status)),
             )
             .child(
                 div()
@@ -211,7 +173,7 @@ impl WorkspaceView {
                     .h_flex()
                     .gap(px(8.0))
                     .child(
-                        self.upload_action_button(
+                        transfer_action_button(
                             format!("transfer-upload-send-{}", item.id),
                             "Send",
                             theme::accent_cyan(),
@@ -225,7 +187,7 @@ impl WorkspaceView {
                         )),
                     )
                     .child(
-                        self.upload_action_button(
+                        transfer_action_button(
                             format!("transfer-upload-dismiss-{}", item.id),
                             "Dismiss",
                             theme::accent_rose(),
@@ -235,57 +197,6 @@ impl WorkspaceView {
                             this.dismiss_local_upload(dismiss_id.as_str(), cx);
                         })),
                     ),
-            )
-    }
-
-    fn local_upload_status_badge(&self, status: &LocalUploadStatus) -> Div {
-        let (label, accent) = match status {
-            LocalUploadStatus::Draft => ("Draft", theme::fg_muted()),
-            LocalUploadStatus::Accepted { .. } => ("Accepted", theme::accent_green()),
-            LocalUploadStatus::Rejected { .. } => ("Rejected", theme::accent_rose()),
-            LocalUploadStatus::Progress { .. } => ("Progress", theme::accent_blue()),
-            LocalUploadStatus::Complete { .. } => ("Complete", theme::accent_cyan()),
-        };
-
-        div()
-            .px(px(10.0))
-            .py(px(6.0))
-            .rounded(px(999.0))
-            .bg(accent.opacity(0.12))
-            .border_1()
-            .border_color(accent.opacity(0.24))
-            .text_size(px(10.0))
-            .font_semibold()
-            .text_color(accent)
-            .child(label)
-    }
-
-    fn upload_action_button(
-        &self,
-        id: impl Into<gpui::ElementId>,
-        label: &str,
-        accent: gpui::Hsla,
-        cx: &mut Context<Self>,
-    ) -> Button {
-        let variant = ButtonCustomVariant::new(cx)
-            .color(accent.opacity(0.12))
-            .foreground(theme::fg_primary())
-            .hover(accent.opacity(0.2))
-            .active(accent.opacity(0.28))
-            .shadow(false);
-
-        Button::new(id)
-            .custom(variant)
-            .small()
-            .compact()
-            .rounded(px(999.0))
-            .border_1()
-            .border_color(accent.opacity(0.24))
-            .child(
-                div()
-                    .text_color(theme::fg_primary())
-                    .font_semibold()
-                    .child(label.to_string()),
             )
     }
 }

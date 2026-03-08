@@ -18,15 +18,11 @@ impl WorkspaceView {
     }
 
     fn clipboard_info_panel(&self, active_item: &ClipboardTextItem) -> Div {
-        let mut panel = div()
+        let mut panel = clipboard_panel_shell()
+            .rounded(px(20.0))
             .v_flex()
             .gap(px(10.0))
             .p(px(16.0))
-            .bg(theme::bg_panel())
-            .border_1()
-            .border_color(theme::border_base())
-            .rounded(px(20.0))
-            .shadow_xs()
             .child(
                 div()
                     .h_flex()
@@ -44,11 +40,11 @@ impl WorkspaceView {
                                     .h_flex()
                                     .gap(px(8.0))
                                     .items_center()
-                                    .child(self.clipboard_badge(
+                                    .child(clipboard_badge(
                                         self.clipboard_origin_label(active_item),
                                         self.clipboard_item_accent(active_item),
                                     ))
-                                    .child(self.clipboard_badge(
+                                    .child(clipboard_badge(
                                         self.clipboard_residency_label(active_item).to_string(),
                                         if active_item.residency == ClipboardTextResidency::History
                                         {
@@ -110,17 +106,13 @@ impl WorkspaceView {
     }
 
     fn clipboard_text_panel(&self, active_item: &ClipboardTextItem) -> Div {
-        div()
+        clipboard_panel_shell()
+            .rounded(px(24.0))
             .flex_1()
             .min_h(px(CLIPBOARD_TEXT_PANEL_MIN_HEIGHT))
             .v_flex()
             .gap(px(12.0))
             .p(px(22.0))
-            .bg(theme::bg_panel())
-            .border_1()
-            .border_color(theme::border_base())
-            .rounded(px(24.0))
-            .shadow_xs()
             .child(
                 div()
                     .text_size(px(18.0))
@@ -168,15 +160,11 @@ impl WorkspaceView {
             "Broadcast to selected targets.".to_string()
         };
 
-        div()
+        clipboard_panel_shell()
+            .rounded(px(24.0))
             .v_flex()
             .gap(px(14.0))
             .p(px(22.0))
-            .bg(theme::bg_panel())
-            .border_1()
-            .border_color(theme::border_base())
-            .rounded(px(24.0))
-            .shadow_xs()
             .child(
                 div()
                     .text_size(px(18.0))
@@ -190,9 +178,9 @@ impl WorkspaceView {
                     .gap(px(10.0))
                     .flex_wrap()
                     .child(
-                        self.clipboard_action_with_tooltip(
+                        clipboard_action_with_tooltip(
                             "clipboard-action-write-tooltip-shell",
-                            self.clipboard_action_button(
+                            clipboard_action_button(
                                 "clipboard-action-write",
                                 "Write",
                                 theme::accent_blue(),
@@ -212,9 +200,9 @@ impl WorkspaceView {
                         ),
                     )
                     .child(
-                        self.clipboard_action_with_tooltip(
+                        clipboard_action_with_tooltip(
                             "clipboard-action-broadcast-tooltip-shell",
-                            self.clipboard_action_button(
+                            clipboard_action_button(
                                 "clipboard-action-broadcast",
                                 "Broadcast",
                                 theme::accent_cyan(),
@@ -237,52 +225,5 @@ impl WorkspaceView {
                         ),
                     ),
             )
-    }
-
-    pub(super) fn clipboard_action_button(
-        &self,
-        id: &'static str,
-        label: &str,
-        accent: Hsla,
-        disabled: bool,
-        cx: &mut Context<Self>,
-    ) -> Button {
-        let variant = ButtonCustomVariant::new(cx)
-            .color(accent.opacity(0.10))
-            .foreground(theme::fg_primary())
-            .hover(accent.opacity(0.34))
-            .active(accent.opacity(0.48))
-            .shadow(false);
-
-        Button::new(id)
-            .custom(variant)
-            .rounded(px(999.0))
-            .border_1()
-            .border_color(accent.opacity(0.38))
-            .disabled(disabled)
-            .child(
-                div()
-                    .text_color(theme::fg_primary())
-                    .font_semibold()
-                    .child(label.to_string()),
-            )
-    }
-
-    fn clipboard_action_with_tooltip(
-        &self,
-        id: &'static str,
-        button: Button,
-        tooltip: Option<String>,
-    ) -> AnyElement {
-        match tooltip {
-            Some(text) => div()
-                .id(id)
-                .tooltip(move |window: &mut Window, cx| {
-                    Self::clipboard_themed_tooltip(text.clone(), window, cx)
-                })
-                .child(button)
-                .into_any_element(),
-            None => button.into_any_element(),
-        }
     }
 }

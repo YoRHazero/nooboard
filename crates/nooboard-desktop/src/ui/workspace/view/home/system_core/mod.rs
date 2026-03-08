@@ -1,4 +1,5 @@
 mod clipboard;
+mod components;
 mod controls;
 mod header;
 mod radar;
@@ -18,6 +19,11 @@ use gpui_component::{Icon, IconName, StyledExt};
 use crate::{
     state::{ClipboardTextItem, ClipboardTextOrigin, SystemPeer, SystemPeerStatus},
     ui::theme,
+};
+
+use self::components::{
+    arc_port_toggle_visual, clipboard_copy_action_shell, clipboard_copy_placeholder,
+    clipboard_read_board, radar_panel_shell, system_core_card_shell, system_core_title_lockup,
 };
 
 use super::super::{WorkspaceView, shared::enter_animation};
@@ -125,15 +131,7 @@ impl WorkspaceView {
     }
 
     pub(super) fn system_core_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .v_flex()
-            .gap(px(18.0))
-            .p(px(22.0))
-            .bg(theme::bg_panel())
-            .border_1()
-            .border_color(theme::border_base())
-            .rounded(px(28.0))
-            .shadow_xs()
+        system_core_card_shell()
             .child(self.system_core_header())
             .child(
                 div()

@@ -1,3 +1,4 @@
+mod components;
 mod recent_activity;
 mod system_core;
 

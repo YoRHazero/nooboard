@@ -1,3 +1,4 @@
+mod components;
 mod detail;
 mod header;
 mod history;
@@ -5,13 +6,11 @@ mod page_state;
 mod targets;
 
 use gpui::{
-    AnyElement, AnyView, App, Context, Div, Hsla, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, Context, Div, Hsla, InteractiveElement, IntoElement, ParentElement, Styled,
+    Window, div, px,
 };
-use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::scroll::ScrollableElement;
-use gpui_component::tooltip::Tooltip;
-use gpui_component::{Disableable, StyledExt};
+use gpui_component::StyledExt;
 use uuid::Uuid;
 
 use crate::{
@@ -23,6 +22,12 @@ use crate::{
 };
 
 pub(super) use page_state::ClipboardPageState;
+
+use self::components::{
+    clipboard_action_button, clipboard_action_with_tooltip, clipboard_badge,
+    clipboard_history_item_body, clipboard_history_item_shell, clipboard_metric_chip,
+    clipboard_panel_header, clipboard_panel_shell, clipboard_target_chip,
+};
 
 use super::WorkspaceView;
 
@@ -48,28 +53,6 @@ impl WorkspaceView {
                     .child(self.clipboard_history_panel(cx))
                     .child(self.clipboard_detail_panel(&active_item, cx)),
             )
-    }
-
-    fn clipboard_themed_tooltip(text: String, window: &mut Window, cx: &mut App) -> AnyView {
-        Tooltip::new(text)
-            .bg(theme::bg_panel())
-            .text_color(theme::fg_primary())
-            .border_color(theme::border_base())
-            .build(window, cx)
-    }
-
-    fn clipboard_badge(&self, label: String, accent: Hsla) -> Div {
-        div()
-            .px(px(10.0))
-            .py(px(6.0))
-            .rounded(px(999.0))
-            .bg(accent.opacity(0.14))
-            .border_1()
-            .border_color(accent.opacity(0.28))
-            .text_size(px(10.0))
-            .font_semibold()
-            .text_color(accent)
-            .child(label)
     }
 
     fn clipboard_item_accent(&self, item: &ClipboardTextItem) -> Hsla {

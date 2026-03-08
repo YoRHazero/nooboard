@@ -1,4 +1,5 @@
 use super::*;
+use gpui::StatefulInteractiveElement;
 
 impl WorkspaceView {
     pub(super) fn clipboard_history_panel(&self, cx: &mut Context<Self>) -> Div {
@@ -10,40 +11,17 @@ impl WorkspaceView {
             .map(|(index, item)| self.clipboard_history_item(index, item, cx))
             .collect();
 
-        div()
+        clipboard_panel_shell()
+            .rounded(px(24.0))
             .w(px(CLIPBOARD_HISTORY_WIDTH))
             .flex_shrink_0()
             .v_flex()
             .gap(px(16.0))
             .p(px(20.0))
-            .bg(theme::bg_panel())
-            .border_1()
-            .border_color(theme::border_base())
-            .rounded(px(24.0))
-            .shadow_xs()
-            .child(
-                div()
-                    .h_flex()
-                    .justify_between()
-                    .items_center()
-                    .gap(px(16.0))
-                    .child(
-                        div()
-                            .text_size(px(16.0))
-                            .font_semibold()
-                            .text_color(theme::fg_primary())
-                            .child("Stored History"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .text_color(theme::fg_muted())
-                            .child(format!(
-                                "{} loaded",
-                                self.clipboard_page.history_items().len()
-                            )),
-                    ),
-            )
+            .child(clipboard_panel_header(
+                "Stored History",
+                format!("{} loaded", self.clipboard_page.history_items().len()),
+            ))
             .child(
                 div()
                     .flex_1()
@@ -52,7 +30,7 @@ impl WorkspaceView {
                     .child(div().w_full().v_flex().gap(px(12.0)).children(history_rows)),
             )
             .child(
-                self.clipboard_action_button(
+                clipboard_action_button(
                     "clipboard-history-load-more",
                     self.clipboard_page.load_more_label(),
                     theme::accent_amber(),
@@ -76,25 +54,9 @@ impl WorkspaceView {
         let accent = self.clipboard_item_accent(item);
         let event_id = item.event_id;
 
-        div()
+        clipboard_history_item_shell(selected, accent)
             .id(("clipboard-history-item", index))
-            .w_full()
             .cursor_pointer()
-            .px(px(14.0))
-            .py(px(14.0))
-            .bg(if selected {
-                theme::bg_panel_highlight()
-            } else {
-                theme::bg_console()
-            })
-            .border_1()
-            .border_color(if selected {
-                accent.opacity(0.34)
-            } else {
-                theme::border_soft()
-            })
-            .rounded(px(20.0))
-            .shadow_xs()
             .hover(|this| {
                 this.bg(theme::bg_panel_alt())
                     .border_color(theme::border_strong())
@@ -103,58 +65,12 @@ impl WorkspaceView {
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.toggle_clipboard_history_selection(event_id, cx);
             }))
-            .child(
-                div()
-                    .w_full()
-                    .v_flex()
-                    .gap(px(10.0))
-                    .child(
-                        div()
-                            .w_full()
-                            .h_flex()
-                            .items_start()
-                            .gap(px(12.0))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w(px(0.0))
-                                    .v_flex()
-                                    .gap(px(5.0))
-                                    .child(
-                                        div()
-                                            .w_full()
-                                            .text_size(px(12.0))
-                                            .font_semibold()
-                                            .text_color(theme::fg_primary())
-                                            .line_clamp(1)
-                                            .text_ellipsis()
-                                            .child(item.device_id.clone()),
-                                    )
-                                    .child(
-                                        div()
-                                            .w_full()
-                                            .text_size(px(10.0))
-                                            .font_semibold()
-                                            .text_color(theme::fg_muted())
-                                            .line_clamp(1)
-                                            .text_ellipsis()
-                                            .child(item.recorded_at_label.clone()),
-                                    ),
-                            )
-                            .child(div().flex_shrink_0().child(
-                                self.clipboard_badge(self.clipboard_origin_label(item), accent),
-                            )),
-                    )
-                    .child(
-                        div()
-                            .w_full()
-                            .text_size(px(12.0))
-                            .text_color(theme::fg_secondary())
-                            .line_clamp(2)
-                            .text_ellipsis()
-                            .child(item.preview_text(92)),
-                    ),
-            )
+            .child(clipboard_history_item_body(
+                item.device_id.clone(),
+                item.recorded_at_label.clone(),
+                clipboard_badge(self.clipboard_origin_label(item), accent),
+                item.preview_text(92),
+            ))
             .into_any_element()
     }
 }

@@ -4,7 +4,7 @@ use gpui::{
     Context, Corner, Div, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled,
     div, prelude::FluentBuilder as _, px,
 };
-use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
+use gpui_component::button::Button;
 use gpui_component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_component::progress::Progress;
 use gpui_component::{Sizable, StyledExt};
@@ -12,39 +12,20 @@ use gpui_component::{Sizable, StyledExt};
 use crate::state::{TransferItem, TransferStatus};
 use crate::ui::theme;
 
+use super::components::{
+    transfer_action_button, transfer_card_meta, transfer_download_title, transfers_card_shell,
+    transfers_panel_header, transfers_panel_shell, transfers_section,
+};
 use super::WorkspaceView;
 
 impl WorkspaceView {
     pub(super) fn transfers_download_panel(&self, cx: &mut Context<Self>) -> Div {
-        div()
-            .v_flex()
+        transfers_panel_shell()
             .gap(px(16.0))
-            .p(px(18.0))
-            .bg(theme::bg_panel())
-            .border_1()
-            .border_color(theme::border_base())
-            .rounded(px(24.0))
-            .shadow_xs()
-            .child(
-                div()
-                    .h_flex()
-                    .items_center()
-                    .justify_between()
-                    .gap(px(12.0))
-                    .child(
-                        div()
-                            .text_size(px(18.0))
-                            .font_semibold()
-                            .text_color(theme::fg_primary())
-                            .child("Incoming Downloads"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .text_color(theme::fg_muted())
-                            .child(format!("{} total", self.transfer_items.len())),
-                    ),
-            )
+            .child(transfers_panel_header(
+                "Incoming Downloads",
+                format!("{} total", self.transfer_items.len()),
+            ))
             .child(self.download_global_folder_panel(cx))
             .child(self.download_awaiting_section(cx))
             .child(self.download_progress_section(cx))
@@ -133,7 +114,7 @@ impl WorkspaceView {
             .map(|item| self.download_awaiting_card(item, cx))
             .collect::<Vec<_>>();
 
-        self.download_section("Awaiting Review", cards, "No files awaiting review.")
+        transfers_section("Awaiting Review", cards.len(), cards, "No files awaiting review.")
     }
 
     fn download_progress_section(&self, cx: &mut Context<Self>) -> Div {
@@ -144,7 +125,7 @@ impl WorkspaceView {
             .map(|item| self.download_progress_card(item, cx))
             .collect::<Vec<_>>();
 
-        self.download_section("Progress", cards, "No active download transfers.")
+        transfers_section("Progress", cards.len(), cards, "No active download transfers.")
     }
 
     fn download_complete_section(&self, cx: &mut Context<Self>) -> Div {
@@ -155,49 +136,7 @@ impl WorkspaceView {
             .map(|item| self.download_complete_card(item, cx))
             .collect::<Vec<_>>();
 
-        self.download_section("Complete", cards, "No completed downloads.")
-    }
-
-    fn download_section(&self, title: &str, cards: Vec<Div>, empty_label: &str) -> Div {
-        let count = cards.len();
-
-        div()
-            .v_flex()
-            .gap(px(10.0))
-            .child(
-                div()
-                    .h_flex()
-                    .items_center()
-                    .justify_between()
-                    .child(
-                        div()
-                            .text_size(px(14.0))
-                            .font_semibold()
-                            .text_color(theme::fg_primary())
-                            .child(title.to_string()),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(theme::fg_muted())
-                            .child(count.to_string()),
-                    ),
-            )
-            .children(if cards.is_empty() {
-                vec![
-                    div()
-                        .p(px(12.0))
-                        .bg(theme::bg_activity())
-                        .border_1()
-                        .border_color(theme::border_soft())
-                        .rounded(px(16.0))
-                        .text_size(px(12.0))
-                        .text_color(theme::fg_muted())
-                        .child(empty_label.to_string()),
-                ]
-            } else {
-                cards
-            })
+        transfers_section("Complete", cards.len(), cards, "No completed downloads.")
     }
 
     fn download_awaiting_card(&self, item: &TransferItem, cx: &mut Context<Self>) -> Div {
@@ -209,16 +148,9 @@ impl WorkspaceView {
         let accept_id = item.id.clone();
         let reject_id = item.id.clone();
 
-        div()
-            .v_flex()
-            .gap(px(10.0))
-            .p(px(14.0))
-            .bg(theme::bg_rail_panel())
-            .border_1()
-            .border_color(theme::border_soft())
-            .rounded(px(18.0))
-            .child(self.download_card_title(item.file_name.as_str(), theme::accent_amber()))
-            .child(self.download_card_meta(item.source_device.as_str(), item.size_label.as_str()))
+        transfers_card_shell()
+            .child(transfer_download_title(item.file_name.as_str(), theme::accent_amber()))
+            .child(transfer_card_meta(item.source_device.as_str(), item.size_label.as_str()))
             .child(
                 div()
                     .text_size(px(11.0))
@@ -230,7 +162,7 @@ impl WorkspaceView {
                     .h_flex()
                     .gap(px(8.0))
                     .child(
-                        self.download_action_button(
+                        transfer_action_button(
                             format!("download-accept-{}", item_id),
                             "Accept",
                             theme::accent_green(),
@@ -241,7 +173,7 @@ impl WorkspaceView {
                         })),
                     )
                     .child(
-                        self.download_action_button(
+                        transfer_action_button(
                             format!("download-reject-{}", item.id),
                             "Reject",
                             theme::accent_rose(),
@@ -272,16 +204,9 @@ impl WorkspaceView {
         };
         let cancel_id = item.id.clone();
 
-        div()
-            .v_flex()
-            .gap(px(10.0))
-            .p(px(14.0))
-            .bg(theme::bg_rail_panel())
-            .border_1()
-            .border_color(theme::border_soft())
-            .rounded(px(18.0))
-            .child(self.download_card_title(item.file_name.as_str(), theme::accent_blue()))
-            .child(self.download_card_meta(item.source_device.as_str(), item.size_label.as_str()))
+        transfers_card_shell()
+            .child(transfer_download_title(item.file_name.as_str(), theme::accent_blue()))
+            .child(transfer_card_meta(item.source_device.as_str(), item.size_label.as_str()))
             .child(
                 div()
                     .h_flex()
@@ -311,7 +236,7 @@ impl WorkspaceView {
             )
             .child(
                 div().h_flex().child(
-                    self.download_action_button(
+                    transfer_action_button(
                         format!("download-cancel-{}", item.id),
                         "Cancel",
                         theme::accent_rose(),
@@ -340,16 +265,9 @@ impl WorkspaceView {
         let got_it_id = item.id.clone();
         let move_id = item.id.clone();
 
-        div()
-            .v_flex()
-            .gap(px(10.0))
-            .p(px(14.0))
-            .bg(theme::bg_rail_panel())
-            .border_1()
-            .border_color(theme::border_soft())
-            .rounded(px(18.0))
-            .child(self.download_card_title(item.file_name.as_str(), theme::accent_green()))
-            .child(self.download_card_meta(item.source_device.as_str(), item.size_label.as_str()))
+        transfers_card_shell()
+            .child(transfer_download_title(item.file_name.as_str(), theme::accent_green()))
+            .child(transfer_card_meta(item.source_device.as_str(), item.size_label.as_str()))
             .child(
                 div()
                     .text_size(px(11.0))
@@ -374,7 +292,7 @@ impl WorkspaceView {
                     .h_flex()
                     .gap(px(8.0))
                     .child(
-                        self.download_action_button(
+                        transfer_action_button(
                             format!("download-got-it-{}", item.id),
                             "Got it",
                             theme::accent_green(),
@@ -385,7 +303,7 @@ impl WorkspaceView {
                         })),
                     )
                     .child(
-                        self.download_action_button(
+                        transfer_action_button(
                             format!("download-move-to-{}", item.id),
                             "Move to",
                             theme::accent_cyan(),
@@ -397,59 +315,6 @@ impl WorkspaceView {
                             },
                         )),
                     ),
-            )
-    }
-
-    fn download_card_title(&self, file_name: &str, accent: gpui::Hsla) -> Div {
-        div()
-            .v_flex()
-            .gap(px(8.0))
-            .child(div().h(px(2.0)).w_full().bg(accent).rounded(px(999.0)))
-            .child(
-                div()
-                    .text_size(px(13.0))
-                    .font_semibold()
-                    .text_color(theme::fg_primary())
-                    .line_clamp(2)
-                    .text_ellipsis()
-                    .child(file_name.to_string()),
-            )
-    }
-
-    fn download_card_meta(&self, source_device: &str, size_label: &str) -> Div {
-        div()
-            .text_size(px(11.0))
-            .text_color(theme::fg_muted())
-            .truncate()
-            .child(format!("{} · {}", source_device, size_label))
-    }
-
-    fn download_action_button(
-        &self,
-        id: impl Into<gpui::ElementId>,
-        label: &str,
-        accent: gpui::Hsla,
-        cx: &mut Context<Self>,
-    ) -> Button {
-        let variant = ButtonCustomVariant::new(cx)
-            .color(accent.opacity(0.12))
-            .foreground(theme::fg_primary())
-            .hover(accent.opacity(0.2))
-            .active(accent.opacity(0.28))
-            .shadow(false);
-
-        Button::new(id)
-            .custom(variant)
-            .small()
-            .compact()
-            .rounded(px(999.0))
-            .border_1()
-            .border_color(accent.opacity(0.24))
-            .child(
-                div()
-                    .text_color(theme::fg_primary())
-                    .font_semibold()
-                    .child(label.to_string()),
             )
     }
 

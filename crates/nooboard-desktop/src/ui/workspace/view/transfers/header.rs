@@ -8,85 +8,44 @@ use gpui_component::scroll::ScrollableElement;
 use crate::state::{ClipboardTarget, ClipboardTargetStatus};
 use crate::ui::theme;
 
+use super::components::{
+    transfer_metric_chip, transfer_target_chip, transfers_panel_header, transfers_panel_shell,
+};
 use super::WorkspaceView;
 
 impl WorkspaceView {
     pub(super) fn transfers_header(&self) -> Div {
-        div()
-            .h_flex()
-            .items_center()
-            .justify_between()
-            .gap(px(14.0))
-            .p(px(18.0))
-            .bg(theme::bg_panel())
-            .border_1()
-            .border_color(theme::border_base())
-            .rounded(px(24.0))
-            .shadow_xs()
-            .child(
-                div()
-                    .v_flex()
-                    .gap(px(8.0))
-                    .child(
-                        div()
-                            .text_size(px(22.0))
-                            .font_semibold()
-                            .text_color(theme::fg_primary())
-                            .child("Transfers"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .text_color(theme::fg_muted())
-                            .child("Local send queue and incoming file lanes."),
-                    ),
-            )
+        transfers_panel_shell()
             .child(
                 div()
                     .h_flex()
-                    .gap(px(8.0))
-                    .child(self.transfer_metric_chip(
-                        "Uploads",
-                        self.transfers_page_state.uploads.len().to_string(),
-                        theme::accent_blue(),
+                    .items_center()
+                    .justify_between()
+                    .gap(px(14.0))
+                    .child(transfers_panel_header(
+                        "Transfers",
+                        "Local send queue and incoming file lanes.",
                     ))
-                    .child(self.transfer_metric_chip(
-                        "Awaiting",
-                        self.awaiting_review_count().to_string(),
-                        theme::accent_amber(),
-                    ))
-                    .child(self.transfer_metric_chip(
-                        "Progress",
-                        self.progress_count().to_string(),
-                        theme::accent_cyan(),
-                    )),
-            )
-    }
-
-    fn transfer_metric_chip(&self, label: &str, value: String, accent: gpui::Hsla) -> Div {
-        div()
-            .h_flex()
-            .items_center()
-            .gap(px(8.0))
-            .px(px(12.0))
-            .py(px(9.0))
-            .bg(theme::bg_console())
-            .border_1()
-            .border_color(accent.opacity(0.22))
-            .rounded(px(16.0))
-            .child(
-                div()
-                    .text_size(px(10.0))
-                    .font_semibold()
-                    .text_color(accent)
-                    .child(label.to_string()),
-            )
-            .child(
-                div()
-                    .text_size(px(13.0))
-                    .font_semibold()
-                    .text_color(theme::fg_primary())
-                    .child(value),
+                    .child(
+                        div()
+                            .h_flex()
+                            .gap(px(8.0))
+                            .child(transfer_metric_chip(
+                                "Uploads",
+                                self.transfers_page_state.uploads.len().to_string(),
+                                theme::accent_blue(),
+                            ))
+                            .child(transfer_metric_chip(
+                                "Awaiting",
+                                self.awaiting_review_count().to_string(),
+                                theme::accent_amber(),
+                            ))
+                            .child(transfer_metric_chip(
+                                "Progress",
+                                self.progress_count().to_string(),
+                                theme::accent_cyan(),
+                            )),
+                    ),
             )
     }
 
@@ -104,29 +63,8 @@ impl WorkspaceView {
             .map(|target| self.transfer_target_chip(target, cx))
             .collect::<Vec<_>>();
 
-        div()
-            .v_flex()
-            .gap(px(12.0))
-            .p(px(18.0))
-            .bg(theme::bg_panel())
-            .border_1()
-            .border_color(theme::border_base())
-            .rounded(px(22.0))
-            .shadow_xs()
-            .child(
-                div()
-                    .h_flex()
-                    .items_center()
-                    .justify_between()
-                    .gap(px(12.0))
-                    .child(
-                        div()
-                            .text_size(px(15.0))
-                            .font_semibold()
-                            .text_color(theme::fg_primary())
-                            .child("Targets"),
-                    ),
-            )
+        transfers_panel_shell()
+            .child(transfers_panel_header("Targets", ""))
             .child(div().h(px(1.0)).w_full().bg(theme::border_soft()))
             .child(
                 div()
@@ -146,55 +84,8 @@ impl WorkspaceView {
         };
         let noob_id = target.noob_id.clone();
 
-        let mut chip = div()
-            .id(format!("transfer-target-chip-{}", target.noob_id))
-            .min_w(px(146.0))
-            .px(px(12.0))
-            .py(px(10.0))
-            .rounded(px(16.0))
-            .bg(if selected {
-                theme::bg_panel_highlight()
-            } else {
-                theme::bg_console()
-            })
-            .border_1()
-            .border_color(if selected {
-                accent.opacity(0.34)
-            } else {
-                theme::border_soft()
-            })
-            .child(
-                div()
-                    .h_flex()
-                    .items_center()
-                    .justify_between()
-                    .gap(px(8.0))
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .font_semibold()
-                            .text_color(if connected {
-                                theme::fg_primary()
-                            } else {
-                                theme::fg_secondary()
-                            })
-                            .child(target.device_id.clone()),
-                    )
-                    .child(
-                        div()
-                            .h_flex()
-                            .items_center()
-                            .gap(px(6.0))
-                            .child(div().size(px(6.0)).rounded(px(999.0)).bg(accent))
-                            .child(
-                                div()
-                                    .text_size(px(10.0))
-                                    .font_semibold()
-                                    .text_color(accent)
-                                    .child(if connected { "Connected" } else { "Offline" }),
-                            ),
-                    ),
-            );
+        let mut chip = transfer_target_chip(target.device_id.clone(), connected, selected, accent)
+            .id(format!("transfer-target-chip-{}", target.noob_id));
 
         if connected {
             chip = chip

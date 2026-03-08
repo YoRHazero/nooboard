@@ -1,3 +1,4 @@
+mod components;
 mod header;
 mod list;
 mod page_state;
@@ -8,6 +9,11 @@ use gpui_component::StyledExt;
 use crate::{
     state::{SystemPeer, SystemPeerStatus},
     ui::theme,
+};
+
+use self::components::{
+    peer_status_badge, peers_empty_state, peers_filter_chip, peers_panel_header,
+    peers_panel_shell, peers_summary_card, peers_table_header, peers_table_row,
 };
 
 use super::WorkspaceView;

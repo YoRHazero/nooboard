@@ -3,10 +3,21 @@ use gpui_component::{Icon, IconName, StyledExt};
 
 use crate::ui::theme;
 
+use super::components::settings_status_chip;
 use super::WorkspaceView;
 
 impl WorkspaceView {
     pub(super) fn settings_header(&self) -> Div {
+        let dirty_fields = self.settings_dirty_field_count();
+        let validation_issues = self.storage_validation_issues();
+        let (status_label, status_accent) = if !validation_issues.is_empty() {
+            ("Review", theme::accent_rose())
+        } else if dirty_fields > 0 {
+            ("Modified", theme::accent_amber())
+        } else {
+            ("Current", theme::accent_green())
+        };
+
         div()
             .h_flex()
             .items_center()
@@ -20,6 +31,8 @@ impl WorkspaceView {
             .shadow_xs()
             .child(
                 div()
+                    .flex_1()
+                    .min_w(px(0.0))
                     .h_flex()
                     .items_center()
                     .gap(px(12.0))
@@ -41,6 +54,8 @@ impl WorkspaceView {
                     )
                     .child(
                         div()
+                            .flex_1()
+                            .min_w(px(0.0))
                             .v_flex()
                             .gap(px(6.0))
                             .child(
@@ -54,18 +69,24 @@ impl WorkspaceView {
                                 div()
                                     .text_size(px(12.0))
                                     .text_color(theme::fg_muted())
-                                    .child(
-                                        "Storage and network patches (stage5 wireframe layout).",
-                                    ),
+                                    .line_clamp(1)
+                                    .text_ellipsis()
+                                    .child("Review draft changes against the current settings."),
                             ),
                     ),
             )
             .child(
                 div()
-                    .text_size(px(11.0))
-                    .font_semibold()
-                    .text_color(theme::fg_muted())
-                    .child("NO NEW BACKEND CALLS"),
+                    .w(px(208.0))
+                    .h_flex()
+                    .items_center()
+                    .justify_end()
+                    .gap(px(8.0))
+                    .child(settings_status_chip(status_label, status_accent))
+                    .child(settings_status_chip(
+                        format!("{} dirty", dirty_fields),
+                        theme::accent_cyan(),
+                    )),
             )
     }
 }

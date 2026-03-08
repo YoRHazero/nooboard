@@ -1,3 +1,4 @@
+mod components;
 mod downloads;
 mod header;
 mod page_state;
