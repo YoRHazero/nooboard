@@ -6,11 +6,11 @@ mod page_state;
 mod targets;
 
 use gpui::{
-    AnyElement, Context, Div, Hsla, InteractiveElement, IntoElement, ParentElement, Styled,
-    Window, div, px,
+    AnyElement, Context, Div, Hsla, InteractiveElement, IntoElement, ParentElement, Styled, Window,
+    div, px,
 };
-use gpui_component::scroll::ScrollableElement;
 use gpui_component::StyledExt;
+use gpui_component::scroll::ScrollableElement;
 use uuid::Uuid;
 
 use crate::{

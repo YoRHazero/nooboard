@@ -53,10 +53,7 @@ pub(in crate::ui::workspace::view::peers) fn peers_filter_chip(
         )
 }
 
-pub(in crate::ui::workspace::view::peers) fn peer_status_badge(
-    label: &str,
-    accent: Hsla,
-) -> Div {
+pub(in crate::ui::workspace::view::peers) fn peer_status_badge(label: &str, accent: Hsla) -> Div {
     div()
         .h_flex()
         .items_center()

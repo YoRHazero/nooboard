@@ -1,15 +1,17 @@
+use super::super::snapshot::{HomeClipboardRecordSnapshot, HomeSystemCoreSnapshot};
 use super::*;
+use crate::state::live_commands;
+use gpui_component::{Icon, IconName};
 
 impl WorkspaceView {
-    fn clipboard_copy_action(&self, item: &ClipboardTextItem, accent: Hsla) -> impl IntoElement {
-        let copy_id = if item.origin == ClipboardTextOrigin::Remote {
-            1usize
-        } else {
-            0usize
-        };
-
-        clipboard_copy_action_shell(accent)
-            .id(("system-core-clipboard-copy-shell", copy_id))
+    fn clipboard_adopt_action(
+        &self,
+        event_id: nooboard_app::EventId,
+        accent: Hsla,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        clipboard_action_shell(accent)
+            .id("system-core-clipboard-adopt-shell")
             .hover(|this| {
                 this.bg(theme::bg_panel_highlight())
                     .border_color(accent.opacity(0.3))
@@ -19,44 +21,63 @@ impl WorkspaceView {
                     .border_color(accent.opacity(0.24))
             })
             .tooltip(move |window: &mut Window, cx| {
-                Self::themed_tooltip("Copy original clipboard text".into(), window, cx)
+                Self::themed_tooltip(
+                    "Write committed text to the local clipboard".into(),
+                    window,
+                    cx,
+                )
             })
-            .child(
-                Clipboard::new(("system-core-clipboard-copy", copy_id)).value(item.content.clone()),
-            )
+            .on_click(cx.listener(move |_, _, _, cx| {
+                live_commands::adopt_clipboard_record(event_id, cx);
+            }))
+            .child(Icon::new(IconName::Copy).size(px(15.0)).text_color(accent))
     }
 
     fn clipboard_read_board(
         &self,
-        item: &ClipboardTextItem,
+        item: &HomeClipboardRecordSnapshot,
         accent: Hsla,
-        show_copy_action: bool,
+        adopt_event_id: Option<nooboard_app::EventId>,
+        cx: &mut Context<Self>,
     ) -> Div {
         clipboard_read_board(
-            item.device_id.clone(),
+            item.device_label.clone(),
             item.recorded_at_label.clone(),
             accent,
-            if show_copy_action {
-                self.clipboard_copy_action(item, accent).into_any_element()
+            if let Some(event_id) = adopt_event_id {
+                self.clipboard_adopt_action(event_id, accent, cx)
+                    .into_any_element()
             } else {
-                clipboard_copy_placeholder(accent).into_any_element()
+                clipboard_action_placeholder(accent).into_any_element()
             },
             item.content.clone(),
         )
     }
 
-    pub(super) fn clipboard_panel(&self) -> Div {
-        let clipboard = &self.state.app.clipboard;
-        let core = &self.state.app.system_core;
-        let latest_item = clipboard.latest_live_item();
-        let latest_accent = if latest_item.origin == ClipboardTextOrigin::Remote {
-            theme::accent_blue()
-        } else {
-            theme::accent_green()
+    pub(super) fn clipboard_panel(
+        &self,
+        snapshot: &HomeSystemCoreSnapshot,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let content = match &snapshot.clipboard.latest_record {
+            Some(record) => {
+                let accent = if matches!(record.source, nooboard_app::ClipboardRecordSource::RemoteSync)
+                {
+                    theme::accent_blue()
+                } else {
+                    theme::accent_green()
+                };
+                self.clipboard_read_board(record, accent, snapshot.clipboard.adopt_event_id, cx)
+            }
+            None => clipboard_read_board(
+                "No committed record".to_string(),
+                "waiting for clipboard commit".to_string(),
+                theme::border_soft(),
+                clipboard_action_placeholder(theme::border_soft()).into_any_element(),
+                "The Home panel only shows the latest committed clipboard record from the app service."
+                    .to_string(),
+            ),
         };
-        let show_copy_action = latest_item.origin == ClipboardTextOrigin::Remote
-            && !self.auto_bridge_remote_text
-            && latest_item.device_id != core.local_device_id;
 
         div()
             .w(px(CLIPBOARD_PANEL_WIDTH))
@@ -67,6 +88,6 @@ impl WorkspaceView {
             .border_color(theme::border_soft())
             .rounded(px(24.0))
             .shadow_xs()
-            .child(self.clipboard_read_board(latest_item, latest_accent, show_copy_action))
+            .child(content)
     }
 }

@@ -8,11 +8,11 @@ use gpui_component::{Disableable, Sizable, StyledExt};
 
 use crate::ui::theme;
 
-use super::components::{
-    local_upload_status_badge, transfer_action_button, transfers_card_shell, transfers_empty_notice,
-    transfers_panel_header, transfers_panel_shell,
-};
 use super::WorkspaceView;
+use super::components::{
+    local_upload_status_badge, transfer_action_button, transfers_card_shell,
+    transfers_empty_notice, transfers_panel_header, transfers_panel_shell,
+};
 use super::page_state::{LocalUploadCard, LocalUploadStatus, UploadSource};
 
 impl WorkspaceView {
@@ -35,7 +35,9 @@ impl WorkspaceView {
                     .v_flex()
                     .gap(px(10.0))
                     .children(if upload_cards.is_empty() {
-                        vec![transfers_empty_notice("No local files queued yet.").into_any_element()]
+                        vec![
+                            transfers_empty_notice("No local files queued yet.").into_any_element(),
+                        ]
                     } else {
                         upload_cards
                             .into_iter()

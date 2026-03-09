@@ -1,7 +1,7 @@
 use gpui::{App, Div, Hsla, ParentElement, Styled, div, px};
+use gpui_component::Sizable;
 use gpui_component::StyledExt;
 use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
-use gpui_component::Sizable;
 
 use crate::ui::theme;
 

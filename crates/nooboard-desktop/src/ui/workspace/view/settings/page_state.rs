@@ -232,11 +232,7 @@ impl WorkspaceView {
         issues
     }
 
-    fn set_settings_feedback(
-        &mut self,
-        save_state: SettingsSaveState,
-        message: impl Into<String>,
-    ) {
+    fn set_settings_feedback(&mut self, save_state: SettingsSaveState, message: impl Into<String>) {
         self.settings_page_state.save_state = save_state;
         self.settings_page_state.feedback = Some(message.into());
     }
@@ -268,10 +264,7 @@ impl WorkspaceView {
         } else {
             self.set_settings_feedback(
                 SettingsSaveState::Ready,
-                format!(
-                    "Storage changes ready for review: {}.",
-                    labels.join(", ")
-                ),
+                format!("Storage changes ready for review: {}.", labels.join(", ")),
             );
         }
         cx.notify();
@@ -289,10 +282,7 @@ impl WorkspaceView {
         } else {
             self.set_settings_feedback(
                 SettingsSaveState::Ready,
-                format!(
-                    "Network changes ready for review: {}.",
-                    labels.join(", ")
-                ),
+                format!("Network changes ready for review: {}.", labels.join(", ")),
             );
         }
         cx.notify();

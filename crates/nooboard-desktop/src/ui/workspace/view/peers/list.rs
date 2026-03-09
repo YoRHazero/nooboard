@@ -22,7 +22,12 @@ impl WorkspaceView {
                 "Connected tab",
                 format!("{} · {} peers", filter.label(), count),
             ))
-            .child(div().h(px(1.0)).w_full().bg(crate::ui::theme::border_soft()))
+            .child(
+                div()
+                    .h(px(1.0))
+                    .w_full()
+                    .bg(crate::ui::theme::border_soft()),
+            )
             .child(if peers.is_empty() {
                 peers_empty_state(filter.label()).into_any_element()
             } else {

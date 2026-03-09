@@ -1,24 +1,97 @@
 use gpui::Hsla;
 use gpui_component::IconName;
 
+use crate::state::live_app::{RecentActivityItem, RecentActivityKind, RecentActivitySeverity};
 use crate::ui::theme;
 
-pub(crate) fn activity_kind_icon(kind: &str) -> IconName {
-    if kind.contains("Error") {
-        IconName::Bell
-    } else if kind.contains("Transfer") {
-        IconName::Folder
-    } else {
-        IconName::Copy
+pub(crate) fn activity_kind_icon(item: &RecentActivityItem) -> IconName {
+    match item.kind {
+        RecentActivityKind::ClipboardCommitted { .. } => IconName::Copy,
+        RecentActivityKind::IncomingTransferOffered { .. }
+        | RecentActivityKind::TransferCompleted { .. } => IconName::Folder,
+        RecentActivityKind::PeerConnectionError { .. }
+        | RecentActivityKind::SyncDisabledBySettings
+        | RecentActivityKind::SyncError { .. }
+        | RecentActivityKind::DesktopWarning { .. }
+        | RecentActivityKind::DesktopError { .. } => IconName::TriangleAlert,
+        RecentActivityKind::SyncStarting
+        | RecentActivityKind::SyncRunning
+        | RecentActivityKind::SyncStopped => IconName::Globe,
     }
 }
 
-pub(crate) fn activity_accent(kind: &str) -> Hsla {
-    if kind.contains("Error") {
-        theme::accent_rose()
-    } else if kind.contains("Transfer") {
-        theme::accent_amber()
-    } else {
-        theme::accent_cyan()
+pub(crate) fn activity_accent(item: &RecentActivityItem) -> Hsla {
+    match item.severity {
+        RecentActivitySeverity::Info => match item.kind {
+            RecentActivityKind::TransferCompleted { .. }
+            | RecentActivityKind::IncomingTransferOffered { .. } => theme::accent_amber(),
+            RecentActivityKind::SyncStarting
+            | RecentActivityKind::SyncRunning
+            | RecentActivityKind::SyncStopped => theme::accent_cyan(),
+            RecentActivityKind::ClipboardCommitted { .. } => theme::accent_blue(),
+            _ => theme::accent_cyan(),
+        },
+        RecentActivitySeverity::Warning => theme::accent_amber(),
+        RecentActivitySeverity::Error => theme::accent_rose(),
     }
+}
+
+pub(crate) fn activity_kind_label(item: &RecentActivityItem) -> &'static str {
+    match item.kind {
+        RecentActivityKind::ClipboardCommitted { .. } => "Clipboard",
+        RecentActivityKind::IncomingTransferOffered { .. } => "Incoming Transfer",
+        RecentActivityKind::TransferCompleted { .. } => "Transfer Complete",
+        RecentActivityKind::PeerConnectionError { .. } => "Peer Error",
+        RecentActivityKind::SyncStarting => "Sync Starting",
+        RecentActivityKind::SyncRunning => "Sync Running",
+        RecentActivityKind::SyncStopped => "Sync Stopped",
+        RecentActivityKind::SyncDisabledBySettings => "Sync Disabled",
+        RecentActivityKind::SyncError { .. } => "Sync Error",
+        RecentActivityKind::DesktopWarning { .. } => "Desktop Warning",
+        RecentActivityKind::DesktopError { .. } => "Desktop Error",
+    }
+}
+
+pub(crate) fn activity_title(item: &RecentActivityItem) -> String {
+    match &item.kind {
+        RecentActivityKind::ClipboardCommitted { source, .. } => {
+            format!("clipboard record committed from {:?}", source)
+        }
+        RecentActivityKind::IncomingTransferOffered { transfer_id } => {
+            format!("incoming transfer {transfer_id} is awaiting a decision")
+        }
+        RecentActivityKind::TransferCompleted {
+            transfer_id,
+            outcome,
+        } => format!("transfer {transfer_id} completed with {:?}", outcome),
+        RecentActivityKind::PeerConnectionError {
+            peer_noob_id,
+            addr,
+            error,
+        } => match (peer_noob_id, addr) {
+            (Some(noob_id), Some(addr)) => {
+                format!("peer {noob_id} at {addr} reported: {error}")
+            }
+            (Some(noob_id), None) => format!("peer {noob_id} reported: {error}"),
+            (None, Some(addr)) => format!("{addr} reported: {error}"),
+            (None, None) => error.clone(),
+        },
+        RecentActivityKind::SyncStarting => "sync runtime is starting".to_string(),
+        RecentActivityKind::SyncRunning => "sync runtime is running".to_string(),
+        RecentActivityKind::SyncStopped => "sync runtime is stopped".to_string(),
+        RecentActivityKind::SyncDisabledBySettings => {
+            "sync runtime is disabled by network settings".to_string()
+        }
+        RecentActivityKind::SyncError { message } => message.clone(),
+        RecentActivityKind::DesktopWarning { message }
+        | RecentActivityKind::DesktopError { message } => message.clone(),
+    }
+}
+
+pub(crate) fn activity_time_label(item: &RecentActivityItem) -> String {
+    let seconds = item.observed_at_ms.div_euclid(1000).rem_euclid(86_400);
+    let hour = seconds / 3_600;
+    let minute = (seconds % 3_600) / 60;
+    let second = seconds % 60;
+    format!("{hour:02}:{minute:02}:{second:02}")
 }

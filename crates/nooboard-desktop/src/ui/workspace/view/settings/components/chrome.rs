@@ -134,9 +134,5 @@ pub(in crate::ui::workspace::view::settings) fn settings_section_footer(
 pub(in crate::ui::workspace::view::settings) fn settings_action_row(
     actions: impl IntoIterator<Item = AnyElement>,
 ) -> Div {
-    div()
-        .h_flex()
-        .justify_end()
-        .gap(px(8.0))
-        .children(actions)
+    div().h_flex().justify_end().gap(px(8.0)).children(actions)
 }

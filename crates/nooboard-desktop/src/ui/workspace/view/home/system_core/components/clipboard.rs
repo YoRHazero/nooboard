@@ -3,7 +3,7 @@ use gpui_component::{Icon, IconName, StyledExt};
 
 use crate::ui::theme;
 
-pub(in crate::ui::workspace::view::home::system_core) fn clipboard_copy_action_shell(
+pub(in crate::ui::workspace::view::home::system_core) fn clipboard_action_shell(
     accent: Hsla,
 ) -> Div {
     div()
@@ -18,7 +18,7 @@ pub(in crate::ui::workspace::view::home::system_core) fn clipboard_copy_action_s
         .justify_center()
 }
 
-pub(in crate::ui::workspace::view::home::system_core) fn clipboard_copy_placeholder(
+pub(in crate::ui::workspace::view::home::system_core) fn clipboard_action_placeholder(
     accent: Hsla,
 ) -> Div {
     div()

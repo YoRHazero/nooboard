@@ -135,13 +135,15 @@ async fn decide_incoming_transfer_accept_moves_to_succeeded_completion() -> Resu
     .await?;
     assert_eq!(receiver_completed_id, receiver_transfer_id);
     let receiver_state_at_event = service_b.get_state().await?;
-    assert!(receiver_state_at_event
-        .transfers
-        .recent_completed
-        .iter()
-        .any(|completed| completed.transfer_id == receiver_transfer_id
-            && completed.outcome == TransferOutcome::Succeeded
-            && completed.saved_path.is_some()));
+    assert!(
+        receiver_state_at_event
+            .transfers
+            .recent_completed
+            .iter()
+            .any(|completed| completed.transfer_id == receiver_transfer_id
+                && completed.outcome == TransferOutcome::Succeeded
+                && completed.saved_path.is_some())
+    );
 
     let sender_completed_id = wait_for_event(
         &mut sender_events,
@@ -157,12 +159,14 @@ async fn decide_incoming_transfer_accept_moves_to_succeeded_completion() -> Resu
     .await?;
     assert_eq!(sender_completed_id, sender_transfer_id);
     let sender_state_at_event = service_a.get_state().await?;
-    assert!(sender_state_at_event
-        .transfers
-        .recent_completed
-        .iter()
-        .any(|completed| completed.transfer_id == sender_transfer_id
-            && completed.outcome == TransferOutcome::Succeeded));
+    assert!(
+        sender_state_at_event
+            .transfers
+            .recent_completed
+            .iter()
+            .any(|completed| completed.transfer_id == sender_transfer_id
+                && completed.outcome == TransferOutcome::Succeeded)
+    );
 
     let sender_state = wait_for_service_state(service_a, Duration::from_secs(10), |state| {
         state.transfers.recent_completed.iter().any(|completed| {
@@ -267,12 +271,14 @@ async fn decide_incoming_transfer_reject_moves_both_sides_to_rejected_completion
     .await?;
     assert_eq!(receiver_completed_id, receiver_transfer_id);
     let receiver_state_at_event = service_b.get_state().await?;
-    assert!(receiver_state_at_event
-        .transfers
-        .recent_completed
-        .iter()
-        .any(|completed| completed.transfer_id == receiver_transfer_id
-            && completed.outcome == TransferOutcome::Rejected));
+    assert!(
+        receiver_state_at_event
+            .transfers
+            .recent_completed
+            .iter()
+            .any(|completed| completed.transfer_id == receiver_transfer_id
+                && completed.outcome == TransferOutcome::Rejected)
+    );
 
     let sender_completed_id = wait_for_event(
         &mut sender_events,
@@ -288,12 +294,14 @@ async fn decide_incoming_transfer_reject_moves_both_sides_to_rejected_completion
     .await?;
     assert_eq!(sender_completed_id, sender_transfer_id);
     let sender_state_at_event = service_a.get_state().await?;
-    assert!(sender_state_at_event
-        .transfers
-        .recent_completed
-        .iter()
-        .any(|completed| completed.transfer_id == sender_transfer_id
-            && completed.outcome == TransferOutcome::Rejected));
+    assert!(
+        sender_state_at_event
+            .transfers
+            .recent_completed
+            .iter()
+            .any(|completed| completed.transfer_id == sender_transfer_id
+                && completed.outcome == TransferOutcome::Rejected)
+    );
 
     let receiver_state = wait_for_service_state(service_b, Duration::from_secs(10), |state| {
         !state
@@ -409,12 +417,14 @@ async fn cancel_transfer_moves_transfer_to_cancelled_completion() -> Result<(), 
     .await?;
     assert_eq!(completed_transfer_id, transfer_id);
     let sender_state_at_event = service_a.get_state().await?;
-    assert!(sender_state_at_event
-        .transfers
-        .recent_completed
-        .iter()
-        .any(|completed| completed.transfer_id == transfer_id
-            && completed.outcome == TransferOutcome::Cancelled));
+    assert!(
+        sender_state_at_event
+            .transfers
+            .recent_completed
+            .iter()
+            .any(|completed| completed.transfer_id == transfer_id
+                && completed.outcome == TransferOutcome::Cancelled)
+    );
 
     let sender_state = wait_for_service_state(service_a, Duration::from_secs(10), |state| {
         !state

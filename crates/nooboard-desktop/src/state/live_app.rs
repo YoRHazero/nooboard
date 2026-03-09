@@ -134,7 +134,7 @@ pub struct LiveAppStore {
 
 #[allow(dead_code)]
 impl LiveAppStore {
-    fn new(
+    pub(crate) fn new(
         config_path: PathBuf,
         app_state: AppState,
         latest_committed_record: Option<ClipboardRecord>,
@@ -182,11 +182,11 @@ impl LiveAppStore {
         cx.notify();
     }
 
-    fn apply_state_snapshot(&mut self, app_state: AppState) {
+    pub(crate) fn apply_state_snapshot(&mut self, app_state: AppState) {
         self.app_state = app_state;
     }
 
-    fn replace_latest_committed_record(&mut self, record: Option<ClipboardRecord>) {
+    pub(crate) fn replace_latest_committed_record(&mut self, record: Option<ClipboardRecord>) {
         self.latest_committed_record = record;
     }
 
@@ -218,6 +218,20 @@ impl LiveAppStore {
         self.push_recent_activity(RecentActivityItem::new(
             RecentActivityKind::DesktopWarning { message: error },
         ));
+    }
+
+    pub(crate) fn record_desktop_warning(&mut self, message: String) {
+        self.bridge.last_error = Some(message.clone());
+        self.push_recent_activity(RecentActivityItem::new(
+            RecentActivityKind::DesktopWarning { message },
+        ));
+    }
+
+    pub(crate) fn record_desktop_error(&mut self, message: String) {
+        self.bridge.last_error = Some(message.clone());
+        self.push_recent_activity(RecentActivityItem::new(RecentActivityKind::DesktopError {
+            message,
+        }));
     }
 }
 

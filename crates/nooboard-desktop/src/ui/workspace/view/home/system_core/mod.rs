@@ -4,27 +4,24 @@ mod controls;
 mod header;
 mod radar;
 
+use std::f32::consts::TAU;
 use std::time::Duration;
-use std::{collections::HashMap, f32::consts::TAU};
 
 use gpui::{
     Animation, AnimationExt as _, AnyView, App, Context, Div, Hsla, InteractiveElement,
     IntoElement, ParentElement, StatefulInteractiveElement, Styled, Transformation, Window, div,
     linear, percentage, prelude::FluentBuilder as _, px, svg,
 };
-use gpui_component::clipboard::Clipboard;
+use gpui_component::StyledExt;
 use gpui_component::tooltip::Tooltip;
-use gpui_component::{Icon, IconName, StyledExt};
 
-use crate::{
-    state::{ClipboardTextItem, ClipboardTextOrigin, SystemPeer, SystemPeerStatus},
-    ui::theme,
-};
+use crate::ui::theme;
 
 use self::components::{
-    arc_port_toggle_visual, clipboard_copy_action_shell, clipboard_copy_placeholder,
+    arc_port_toggle_visual, clipboard_action_placeholder, clipboard_action_shell,
     clipboard_read_board, radar_panel_shell, system_core_card_shell, system_core_title_lockup,
 };
+use super::snapshot::HomeSystemCoreSnapshot;
 
 use super::super::{WorkspaceView, shared::enter_animation};
 
@@ -38,74 +35,7 @@ const CLIPBOARD_PANEL_WIDTH: f32 = 276.0;
 const CLIPBOARD_PANEL_HEIGHT: f32 = 492.0;
 const RADAR_SCAN_LINE_SVG: &str = "system_core/radar_scan_line.svg";
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum RadarPeerVisualState {
-    Connected,
-    Transferring,
-    DeviceConflict,
-}
-
 impl WorkspaceView {
-    fn short_noob_id(noob_id: &str) -> String {
-        noob_id.chars().take(8).collect()
-    }
-
-    fn stable_unit(value: &str, salt: u64) -> f32 {
-        let mut hash = 0xcbf29ce484222325u64 ^ salt;
-        for byte in value.bytes() {
-            hash ^= u64::from(byte);
-            hash = hash.wrapping_mul(0x100000001b3);
-        }
-
-        (hash as f64 / u64::MAX as f64) as f32
-    }
-
-    fn duplicate_device_ids(&self) -> HashMap<String, usize> {
-        let mut counts = HashMap::new();
-        for peer in &self.state.app.system_core.peers {
-            *counts.entry(peer.device_id.clone()).or_insert(0) += 1;
-        }
-        counts
-    }
-
-    fn peer_visual_state(
-        &self,
-        peer: &SystemPeer,
-        duplicate_device_ids: &HashMap<String, usize>,
-    ) -> RadarPeerVisualState {
-        if duplicate_device_ids
-            .get(peer.device_id.as_str())
-            .copied()
-            .unwrap_or_default()
-            > 1
-        {
-            return RadarPeerVisualState::DeviceConflict;
-        }
-
-        match peer.status {
-            SystemPeerStatus::Connected => RadarPeerVisualState::Connected,
-            SystemPeerStatus::Transferring => RadarPeerVisualState::Transferring,
-        }
-    }
-
-    fn peer_state_accent(state: RadarPeerVisualState) -> Hsla {
-        match state {
-            RadarPeerVisualState::Connected => theme::accent_green(),
-            RadarPeerVisualState::Transferring => theme::accent_blue(),
-            RadarPeerVisualState::DeviceConflict => theme::accent_amber(),
-        }
-    }
-
-    fn peer_position(peer: &SystemPeer) -> (f32, f32, f32) {
-        let angular = Self::stable_unit(&peer.noob_id, 0x1A11CE);
-        let radial = Self::stable_unit(&peer.noob_id, 0xC0FFEE).sqrt();
-        let theta = -std::f32::consts::FRAC_PI_2 + TAU * angular;
-        let radius = RADAR_MIN_RADIUS + (RADAR_MAX_RADIUS - RADAR_MIN_RADIUS) * radial;
-        let x = RADAR_CENTER + theta.cos() * radius;
-        let y = RADAR_CENTER + theta.sin() * radius;
-        (x, y, angular)
-    }
-
     fn pulse_after_sweep(phase: f32, delta: f32) -> f32 {
         let trail = (delta - phase).rem_euclid(1.0);
 
@@ -130,9 +60,13 @@ impl WorkspaceView {
             .build(window, cx)
     }
 
-    pub(super) fn system_core_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn system_core_card(
+        &self,
+        snapshot: &HomeSystemCoreSnapshot,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         system_core_card_shell()
-            .child(self.system_core_header())
+            .child(self.system_core_header(snapshot))
             .child(
                 div()
                     .h_flex()
@@ -145,10 +79,10 @@ impl WorkspaceView {
                             .flex_shrink_0()
                             .v_flex()
                             .gap(px(12.0))
-                            .child(self.radar_panel())
-                            .child(self.toggle_dock(cx)),
+                            .child(self.radar_panel(snapshot))
+                            .child(self.toggle_dock(snapshot, cx)),
                     )
-                    .child(self.clipboard_panel()),
+                    .child(self.clipboard_panel(snapshot, cx)),
             )
             .with_animation("system-core-card", enter_animation(), |this, delta| {
                 this.opacity(0.35 + delta * 0.65)

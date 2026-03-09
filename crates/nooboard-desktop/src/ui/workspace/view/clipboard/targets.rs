@@ -1,6 +1,6 @@
 use super::*;
-use gpui::StatefulInteractiveElement;
 use crate::ui::workspace::view::clipboard::components::clipboard_themed_tooltip;
+use gpui::StatefulInteractiveElement;
 
 impl WorkspaceView {
     pub(super) fn clipboard_targets_panel(&self, cx: &mut Context<Self>) -> Div {
@@ -53,10 +53,10 @@ impl WorkspaceView {
             selected,
             accent,
         )
-            .id(format!("clipboard-target-chip-{}", target.noob_id))
-            .tooltip(move |window: &mut Window, cx| {
-                clipboard_themed_tooltip(tooltip.clone(), window, cx)
-            });
+        .id(format!("clipboard-target-chip-{}", target.noob_id))
+        .tooltip(move |window: &mut Window, cx| {
+            clipboard_themed_tooltip(tooltip.clone(), window, cx)
+        });
 
         if target.is_connected() {
             chip = chip

@@ -11,13 +11,16 @@ mod transfers;
 use std::sync::Arc;
 
 use gpui::{
-    Context, Div, InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle,
+    Context, Div, Entity, InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle,
     StatefulInteractiveElement, Styled, Window, div, px,
 };
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::{StyledExt, TitleBar};
 
-use crate::state::{SharedState, TransferItem, TransferStage, WorkspaceRoute};
+use crate::state::{
+    SharedState, TransferItem, TransferStage, WorkspaceRoute,
+    live_app::{DesktopLiveApp, LiveAppStore},
+};
 use crate::ui::theme;
 
 use self::clipboard::ClipboardPageState;
@@ -29,6 +32,7 @@ use self::transfers::TransfersPageState;
 
 pub struct WorkspaceView {
     state: Arc<SharedState>,
+    live_store: Entity<LiveAppStore>,
     route: WorkspaceRoute,
     main_y_scroll: ScrollHandle,
     clipboard_page: ClipboardPageState,
@@ -38,14 +42,16 @@ pub struct WorkspaceView {
     transfer_items: Vec<TransferItem>,
     transfer_rail_expanded: bool,
     transfer_rail_has_toggled: bool,
-    network_service_enabled: bool,
-    auto_bridge_remote_text: bool,
 }
 
 impl WorkspaceView {
-    pub fn new(state: Arc<SharedState>) -> Self {
-        let network_service_enabled = state.app.system_core.network_enabled;
-        let auto_bridge_remote_text = state.app.system_core.auto_bridge_remote_text;
+    pub fn new(state: Arc<SharedState>, cx: &mut Context<Self>) -> Self {
+        let live_store = cx.global::<DesktopLiveApp>().store();
+        cx.observe(&live_store, |_, _, cx| {
+            cx.notify();
+        })
+        .detach();
+
         let clipboard_page = ClipboardPageState::new(&state.app.clipboard);
         let peers_page_state = PeersPageState::new();
         let settings_page_state = SettingsPageState::new(state.app.system_core.network_enabled);
@@ -54,6 +60,7 @@ impl WorkspaceView {
 
         Self {
             state,
+            live_store,
             route: WorkspaceRoute::Home,
             main_y_scroll: ScrollHandle::default(),
             clipboard_page,
@@ -63,8 +70,6 @@ impl WorkspaceView {
             transfer_items,
             transfer_rail_expanded: true,
             transfer_rail_has_toggled: false,
-            network_service_enabled,
-            auto_bridge_remote_text,
         }
     }
 
@@ -148,6 +153,7 @@ impl WorkspaceView {
 
 impl Render for WorkspaceView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let app_state = self.live_store.read(cx).app_state().clone();
         let main = match self.route {
             WorkspaceRoute::Home => self.home_page(cx),
             WorkspaceRoute::Clipboard => self.clipboard_page(cx),
@@ -179,12 +185,12 @@ impl Render for WorkspaceView {
                                 .items_center()
                                 .child(titlebar_chip(
                                     "Peers",
-                                    self.state.app.online_peers.to_string(),
+                                    app_state.peers.connected.len().to_string(),
                                     theme::accent_cyan(),
                                 ))
                                 .child(titlebar_chip(
                                     "Inbox",
-                                    self.awaiting_review_count().to_string(),
+                                    app_state.transfers.incoming_pending.len().to_string(),
                                     theme::accent_amber(),
                                 )),
                         ),

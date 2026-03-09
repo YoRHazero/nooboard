@@ -30,7 +30,11 @@ async fn clipboard_committed_event_only_follows_successful_commit() -> Result<()
     let record = service.get_clipboard_record(event_id).await?;
     assert_eq!(record.content, "short");
     assert_eq!(
-        service.get_state().await?.clipboard.latest_committed_event_id,
+        service
+            .get_state()
+            .await?
+            .clipboard
+            .latest_committed_event_id,
         Some(event_id)
     );
 

@@ -8,8 +8,8 @@ use std::thread::JoinHandle;
 
 use nooboard_app::{
     AppEvent, AppState, ClipboardPort, ClipboardRecordSource, DesktopAppService,
-    DesktopAppServiceImpl, EventId, EventSubscription, NoobId, StateSubscription,
-    SyncActualStatus, SyncDesiredState,
+    DesktopAppServiceImpl, EventId, EventSubscription, NoobId, StateSubscription, SyncActualStatus,
+    SyncDesiredState,
 };
 use nooboard_platform::{ClipboardEvent, ClipboardEventSender};
 use tempfile::TempDir;
@@ -347,8 +347,16 @@ pub async fn connect_service_fanout(
 
     wait_for_service_state(service_a, Duration::from_secs(10), |state| {
         state.sync.actual == SyncActualStatus::Running
-            && state.peers.connected.iter().any(|peer| peer.noob_id == noob_id_b)
-            && state.peers.connected.iter().any(|peer| peer.noob_id == noob_id_c)
+            && state
+                .peers
+                .connected
+                .iter()
+                .any(|peer| peer.noob_id == noob_id_b)
+            && state
+                .peers
+                .connected
+                .iter()
+                .any(|peer| peer.noob_id == noob_id_c)
     })
     .await?;
     wait_for_service_state(service_b, Duration::from_secs(10), |state| {

@@ -1,4 +1,8 @@
+use super::super::snapshot::HomeSystemCoreSnapshot;
 use super::*;
+use crate::state::live_commands;
+use gpui_component::IconName;
+use nooboard_app::SyncDesiredState;
 
 const ARC_PORT_TRACK_SVG: &str = "system_core/arc_port_track.svg";
 const ARC_PORT_SIGNAL_SVG: &str = "system_core/arc_port_signal.svg";
@@ -14,6 +18,7 @@ impl WorkspaceView {
         left: f32,
         icon: IconName,
         active: bool,
+        disabled: bool,
         accent: Hsla,
         tooltip_title: &str,
         tooltip_detail: &str,
@@ -29,22 +34,66 @@ impl WorkspaceView {
             .top(px(6.0))
             .left(px(left))
             .size(px(ARC_PORT_NODE_SIZE))
-            .cursor_pointer()
+            .when(!disabled, |this| this.cursor_pointer())
             .tooltip(move |window: &mut Window, cx| {
                 Self::themed_tooltip(tooltip.clone(), window, cx)
             })
             .on_click(cx.listener(move |this, _, _, cx| {
+                if disabled {
+                    return;
+                }
+
                 match id {
-                    "bridge" => this.auto_bridge_remote_text = !this.auto_bridge_remote_text,
-                    "network" => this.network_service_enabled = !this.network_service_enabled,
+                    "bridge" => {
+                        this.live_store.update(cx, |store, cx| {
+                            let next = !store.local_preferences().auto_adopt_remote_clipboard;
+                            store.set_auto_adopt_remote_clipboard(next, cx);
+                        });
+                    }
+                    "network" => live_commands::set_sync_desired_state(
+                        if active {
+                            SyncDesiredState::Stopped
+                        } else {
+                            SyncDesiredState::Running
+                        },
+                        cx,
+                    ),
                     _ => {}
                 }
-                cx.notify();
             }))
-            .child(arc_port_toggle_visual(icon, active, accent))
+            .child(arc_port_toggle_visual(icon, active, disabled, accent))
     }
 
-    pub(super) fn toggle_dock(&self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn toggle_dock(
+        &self,
+        snapshot: &HomeSystemCoreSnapshot,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let network_tooltip = if snapshot.network_control.disabled {
+            (
+                "Network disabled",
+                "open Settings and enable the sync network to use this control",
+            )
+        } else if snapshot.network_control.desired_running {
+            ("Stop network service", "pause sync discovery and transfers")
+        } else {
+            (
+                "Start network service",
+                "enable sync discovery and transfers",
+            )
+        };
+        let bridge_tooltip = if snapshot.auto_adopt_remote_clipboard {
+            (
+                "Auto adopt remote clipboard",
+                "remote text will also be written to the local clipboard",
+            )
+        } else {
+            (
+                "Manual remote clipboard adopt",
+                "remote text stays in history until you adopt it",
+            )
+        };
+
         div().w_full().flex().justify_center().child(
             div()
                 .relative()
@@ -80,7 +129,7 @@ impl WorkspaceView {
                         .w(px(76.0))
                         .h(px(24.0))
                         .path(ARC_PORT_SIGNAL_SVG)
-                        .text_color(if self.network_service_enabled {
+                        .text_color(if snapshot.network_control.desired_running {
                             theme::accent_cyan()
                         } else {
                             theme::border_base().opacity(0.92)
@@ -94,7 +143,7 @@ impl WorkspaceView {
                         .w(px(76.0))
                         .h(px(24.0))
                         .path(ARC_PORT_SIGNAL_SVG)
-                        .text_color(if self.auto_bridge_remote_text {
+                        .text_color(if snapshot.auto_adopt_remote_clipboard {
                             theme::accent_blue()
                         } else {
                             theme::border_base().opacity(0.92)
@@ -114,28 +163,22 @@ impl WorkspaceView {
                     "network",
                     39.0,
                     IconName::Globe,
-                    self.network_service_enabled,
+                    snapshot.network_control.desired_running,
+                    snapshot.network_control.disabled,
                     theme::accent_cyan(),
-                    "Network service",
-                    if self.network_service_enabled {
-                        "radar scan active"
-                    } else {
-                        "radar scan halted"
-                    },
+                    network_tooltip.0,
+                    network_tooltip.1,
                 ))
                 .child(self.arc_port_toggle(
                     cx,
                     "bridge",
                     203.0,
                     IconName::Copy,
-                    self.auto_bridge_remote_text,
+                    snapshot.auto_adopt_remote_clipboard,
+                    false,
                     theme::accent_blue(),
-                    "Remote relay",
-                    if self.auto_bridge_remote_text {
-                        "auto bridge to clipboard and storage"
-                    } else {
-                        "manual adopt required"
-                    },
+                    bridge_tooltip.0,
+                    bridge_tooltip.1,
                 )),
         )
     }

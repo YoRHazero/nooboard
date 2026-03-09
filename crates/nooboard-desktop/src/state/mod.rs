@@ -1,10 +1,11 @@
 mod app_store;
 mod clipboard;
 pub mod live_app;
+pub mod live_commands;
 mod transfer;
 mod ui_store;
 
-pub use app_store::{ActivityItem, SharedState, SystemPeer, SystemPeerStatus};
+pub use app_store::{SharedState, SystemPeer, SystemPeerStatus};
 pub use clipboard::{
     ClipboardHistoryPage, ClipboardStore, ClipboardTarget, ClipboardTargetStatus,
     ClipboardTextItem, ClipboardTextOrigin, ClipboardTextResidency,

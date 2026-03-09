@@ -3,8 +3,8 @@ use gpui_component::{Icon, IconName, StyledExt};
 
 use crate::ui::theme;
 
-use super::components::settings_status_chip;
 use super::WorkspaceView;
+use super::components::settings_status_chip;
 
 impl WorkspaceView {
     pub(super) fn settings_header(&self) -> Div {

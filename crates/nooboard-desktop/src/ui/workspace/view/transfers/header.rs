@@ -8,45 +8,44 @@ use gpui_component::scroll::ScrollableElement;
 use crate::state::{ClipboardTarget, ClipboardTargetStatus};
 use crate::ui::theme;
 
+use super::WorkspaceView;
 use super::components::{
     transfer_metric_chip, transfer_target_chip, transfers_panel_header, transfers_panel_shell,
 };
-use super::WorkspaceView;
 
 impl WorkspaceView {
     pub(super) fn transfers_header(&self) -> Div {
-        transfers_panel_shell()
-            .child(
-                div()
-                    .h_flex()
-                    .items_center()
-                    .justify_between()
-                    .gap(px(14.0))
-                    .child(transfers_panel_header(
-                        "Transfers",
-                        "Local send queue and incoming file lanes.",
-                    ))
-                    .child(
-                        div()
-                            .h_flex()
-                            .gap(px(8.0))
-                            .child(transfer_metric_chip(
-                                "Uploads",
-                                self.transfers_page_state.uploads.len().to_string(),
-                                theme::accent_blue(),
-                            ))
-                            .child(transfer_metric_chip(
-                                "Awaiting",
-                                self.awaiting_review_count().to_string(),
-                                theme::accent_amber(),
-                            ))
-                            .child(transfer_metric_chip(
-                                "Progress",
-                                self.progress_count().to_string(),
-                                theme::accent_cyan(),
-                            )),
-                    ),
-            )
+        transfers_panel_shell().child(
+            div()
+                .h_flex()
+                .items_center()
+                .justify_between()
+                .gap(px(14.0))
+                .child(transfers_panel_header(
+                    "Transfers",
+                    "Local send queue and incoming file lanes.",
+                ))
+                .child(
+                    div()
+                        .h_flex()
+                        .gap(px(8.0))
+                        .child(transfer_metric_chip(
+                            "Uploads",
+                            self.transfers_page_state.uploads.len().to_string(),
+                            theme::accent_blue(),
+                        ))
+                        .child(transfer_metric_chip(
+                            "Awaiting",
+                            self.awaiting_review_count().to_string(),
+                            theme::accent_amber(),
+                        ))
+                        .child(transfer_metric_chip(
+                            "Progress",
+                            self.progress_count().to_string(),
+                            theme::accent_cyan(),
+                        )),
+                ),
+        )
     }
 
     pub(super) fn transfers_target_panel(&self, cx: &mut Context<Self>) -> Div {

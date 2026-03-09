@@ -1,18 +1,19 @@
 use gpui::{
-    App, Context, Div, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, Window, div, px,
+    App, Context, Div, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+    Styled, Window, div, px,
 };
 use gpui_component::Disableable;
 
 use crate::ui::theme;
 
+use super::StorageSettingField;
+use super::WorkspaceView;
 use super::components::{
     settings_action_button, settings_action_row, settings_button_with_tooltip,
-    settings_control_button, settings_section_footer, settings_section_shell, settings_status_chip,
-    settings_themed_tooltip, settings_path_field_row, settings_stepper_field_row,
+    settings_control_button, settings_path_field_row, settings_section_footer,
+    settings_section_shell, settings_status_chip, settings_stepper_field_row,
+    settings_themed_tooltip,
 };
-use super::WorkspaceView;
-use super::StorageSettingField;
 
 impl WorkspaceView {
     pub(super) fn storage_settings_panel(&self, cx: &mut Context<Self>) -> Div {
@@ -128,17 +129,14 @@ impl WorkspaceView {
     }
 
     fn settings_db_root_row(&self, cx: &mut Context<Self>) -> Div {
-        let folder_label = self
-            .storage_settings_draft()
-            .db_root
-            .display()
-            .to_string();
+        let folder_label = self.storage_settings_draft().db_root.display().to_string();
         let confirmed_label = self
             .storage_settings_confirmed()
             .db_root
             .display()
             .to_string();
-        let dirty = self.storage_settings_draft().db_root != self.storage_settings_confirmed().db_root;
+        let dirty =
+            self.storage_settings_draft().db_root != self.storage_settings_confirmed().db_root;
         let tooltip = if dirty {
             format!(
                 "Click to choose a different folder for the draft.\nCurrent path: {}",
@@ -213,24 +211,16 @@ impl WorkspaceView {
             confirmed,
             field.step(),
             dirty,
-            settings_control_button(
-                decrement_id,
-                "-",
-                theme::accent_rose(),
-                cx,
-            )
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.step_storage_setting(field, false, cx);
-            })),
-            settings_control_button(
-                increment_id,
-                "+",
-                theme::accent_green(),
-                cx,
-            )
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.step_storage_setting(field, true, cx);
-            })),
+            settings_control_button(decrement_id, "-", theme::accent_rose(), cx).on_click(
+                cx.listener(move |this, _, _, cx| {
+                    this.step_storage_setting(field, false, cx);
+                }),
+            ),
+            settings_control_button(increment_id, "+", theme::accent_green(), cx).on_click(
+                cx.listener(move |this, _, _, cx| {
+                    this.step_storage_setting(field, true, cx);
+                }),
+            ),
         )
     }
 }

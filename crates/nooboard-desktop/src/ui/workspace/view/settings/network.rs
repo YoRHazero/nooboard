@@ -7,11 +7,11 @@ use gpui_component::StyledExt;
 
 use crate::ui::theme;
 
+use super::WorkspaceView;
 use super::components::{
     settings_action_button, settings_action_row, settings_button_with_tooltip,
     settings_section_footer, settings_section_shell, settings_status_chip,
 };
-use super::WorkspaceView;
 
 #[derive(Clone, Copy)]
 enum ToggleKind {

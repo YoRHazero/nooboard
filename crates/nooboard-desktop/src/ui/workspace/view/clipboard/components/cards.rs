@@ -56,11 +56,7 @@ pub(in crate::ui::workspace::view::clipboard) fn clipboard_target_chip(
                             div()
                                 .text_size(px(10.0))
                                 .font_semibold()
-                                .text_color(if connected {
-                                    accent
-                                } else {
-                                    theme::fg_muted()
-                                })
+                                .text_color(if connected { accent } else { theme::fg_muted() })
                                 .child(if connected { "Connected" } else { "Offline" }),
                         ),
                 ),

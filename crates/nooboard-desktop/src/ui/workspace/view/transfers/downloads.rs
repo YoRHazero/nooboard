@@ -12,11 +12,11 @@ use gpui_component::{Sizable, StyledExt};
 use crate::state::{TransferItem, TransferStatus};
 use crate::ui::theme;
 
+use super::WorkspaceView;
 use super::components::{
     transfer_action_button, transfer_card_meta, transfer_download_title, transfers_card_shell,
     transfers_panel_header, transfers_panel_shell, transfers_section,
 };
-use super::WorkspaceView;
 
 impl WorkspaceView {
     pub(super) fn transfers_download_panel(&self, cx: &mut Context<Self>) -> Div {
@@ -114,7 +114,12 @@ impl WorkspaceView {
             .map(|item| self.download_awaiting_card(item, cx))
             .collect::<Vec<_>>();
 
-        transfers_section("Awaiting Review", cards.len(), cards, "No files awaiting review.")
+        transfers_section(
+            "Awaiting Review",
+            cards.len(),
+            cards,
+            "No files awaiting review.",
+        )
     }
 
     fn download_progress_section(&self, cx: &mut Context<Self>) -> Div {
@@ -125,7 +130,12 @@ impl WorkspaceView {
             .map(|item| self.download_progress_card(item, cx))
             .collect::<Vec<_>>();
 
-        transfers_section("Progress", cards.len(), cards, "No active download transfers.")
+        transfers_section(
+            "Progress",
+            cards.len(),
+            cards,
+            "No active download transfers.",
+        )
     }
 
     fn download_complete_section(&self, cx: &mut Context<Self>) -> Div {
@@ -149,8 +159,14 @@ impl WorkspaceView {
         let reject_id = item.id.clone();
 
         transfers_card_shell()
-            .child(transfer_download_title(item.file_name.as_str(), theme::accent_amber()))
-            .child(transfer_card_meta(item.source_device.as_str(), item.size_label.as_str()))
+            .child(transfer_download_title(
+                item.file_name.as_str(),
+                theme::accent_amber(),
+            ))
+            .child(transfer_card_meta(
+                item.source_device.as_str(),
+                item.size_label.as_str(),
+            ))
             .child(
                 div()
                     .text_size(px(11.0))
@@ -205,8 +221,14 @@ impl WorkspaceView {
         let cancel_id = item.id.clone();
 
         transfers_card_shell()
-            .child(transfer_download_title(item.file_name.as_str(), theme::accent_blue()))
-            .child(transfer_card_meta(item.source_device.as_str(), item.size_label.as_str()))
+            .child(transfer_download_title(
+                item.file_name.as_str(),
+                theme::accent_blue(),
+            ))
+            .child(transfer_card_meta(
+                item.source_device.as_str(),
+                item.size_label.as_str(),
+            ))
             .child(
                 div()
                     .h_flex()
@@ -266,8 +288,14 @@ impl WorkspaceView {
         let move_id = item.id.clone();
 
         transfers_card_shell()
-            .child(transfer_download_title(item.file_name.as_str(), theme::accent_green()))
-            .child(transfer_card_meta(item.source_device.as_str(), item.size_label.as_str()))
+            .child(transfer_download_title(
+                item.file_name.as_str(),
+                theme::accent_green(),
+            ))
+            .child(transfer_card_meta(
+                item.source_device.as_str(),
+                item.size_label.as_str(),
+            ))
             .child(
                 div()
                     .text_size(px(11.0))

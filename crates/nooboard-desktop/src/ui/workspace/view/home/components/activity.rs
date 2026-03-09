@@ -15,9 +15,7 @@ pub(in crate::ui::workspace::view::home) fn recent_activity_card_shell() -> Div 
         .shadow_xs()
 }
 
-pub(in crate::ui::workspace::view::home) fn recent_activity_card_header(
-    item_count: usize,
-) -> Div {
+pub(in crate::ui::workspace::view::home) fn recent_activity_card_header(item_count: usize) -> Div {
     div()
         .h_flex()
         .items_end()

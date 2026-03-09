@@ -2,10 +2,10 @@ use gpui::{
     AnyElement, AnyView, App, Hsla, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, Window, div, px,
 };
+use gpui_component::Sizable;
 use gpui_component::StyledExt;
 use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::tooltip::Tooltip;
-use gpui_component::Sizable;
 
 use crate::ui::theme;
 
