@@ -1,540 +1,693 @@
 # nooboard-app Stage4 API 参考文档
 
-本文件描述 `crates/nooboard-app` 当前可供调用方使用的接口、数据结构、典型用法、内部 actor/worker 以及关键调用链。
+本文件描述 `crates/nooboard-app` 当前对 `desktop` 暴露的接入面。
 
-适用对象：
-- 集成 `nooboard-app` 的 CLI/Desktop/服务端调用方
-- 需要实现剪贴板后端（`ClipboardPort`）的宿主应用
+目标读者：
+- `nooboard-desktop` 接入方
+- 需要在测试或宿主环境中嵌入 `nooboard-app` 的调用方
+
+本文件只描述当前状态，不描述演进过程。
 
 ---
 
-## 1. 外部入口
+## 1. 定位
 
-### 1.1 crate 导出
-调用方通常直接从 `nooboard_app` 引入：
-- 服务入口：`AppService`、`AppServiceImpl`
-- 错误与返回：`AppError`、`AppResult<T>`
-- 配置：`AppConfig`、`APP_CONFIG_VERSION`、`DEFAULT_RECENT_EVENT_LOOKUP_LIMIT`
-- 剪贴板接口：`ClipboardPort`、`LocalClipboardObserved`、`LocalClipboardSubscription`
-- 业务类型：`EventId`、`NoobId`、`Targets`、`IngestTextRequest`、`TextSource`、`RebroadcastEventRequest`
-- 历史与快照：`HistoryRecord`、`HistoryPage`、`ListHistoryRequest`、`AppServiceSnapshot`
-- 事件订阅：`AppEvent`、`SyncEvent`、`EventSubscription`、`EventSubscriptionItem`、`SubscriptionLifecycle`
-- 文件传输：`SendFileRequest`、`FileDecisionRequest`、`TransferUpdate`
-- 配置补丁：`AppPatch`、`NetworkPatch`、`StoragePatch`
+`nooboard-app` 是 desktop 的后端 service。
 
-### 1.2 服务初始化
+当前 contract 的核心原则：
+- `AppState` 是当前状态的唯一权威读模型。
+- `AppEvent` 只表达边沿事件，不承载完整状态。
+- `subscribe_state()` 和 `subscribe_events()` 都是 app-lifetime 订阅，不依赖 sync session 生命周期。
+- clipboard 对外只暴露已提交 record，不暴露 raw local clipboard watch。
+- peers 只承诺当前 connected peers。
+- transfers 对外只暴露 `incoming_pending / active / recent_completed` 三段读模型。
+
+当前不对 desktop 暴露：
+- raw local clipboard 文本流
+- discovered/offline peer directory
+- session id / rebinding / opened / closed 一类桥接概念
+
+---
+
+## 2. 入口
+
+调用方通常直接从 `nooboard_app` crate root 引入：
+- `DesktopAppService`
+- `DesktopAppServiceImpl`
+- `AppState`
+- `AppEvent`
+- `SettingsPatch`
+- clipboard / transfer / identity 相关 DTO
+- `AppError`
+
+默认构造入口：
+
 ```rust
-pub fn AppServiceImpl::new(
+pub fn DesktopAppServiceImpl::new(
     config_path: impl AsRef<std::path::Path>,
-) -> AppResult<AppServiceImpl>
-```
-
-初始化阶段会：
-- 加载并校验 `AppConfig`
-- 初始化 StorageRuntime
-- 初始化默认平台 ClipboardRuntime（内部创建）
-- 初始化 SyncRuntime
-- 启动 control actor
-
-补充：`AppServiceImpl::new_with_clipboard(...)` 仍可用于测试或特殊嵌入场景，但常规调用方应使用 `new(config_path)`。
-
----
-
-## 2. 剪贴板后端接口
-
-当调用方需要自定义剪贴板后端（例如测试或嵌入式场景）时，可提供 `ClipboardPort` 实现：
-
-```rust
-pub trait ClipboardPort: Send + Sync {
-    fn read_text(&self) -> AppResult<Option<String>>;
-    fn write_text(&self, text: &str) -> AppResult<()>;
-    fn watch_changes(
-        &self,
-        sender: nooboard_platform::ClipboardEventSender,
-        shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
-        interval: std::time::Duration,
-    ) -> AppResult<std::thread::JoinHandle<()>>;
-}
+) -> AppResult<Self>
 ```
 
 说明：
-- `watch_changes` 可不支持；默认实现返回错误。
-- 如后端实现了 `nooboard_platform::ClipboardBackend`，可自动适配为 `ClipboardPort`。
-
-本地剪贴板订阅类型：
-
-```rust
-pub struct LocalClipboardObserved {
-    pub event_id: EventId,
-    pub text: String,
-    pub observed_at_ms: i64,
-}
-
-pub struct LocalClipboardSubscription {
-    pub async fn recv(&mut self) -> Result<LocalClipboardObserved, tokio::sync::broadcast::error::RecvError>;
-    pub fn try_recv(&mut self) -> Result<LocalClipboardObserved, tokio::sync::broadcast::error::TryRecvError>;
-}
-```
+- 该入口会加载并校验 `AppConfig`
+- 会创建 storage runtime、clipboard runtime、sync runtime 和 control actor
+- 默认平台 clipboard backend 目前依赖宿主平台实现；在非 macOS 环境下，默认构造可能返回 `AppError::Platform`
+- 测试或特殊嵌入场景可使用 `new_with_clipboard(...)` 注入自定义 `ClipboardPort`
 
 ---
 
-## 3. AppService 外部接口
+## 3. 服务接口
+
+当前 desktop-facing service trait 为：
 
 ```rust
 #[allow(async_fn_in_trait)]
-pub trait AppService {
+pub trait DesktopAppService {
     async fn shutdown(&self) -> AppResult<()>;
-    async fn set_sync_desired_state(&self, desired_state: SyncDesiredState) -> AppResult<AppServiceSnapshot>;
-    async fn apply_config_patch(&self, patch: AppPatch) -> AppResult<AppServiceSnapshot>;
-    async fn snapshot(&self) -> AppResult<AppServiceSnapshot>;
 
-    async fn ingest_text_event(&self, request: IngestTextRequest) -> AppResult<()>;
-    async fn write_event_to_clipboard(&self, event_id: EventId) -> AppResult<()>;
-    async fn list_history(&self, request: ListHistoryRequest) -> AppResult<HistoryPage>;
-    async fn rebroadcast_event(&self, request: RebroadcastEventRequest) -> AppResult<()>;
-    async fn set_local_watch_enabled(&self, enabled: bool) -> AppResult<()>;
-
-    async fn send_file(&self, request: SendFileRequest) -> AppResult<()>;
-    async fn respond_file_decision(&self, request: FileDecisionRequest) -> AppResult<()>;
-
+    async fn get_state(&self) -> AppResult<AppState>;
+    async fn subscribe_state(&self) -> AppResult<StateSubscription>;
     async fn subscribe_events(&self) -> AppResult<EventSubscription>;
-    async fn subscribe_local_clipboard(&self) -> AppResult<LocalClipboardSubscription>;
+
+    async fn set_sync_desired_state(&self, desired: SyncDesiredState) -> AppResult<()>;
+    async fn patch_settings(&self, patch: SettingsPatch) -> AppResult<()>;
+
+    async fn submit_text(&self, request: SubmitTextRequest) -> AppResult<EventId>;
+    async fn get_clipboard_record(&self, event_id: EventId) -> AppResult<ClipboardRecord>;
+    async fn list_clipboard_history(
+        &self,
+        request: ListClipboardHistoryRequest,
+    ) -> AppResult<ClipboardHistoryPage>;
+    async fn adopt_clipboard_record(&self, event_id: EventId) -> AppResult<()>;
+    async fn rebroadcast_clipboard_record(
+        &self,
+        request: RebroadcastClipboardRequest,
+    ) -> AppResult<()>;
+
+    async fn send_files(&self, request: SendFilesRequest) -> AppResult<Vec<TransferId>>;
+    async fn decide_incoming_transfer(&self, request: IncomingTransferDecision) -> AppResult<()>;
+    async fn cancel_transfer(&self, transfer_id: TransferId) -> AppResult<()>;
 }
 ```
 
-### 3.1 文本相关接口
-- `ingest_text_event`：统一文本入口，负责入库；成功入库后发 `AppEvent::TextIngested`。
-- `write_event_to_clipboard`：按 `event_id` 从存储取文本并写入系统剪贴板。
-- `rebroadcast_event`：按 `event_id` 从存储取文本并发送到 sync 网络目标。
-- `set_local_watch_enabled`：开启/关闭本地剪贴板 watch 流。
-
-### 3.2 历史与状态接口
-- `list_history`：按分页参数返回历史记录。
-- `snapshot`：返回当前快照，含 `local_noob_id`、连接状态、网络开关、存储配置视图。
-
-### 3.3 事件订阅接口
-- `subscribe_events`：订阅统一事件流（sync/transfer/lifecycle + TextIngested）。
-- `subscribe_local_clipboard`：订阅本地剪贴板观测流（文本事件）。
-
-### 3.4 文件相关接口
-- `send_file`：向目标节点发送文件。
-- `respond_file_decision`：对远端文件请求进行接受/拒绝决策。
+总体语义：
+- 读接口不产生副作用
+- 写接口成功返回时，业务侧状态已经提交，后续 `get_state()` 和 `subscribe_state()` 可观察到结果
+- `shutdown()` 后 service 不应继续被复用
 
 ---
 
-## 4. 主要数据结构
+## 4. 状态订阅与事件订阅
 
-## 4.1 标识与目标
+### 4.1 `StateSubscription`
 
 ```rust
-pub struct EventId; // UUID v7 封装
-impl EventId {
-    pub fn new() -> Self;
-    pub fn as_uuid(self) -> uuid::Uuid;
-}
-impl TryFrom<&str> for EventId;
-
-pub struct NoobId(String);
-impl NoobId {
-    pub fn new(value: impl Into<String>) -> Self;
-    pub fn as_str(&self) -> &str;
-}
-
-pub enum Targets {
-    All,
-    Nodes(Vec<NoobId>),
-}
-impl Targets {
-    pub fn all() -> Self;
-    pub fn nodes(nodes: Vec<NoobId>) -> Self;
+pub struct StateSubscription {
+    pub async fn recv(&mut self) -> Result<AppState, StateRecvError>;
+    pub fn latest(&self) -> &AppState;
 }
 ```
 
-## 4.2 文本 ingest DTO
+语义：
+- 基于 `tokio::sync::watch`
+- `latest()` 在订阅建立后立刻可用
+- `recv()` 等待下一次状态变更
+- 是最新值覆盖模型，不提供历史 replay
+- engine start / stop / restart、settings patch、clipboard commit、transfer 状态推进、shutdown 前最终状态，都会经过这条流
+
+### 4.2 `EventSubscription`
 
 ```rust
-pub struct IngestTextRequest {
-    pub event_id: EventId,
-    pub content: String,
-    pub origin_noob_id: NoobId,
-    pub origin_device_id: String,
-    pub source: TextSource,
-}
-
-pub enum TextSource {
-    LocalWatch,
-    LocalManual,
-    RemoteSync,
-}
-
-pub struct RebroadcastEventRequest {
-    pub event_id: EventId,
-    pub targets: Targets,
+pub struct EventSubscription {
+    pub async fn recv(&mut self) -> Result<AppEvent, EventRecvError>;
 }
 ```
 
-## 4.3 历史 DTO
+语义：
+- 基于 `tokio::sync::broadcast`
+- 不提供 replay
+- 用于 toast、提示、瞬时反馈
+- desktop 丢事件后，应回到 `AppState` 自愈
+
+---
+
+## 5. 权威状态模型
 
 ```rust
-pub struct HistoryRecord {
-    pub event_id: EventId,
-    pub origin_noob_id: String,
-    pub origin_device_id: String,
-    pub created_at_ms: i64,
-    pub applied_at_ms: i64,
-    pub content: String,
-}
-
-pub struct HistoryCursor {
-    pub created_at_ms: i64,
-    pub event_id: EventId,
-}
-
-pub struct HistoryPage {
-    pub records: Vec<HistoryRecord>,
-    pub next_cursor: Option<HistoryCursor>,
-}
-
-pub struct ListHistoryRequest {
-    pub limit: usize,
-    pub cursor: Option<HistoryCursor>,
+pub struct AppState {
+    pub revision: u64,
+    pub identity: LocalIdentity,
+    pub sync: SyncState,
+    pub peers: PeersState,
+    pub clipboard: ClipboardState,
+    pub transfers: TransfersState,
+    pub settings: SettingsState,
 }
 ```
 
-## 4.4 快照与配置补丁 DTO
+### 5.1 `revision`
+
+- 每次状态真正发生变化时单调递增
+- 如果一次命令没有改变状态内容，不会强行推进 revision
+
+### 5.2 `identity`
 
 ```rust
-pub enum NetworkPatch {
-    SetMdnsEnabled(bool),
-    SetNetworkEnabled(bool),
-    AddManualPeer(std::net::SocketAddr),
-    RemoveManualPeer(std::net::SocketAddr),
+pub struct LocalIdentity {
+    pub noob_id: NoobId,
+    pub device_id: String,
+}
+```
+
+- `noob_id` 来自配置中的 `identity.noob_id_file`
+- `device_id` 来自配置中的 `identity.device_id`
+
+### 5.3 `sync`
+
+```rust
+pub struct SyncState {
+    pub desired: SyncDesiredState,
+    pub actual: SyncActualStatus,
 }
 
-pub struct StoragePatch {
-    pub db_root: Option<std::path::PathBuf>,
-    pub retain_old_versions: Option<usize>,
-    pub history_window_days: Option<u32>,
-    pub dedup_window_days: Option<u32>,
-    pub gc_every_inserts: Option<u32>,
-    pub gc_batch_size: Option<u32>,
+pub enum SyncDesiredState {
+    Running,
+    Stopped,
 }
 
-pub enum AppPatch {
-    Network(NetworkPatch),
-    Storage(StoragePatch),
-}
-
-pub enum AppSyncStatus {
+pub enum SyncActualStatus {
     Disabled,
     Starting,
     Running,
     Stopped,
     Error(String),
 }
+```
 
-pub struct AppServiceSnapshot {
-    pub local_noob_id: NoobId,
-    pub desired_state: SyncDesiredState,
-    pub actual_sync_status: AppSyncStatus,
-    pub connected_peers: Vec<ConnectedPeer>,
+说明：
+- `desired` 是 app 想要的目标状态
+- `actual` 是 runtime 当前真实状态
+- 当 `network_enabled=false` 且 `desired=Running` 时，`actual` 会进入 `Disabled`
+
+### 5.4 `peers`
+
+```rust
+pub struct PeersState {
+    pub connected: Vec<ConnectedPeer>,
+}
+
+pub struct ConnectedPeer {
+    pub noob_id: NoobId,
+    pub addresses: Vec<std::net::SocketAddr>,
+    pub transport: PeerTransport,
+    pub latency_ms: Option<u32>,
+}
+
+pub enum PeerTransport {
+    Mdns,
+    Manual,
+    Mixed,
+    Unknown,
+}
+```
+
+说明：
+- 这里只包含当前已连接 peers
+- 不包含 discovered/offline peers
+- `transport` 是基于当前配置对连接来源的解释，不是独立发现目录
+
+### 5.5 `clipboard`
+
+```rust
+pub struct ClipboardState {
+    pub latest_committed_event_id: Option<EventId>,
+}
+```
+
+说明：
+- 只暴露最近一次成功提交到存储的 clipboard record
+- 不暴露 raw local clipboard 文本
+- 不暴露未提交中间态
+
+### 5.6 `transfers`
+
+```rust
+pub struct TransfersState {
+    pub incoming_pending: Vec<IncomingTransfer>,
+    pub active: Vec<Transfer>,
+    pub recent_completed: Vec<CompletedTransfer>,
+}
+```
+
+说明：
+- `incoming_pending`：等待 accept/reject 的入站传输
+- `active`：当前进行中的上传/下载
+- `recent_completed`：最近完成的终态记录
+- 当前实现的 completed 缓冲上限为 64 条
+- transfer 状态目前不跨重启持久化
+
+### 5.7 `settings`
+
+```rust
+pub struct SettingsState {
+    pub network: NetworkSettings,
+    pub storage: StorageSettings,
+    pub clipboard: ClipboardSettings,
+    pub transfers: TransferSettings,
+}
+```
+
+这些值都是当前生效值，不是 desktop draft。
+
+---
+
+## 6. 标识类型
+
+```rust
+pub struct EventId(Uuid);
+pub struct NoobId(String);
+pub struct TransferId {
+    peer_noob_id: NoobId,
+    raw_id: u32,
+}
+```
+
+说明：
+- `EventId::new()` 当前使用 UUID v7
+- `TransferId` 是 `(peer_noob_id, raw_id)` 的组合标识
+- `TransferId::to_string()` 的格式是 `{peer_noob_id}:{raw_id}`
+
+---
+
+## 7. 事件模型
+
+```rust
+pub enum AppEvent {
+    ClipboardCommitted {
+        event_id: EventId,
+        source: ClipboardRecordSource,
+    },
+    IncomingTransferOffered {
+        transfer_id: TransferId,
+    },
+    TransferUpdated {
+        transfer_id: TransferId,
+    },
+    TransferCompleted {
+        transfer_id: TransferId,
+        outcome: TransferOutcome,
+    },
+    PeerConnectionError {
+        peer_noob_id: Option<NoobId>,
+        addr: Option<std::net::SocketAddr>,
+        error: String,
+    },
+}
+```
+
+语义：
+- `ClipboardCommitted`：record 已成功入库，并且 `AppState.clipboard.latest_committed_event_id` 已经更新
+- `IncomingTransferOffered`：新的 pending 入站传输出现
+- `TransferUpdated`：active transfer 的状态或进度推进
+- `TransferCompleted`：transfer 已进入终态，并且已经体现在 `AppState.transfers.recent_completed`
+- `PeerConnectionError`：连接错误边沿事件；真实 connected peers 仍以 `AppState.peers.connected` 为准
+
+---
+
+## 8. Clipboard contract
+
+### 8.1 类型
+
+```rust
+pub struct SubmitTextRequest {
+    pub content: String,
+}
+
+pub enum ClipboardRecordSource {
+    LocalCapture,
+    RemoteSync,
+    UserSubmit,
+}
+
+pub struct ClipboardRecord {
+    pub event_id: EventId,
+    pub source: ClipboardRecordSource,
+    pub origin_noob_id: NoobId,
+    pub origin_device_id: String,
+    pub created_at_ms: i64,
+    pub applied_at_ms: i64,
+    pub content: String,
+}
+
+pub struct ListClipboardHistoryRequest {
+    pub limit: usize,
+    pub cursor: Option<ClipboardHistoryCursor>,
+}
+
+pub struct ClipboardHistoryPage {
+    pub records: Vec<ClipboardRecord>,
+    pub next_cursor: Option<ClipboardHistoryCursor>,
+}
+
+pub enum ClipboardBroadcastTargets {
+    AllConnected,
+    Nodes(Vec<NoobId>),
+}
+
+pub struct RebroadcastClipboardRequest {
+    pub event_id: EventId,
+    pub targets: ClipboardBroadcastTargets,
+}
+```
+
+### 8.2 `submit_text()`
+
+- 创建新的 `EventId`
+- 以 `ClipboardRecordSource::UserSubmit` 提交到存储
+- 成功提交后更新 `AppState.clipboard.latest_committed_event_id`
+- 然后发出 `AppEvent::ClipboardCommitted`
+
+失败语义：
+- 文本超过 `settings.storage.max_text_bytes` 时返回 `AppError::TextTooLarge`
+
+### 8.3 `get_clipboard_record()` / `list_clipboard_history()`
+
+- 都只读取已提交 record
+- 历史分页当前按 `created_at_ms DESC, event_id DESC` 返回，最新优先
+- history 数据是持久化的，重启后仍可读取
+
+### 8.4 `adopt_clipboard_record()`
+
+- 从存储读取 record
+- 将内容写回本机系统剪贴板
+- 不会新建 record
+- 不会触发新的 committed 事件
+
+### 8.5 `rebroadcast_clipboard_record()`
+
+- 只能广播已提交 record
+- `AllConnected` 以当前 `AppState.peers.connected` 为准
+- `Nodes(Vec<NoobId>)` 要求每个目标当前都已连接
+- sender 本地不会因为 rebroadcast 新建 record
+- receiver 收到后会以 `ClipboardRecordSource::RemoteSync` 入库
+
+常见错误：
+- `AppError::EventNotFound`
+- `AppError::PeerNotConnected`
+- `AppError::SyncDisabled`
+- `AppError::EngineNotRunning`
+
+### 8.6 本地 clipboard 捕获
+
+本地 clipboard watch 是内部实现，不是 public API。
+
+desktop 只能通过：
+- `SettingsPatch::Clipboard(SetLocalCaptureEnabled(...))`
+- `AppEvent::ClipboardCommitted`
+- `AppState.clipboard.latest_committed_event_id`
+- `get_clipboard_record()` / `list_clipboard_history()`
+
+来观察结果。
+
+---
+
+## 9. Transfer contract
+
+### 9.1 类型
+
+```rust
+pub struct SendFileItem {
+    pub path: std::path::PathBuf,
+}
+
+pub struct SendFilesRequest {
+    pub targets: Vec<NoobId>,
+    pub files: Vec<SendFileItem>,
+}
+
+pub enum IncomingTransferDisposition {
+    Accept,
+    Reject,
+}
+
+pub struct IncomingTransferDecision {
+    pub transfer_id: TransferId,
+    pub decision: IncomingTransferDisposition,
+}
+
+pub enum TransferDirection {
+    Upload,
+    Download,
+}
+
+pub enum TransferState {
+    Queued,
+    Starting,
+    InProgress,
+    Cancelling,
+}
+
+pub enum TransferOutcome {
+    Succeeded,
+    Rejected,
+    Cancelled,
+    Failed,
+}
+```
+
+### 9.2 `send_files()`
+
+- 只接受当前 connected peers 作为目标
+- 会去重重复目标
+- 成功返回时，返回值中的 `TransferId` 已经与 `AppState.transfers.active` 中的 active transfer 一一对应
+- 返回的 `TransferId` 是 authoritative transfer id
+
+常见错误：
+- `AppError::PeerNotConnected`
+- `AppError::SyncDisabled`
+- `AppError::EngineNotRunning`
+- `AppError::Io`
+
+### 9.3 `decide_incoming_transfer()`
+
+- 只能作用于 `incoming_pending` 中的 transfer
+- `Accept` 后该 transfer 会离开 pending，并进入 active 或后续 completed
+- `Reject` 后该 transfer 会离开 pending，并进入 completed，`outcome=Rejected`
+
+常见错误：
+- `AppError::TransferNotFound`
+- `AppError::SyncDisabled`
+- `AppError::EngineNotRunning`
+
+### 9.4 `cancel_transfer()`
+
+- 只对当前可取消的 active transfer 有效
+- 成功后 transfer 会离开 active，并进入 completed，`outcome=Cancelled`
+- 已完成 transfer 和 pending incoming transfer 不能通过该接口取消
+
+常见错误：
+- `AppError::TransferNotFound`
+- `AppError::TransferNotCancelable`
+- `AppError::EngineNotRunning`
+
+### 9.5 `CompletedTransfer`
+
+```rust
+pub struct CompletedTransfer {
+    pub transfer_id: TransferId,
+    pub direction: TransferDirection,
+    pub peer_noob_id: NoobId,
+    pub file_name: String,
+    pub file_size: u64,
+    pub outcome: TransferOutcome,
+    pub started_at_ms: Option<i64>,
+    pub finished_at_ms: i64,
+    pub saved_path: Option<std::path::PathBuf>,
+    pub message: Option<String>,
+}
+```
+
+说明：
+- 下载成功时，`saved_path` 通常有值
+- 上传成功时，`saved_path` 通常为 `None`
+- 失败、拒绝、取消时，`message` 可能携带原因
+
+---
+
+## 10. Settings contract
+
+### 10.1 当前 settings 读模型
+
+```rust
+pub struct NetworkSettings {
     pub network_enabled: bool,
     pub mdns_enabled: bool,
     pub manual_peers: Vec<std::net::SocketAddr>,
-    pub storage: StorageConfigView,
+}
+
+pub struct StorageSettings {
+    pub db_root: std::path::PathBuf,
+    pub history_window_days: u32,
+    pub dedup_window_days: u32,
+    pub max_text_bytes: usize,
+    pub gc_batch_size: usize,
+}
+
+pub struct ClipboardSettings {
+    pub local_capture_enabled: bool,
+}
+
+pub struct TransferSettings {
+    pub download_dir: std::path::PathBuf,
 }
 ```
 
-## 4.5 事件订阅 DTO
+### 10.2 当前 settings patch
 
 ```rust
-pub enum SyncEvent {
-    TextReceived { event_id: EventId, content: String, noob_id: NoobId, device_id: String },
-    FileDecisionRequired { peer_noob_id: NoobId, transfer_id: u32, file_name: String, file_size: u64, total_chunks: u32 },
-    ConnectionError { peer_noob_id: Option<NoobId>, addr: Option<std::net::SocketAddr>, error: String },
+pub enum SettingsPatch {
+    Network(NetworkSettingsPatch),
+    Storage(StorageSettingsPatch),
+    Clipboard(ClipboardSettingsPatch),
+    Transfers(TransferSettingsPatch),
 }
 
-pub enum AppEvent {
-    Sync(SyncEvent),
-    Transfer(TransferUpdate),
-    TextIngested {
-        event_id: EventId,
-        origin_noob_id: NoobId,
-        origin_device_id: String,
-        source: TextSource,
-        created_at_ms: i64,
-    },
+pub enum NetworkSettingsPatch {
+    SetNetworkEnabled(bool),
+    SetMdnsEnabled(bool),
+    SetManualPeers(Vec<std::net::SocketAddr>),
 }
 
-pub enum EventSubscriptionItem {
-    Lifecycle(SubscriptionLifecycle),
-    Event { session_id: u64, event: AppEvent },
-}
-```
-
-`EventSubscription` 特性：
-- 第一次 `recv()/try_recv()` 会先返回 `Lifecycle::Opened { session_id }`。
-
-## 4.6 文件传输 DTO
-
-```rust
-pub struct SendFileRequest {
-    pub path: std::path::PathBuf,
-    pub targets: Targets,
+pub struct StorageSettingsPatch {
+    pub db_root: Option<std::path::PathBuf>,
+    pub history_window_days: Option<u32>,
+    pub dedup_window_days: Option<u32>,
+    pub max_text_bytes: Option<usize>,
+    pub gc_batch_size: Option<usize>,
 }
 
-pub struct FileDecisionRequest {
-    pub peer_noob_id: NoobId,
-    pub transfer_id: u32,
-    pub accept: bool,
-    pub reason: Option<String>,
+pub enum ClipboardSettingsPatch {
+    SetLocalCaptureEnabled(bool),
 }
 
-pub struct TransferUpdate {
-    pub transfer_id: u32,
-    pub peer_noob_id: NoobId,
-    pub direction: TransferDirection,
-    pub state: TransferState,
+pub enum TransferSettingsPatch {
+    SetDownloadDir(std::path::PathBuf),
 }
 ```
+
+### 10.3 `patch_settings()` 的行为
+
+- patch 先应用到配置对象
+- 然后做 config validation
+- 校验通过后，会原子写回配置文件
+- 接着按需要重配 storage runtime、clipboard watch、sync runtime
+- 如果运行期应用失败，会尝试回滚；回滚也失败时返回 `AppError::ConfigRollbackFailed`
+
+持久化语义：
+- settings 是真实后端 setting
+- 配置改动会跨重启保留
+
+路径语义：
+- `db_root` 和 `download_dir` 如果传相对路径，会按配置文件所在目录解析成绝对路径
+
+运行时语义：
+- `SetLocalCaptureEnabled` 会立刻启动或停止本地 clipboard watch
+- `StorageSettingsPatch` 会立刻重配 storage runtime；如果 `db_root` 改了，history 读取会切到新数据库
+- `NetworkSettingsPatch` 和 `SetDownloadDir` 在 `sync.desired=Running` 时会触发 engine reconcile/restart
+
+### 10.4 当前主要校验约束
+
+当前 `patch_settings()` 会继承配置校验规则，常见约束包括：
+- `max_text_bytes > 0`
+- `history_window_days >= 1`
+- `dedup_window_days >= history_window_days`
+- `gc_batch_size >= 1`
+- `manual_peers` 不允许重复地址
+- sync 派生配置必须通过 `nooboard-sync` 自身校验
 
 ---
 
-## 5. 配置 API（AppConfig）
+## 11. 错误模型
 
-调用方可直接操作 `AppConfig`：
+当前公开错误类型：
 
 ```rust
-impl AppConfig {
-    pub fn load(path: impl AsRef<Path>) -> AppResult<Self>;
-    pub fn save_atomically(&self, path: impl AsRef<Path>) -> AppResult<()>;
-    pub fn regenerate_noob_id(config_path: impl AsRef<Path>) -> AppResult<String>;
-    pub fn validate(&self) -> AppResult<()>;
-
-    pub fn to_storage_config(&self) -> nooboard_storage::AppConfig;
-    pub fn to_sync_config(&self) -> AppResult<nooboard_sync::SyncConfig>;
-
-    pub fn recent_event_lookup_limit(&self) -> usize;
-    pub fn noob_id(&self) -> Option<&str>;
+pub enum AppError {
+    Io(std::io::Error),
+    Storage(nooboard_storage::StorageError),
+    Sync(nooboard_sync::SyncError),
+    Platform(nooboard_platform::NooboardError),
+    ConfigParse { .. },
+    ConfigSerialize(..),
+    InvalidConfig(String),
+    EngineNotRunning,
+    EngineAlreadyRunning,
+    SyncDisabled,
+    ChannelClosed(String),
+    EventNotFound { event_id: String },
+    InvalidEventId { event_id: String },
+    TextTooLarge { actual_bytes: usize, max_bytes: usize },
+    PeerNotConnected { peer_noob_id: String },
+    TransferNotFound { transfer_id: String },
+    TransferNotCancelable { transfer_id: String },
+    ManualPeerExists { peer: String },
+    ManualPeerNotFound { peer: String },
+    ConfigRollbackFailed { restart_error: String, rollback_error: String },
 }
 ```
 
-配置结构主干（调用方常用字段）：
+desktop 集成中最常见的是：
+- `InvalidConfig`
+- `SyncDisabled`
+- `EngineNotRunning`
+- `EventNotFound`
+- `TextTooLarge`
+- `PeerNotConnected`
+- `TransferNotFound`
+- `TransferNotCancelable`
 
-```rust
-pub struct AppConfig {
-    pub meta: MetaConfig,             // 配置版本/profile
-    pub identity: IdentityConfig,     // noob_id_file/device_id
-    pub app: AppSection,              // 应用级参数（clipboard 等）
-    pub storage: StorageSection,      // 存储参数
-    pub sync: SyncSection,            // 网络/认证/文件/传输参数
-}
-
-pub struct IdentityConfig {
-    pub noob_id_file: PathBuf,
-    pub device_id: String,
-}
-
-pub struct AppSection {
-    pub clipboard: ClipboardAppConfig,
-}
-
-pub struct ClipboardAppConfig {
-    pub recent_event_lookup_limit: usize,
-}
-
-pub struct StorageSection {
-    pub db_root: PathBuf,
-    pub retain_old_versions: usize,
-    pub lifecycle: StorageLifecycleConfig,
-}
-
-pub struct SyncSection {
-    pub network: SyncNetworkConfig,
-    pub auth: SyncAuthConfig,
-    pub file: SyncFileConfig,
-    pub transport: SyncTransportConfig,
-}
-```
-
-行为要点：
-- `load` 会把相对路径解析为相对配置文件目录的绝对路径。
-- `load` 会自动读取/初始化 `identity.noob_id_file`，并加载 `noob_id`。
-- `save_atomically` 采用临时文件 + rename 原子替换。
-- `APP_CONFIG_VERSION = 2`，默认 `DEFAULT_RECENT_EVENT_LOOKUP_LIMIT = 50`。
+说明：
+- `ManualPeerExists` / `ManualPeerNotFound` 当前未作为 `patch_settings()` 的主路径错误使用，因为当前 network patch 是整表替换 `SetManualPeers`
 
 ---
 
-## 6. 典型用例
+## 12. 当前推荐的 desktop 接线方式
 
-### 6.1 初始化并启动同步
+推荐的接入顺序：
+
 ```rust
-let service = AppServiceImpl::new("/path/to/app.toml")?;
-service.set_sync_desired_state(SyncDesiredState::Running).await?;
+let service = DesktopAppServiceImpl::new(config_path)?;
+
+let mut state_sub = service.subscribe_state().await?;
+let mut event_sub = service.subscribe_events().await?;
+
+let initial = state_sub.latest().clone();
 ```
 
-### 6.2 手动 ingest 一条本地文本
-```rust
-let snapshot = service.snapshot().await?;
-let req = IngestTextRequest {
-    event_id: EventId::new(),
-    content: "hello".to_string(),
-    origin_noob_id: snapshot.local_noob_id,
-    origin_device_id: "desktop-a".to_string(),
-    source: TextSource::LocalManual,
-};
-service.ingest_text_event(req).await?;
-```
+推荐原则：
+- 页面主体直接渲染 `AppState`
+- toast、一次性提示、瞬时反馈走 `AppEvent`
+- clipboard 页面主体读 `list_clipboard_history()` 和 `AppState.clipboard.latest_committed_event_id`
+- transfer 页面主体直接读 `AppState.transfers`
+- peers 页面主体直接读 `AppState.peers.connected`
+- settings 页面直接读 `AppState.settings`，apply 时调用 `patch_settings()`
 
-### 6.3 开启本地剪贴板 watch
-```rust
-service.set_local_watch_enabled(true).await?;
-let mut local_rx = service.subscribe_local_clipboard().await?;
-let observed = local_rx.recv().await?;
-```
-
-### 6.4 根据 event_id 写回剪贴板
-```rust
-service.write_event_to_clipboard(event_id).await?;
-```
-
-### 6.5 根据 event_id 重广播
-```rust
-service.rebroadcast_event(RebroadcastEventRequest {
-    event_id,
-    targets: Targets::all(),
-}).await?;
-```
-
-### 6.6 分页拉取历史
-```rust
-let page1 = service.list_history(ListHistoryRequest { limit: 50, cursor: None }).await?;
-let page2 = service.list_history(ListHistoryRequest {
-    limit: 50,
-    cursor: page1.next_cursor,
-}).await?;
-```
-
-### 6.7 文件发送与决策
-```rust
-service.send_file(SendFileRequest {
-    path: "/tmp/demo.bin".into(),
-    targets: Targets::all(),
-}).await?;
-
-service.respond_file_decision(FileDecisionRequest {
-    peer_noob_id: NoobId::new("peer-1"),
-    transfer_id: 1,
-    accept: true,
-    reason: None,
-}).await?;
-```
+desktop 不应自行假设：
+- 会拿到 raw local clipboard stream
+- 会拿到 discovered/offline peers
+- 会拿到跨重启持久化的 transfer 历史
+- 事件流可以替代状态流
 
 ---
 
-## 7. 内部 actors / workers
+## 13. 当前公开接入面的边界
 
-`nooboard-app` 内部主要并发单元如下：
+当前 `nooboard-app` 已明确提供：
+- app-lifetime `subscribe_state()`
+- app-lifetime `subscribe_events()`
+- commit-only clipboard contract
+- connected-peers only peer contract
+- authoritative transfer id 与正式 cancel 能力
+- 真实后端 settings：`local_capture_enabled`、`download_dir`、`db_root`、`max_text_bytes` 等
 
-1. Control Actor（Tokio 任务）
-- 入口：`spawn_control_actor`
-- 通道：`mpsc<ControlCommand>`（容量 256）
-- 作用：串行处理所有 AppService 请求；协调 storage/sync/clipboard。
-
-2. Local Watch Bridge Task（Tokio 任务）
-- 由 `set_local_watch_enabled(true)` 创建。
-- 消费 `LocalClipboardSubscription`，转发为 `InternalLocalClipboardObserved`。
-
-3. Sync Ingest Bridge Task（Tokio 任务）
-- 在 sync engine 可用时创建。
-- 消费 sync runtime 的 `SyncEvent`，转发为 `InternalSyncEvent`。
-
-4. Clipboard Watch Worker（平台线程）
-- 由 `ClipboardRuntime::start_watch` 调用后端 `watch_changes` 创建。
-- 负责监听系统剪贴板变化。
-
-5. Clipboard Forward Task（Tokio 任务）
-- 把平台剪贴板事件转为 `LocalClipboardObserved` 广播。
-- 包含 suppression 过滤（text fingerprint + event_id + TTL，当前 TTL=3s）。
-
-6. Storage Actor（独立线程）
-- 入口：`storage_runtime::actor::run_actor`
-- 通道：`std::sync::mpsc<StorageCommand>`
-- 作用：串行执行 `append_text/list_history/get_event_by_id/reconfigure`。
-
-7. Sync Runtime Bridges（Tokio 任务）
-- `spawn_event_bridge`：sync 引擎事件 `mpsc` -> `broadcast`
-- `spawn_transfer_bridge`：transfer `broadcast` -> app 内 `broadcast`
-
-8. SubscriptionHub Session Bridge（Tokio 任务）
-- 在 `subscriptions.activate()` 时创建会话。
-- 汇聚 sync/transfer/status，并产生 lifecycle 事件（Opened/Rebinding/Lagged/Fatal/Closed）。
-
----
-
-## 8. 关键调用链
-
-### 8.1 文本统一入口（手动/本地/远端）
-1. 外部或内部构造 `IngestTextRequest`
-2. `AppService::ingest_text_event`
-3. control actor -> `clipboard_history::ingest_text_event`
-4. `StorageRuntime::append_text`
-5. 入库成功时发布 `AppEvent::TextIngested`
-
-### 8.2 本地剪贴板 watch 链
-1. `set_local_watch_enabled(true)`
-2. `ClipboardRuntime::start_watch` 启动平台监听
-3. 平台事件 -> forward task -> suppression 过滤
-4. 广播 `LocalClipboardObserved`
-5. local watch bridge 收到后 -> `InternalLocalClipboardObserved`
-6. control actor 转换为 `IngestTextRequest { source: LocalWatch }`
-7. 调用 `ingest_text_event` 入库
-
-### 8.3 远端文本链
-1. sync runtime 产生 `SyncEvent::TextReceived`
-2. sync ingest bridge -> `InternalSyncEvent`
-3. control actor 解析 `event_id/noob_id/device_id`
-4. 构建 `IngestTextRequest { source: RemoteSync }`
-5. 调用 `ingest_text_event` 入库
-
-### 8.4 event_id 写回剪贴板链
-1. `write_event_to_clipboard(event_id)`
-2. control actor -> `load_record_by_event_id`
-3. `StorageRuntime::get_event_by_id`
-4. `ClipboardRuntime::write_text_with_event`
-5. 先登记 suppression，再执行后端系统写入
-
-### 8.5 event_id 重广播链
-1. `rebroadcast_event(event_id, targets)`
-2. control actor -> `load_record_by_event_id`
-3. `StorageRuntime::get_event_by_id`
-4. 构造 `SendTextRequest { event_id, content, targets }`
-5. `sync_runtime.text_sender().try_send(...)`
-
-### 8.6 事件订阅链
-1. `subscribe_events()` 返回 `EventSubscription`
-2. 首次 `recv/try_recv` 返回 `Lifecycle::Opened`
-3. 后续接收：
-- sync 映射事件 `AppEvent::Sync(...)`
-- transfer 映射事件 `AppEvent::Transfer(...)`
-- app 内发布事件 `AppEvent::TextIngested(...)`
-- lifecycle（Lagged/Rebinding/Fatal/Closed）
-
-### 8.7 配置补丁链
-1. `apply_config_patch(AppPatch)`
-2. 更新内存配置并校验
-3. 原子落盘配置文件
-4. 重配 storage runtime
-5. 必要时重启/重载 sync runtime
-6. 任一步失败时触发回滚（storage + config + sync）
-
----
-
-## 9. 错误语义（调用方常见）
-
-- `AppError::EngineNotRunning`：需要运行中的 sync 引擎但当前未运行。
-- `AppError::SyncDisabled`：网络开关已关闭，发送/决策/重广播等被拒绝。
-- `AppError::EventNotFound`：按 `event_id` 未查询到历史文本记录。
-- `AppError::InvalidEventId`：事件 ID 字符串不是合法 UUID。
-- `AppError::ChannelClosed`：内部 actor/runtime 通道关闭或阻塞异常。
-- `AppError::ConfigRollbackFailed`：配置更新失败且回滚失败。
+当前 desktop 应以这些公开 contract 为唯一依据接入。
