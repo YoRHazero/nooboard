@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -12,10 +11,9 @@ use crate::service::events::EventHub;
 use crate::service::mappers::map_connected_peer;
 use crate::service::state::StateHub;
 use crate::service::types::{
-    AppEvent, AppState, ClipboardRecordSource, ClipboardSettings, ClipboardState, ConnectedPeer,
-    EventId, LocalIdentity, NetworkSettings, NoobId, PeerTransport, PeersState, SettingsState,
-    StorageSettings, SyncActualStatus, SyncDesiredState, SyncState, TransferId, TransferSettings,
-    TransfersState,
+    AppEvent, AppState, ClipboardSettings, ClipboardState, ConnectedPeer, EventId, LocalIdentity,
+    NetworkSettings, NoobId, PeerTransport, PeersState, SettingsState, StorageSettings,
+    SyncActualStatus, SyncDesiredState, SyncState, TransferSettings, TransfersState,
 };
 use crate::storage_runtime::StorageRuntime;
 use crate::sync_runtime::SyncRuntime;
@@ -31,8 +29,6 @@ pub(crate) struct ControlState {
     pub(super) state_hub: StateHub,
     pub(super) event_hub: EventHub,
     pub(super) app_state: AppState,
-    pub(super) outgoing_transfer_ids: HashMap<NoobId, u32>,
-    pub(super) clipboard_sources: HashMap<EventId, ClipboardRecordSource>,
 }
 
 impl ControlState {
@@ -68,10 +64,6 @@ impl ControlState {
         };
         let state_hub = state_hub.unwrap_or_else(|| StateHub::new(app_state.clone()));
         let event_hub = event_hub.unwrap_or_else(EventHub::new);
-        let outgoing_transfer_ids = peers
-            .iter()
-            .map(|peer| (peer.noob_id.clone(), 1_u32))
-            .collect();
 
         Ok(Self {
             config_path,
@@ -82,8 +74,6 @@ impl ControlState {
             state_hub,
             event_hub,
             app_state,
-            outgoing_transfer_ids,
-            clipboard_sources: HashMap::new(),
         })
     }
 
@@ -126,28 +116,9 @@ impl ControlState {
     }
 
     pub(super) fn refresh_connected_peers(&mut self, peers: Vec<ConnectedPeer>) {
-        let peer_ids: HashSet<NoobId> = peers.iter().map(|peer| peer.noob_id.clone()).collect();
-        self.outgoing_transfer_ids
-            .retain(|peer_noob_id, _| peer_ids.contains(peer_noob_id));
-        for peer_id in &peer_ids {
-            self.outgoing_transfer_ids
-                .entry(peer_id.clone())
-                .or_insert(1);
-        }
-
         self.update_state(|state| {
             state.peers.connected = peers;
         });
-    }
-
-    pub(super) fn allocate_outgoing_transfer_id(&mut self, peer_noob_id: &NoobId) -> TransferId {
-        let raw_id = self
-            .outgoing_transfer_ids
-            .entry(peer_noob_id.clone())
-            .or_insert(1);
-        let transfer_id = TransferId::new(peer_noob_id.clone(), *raw_id);
-        *raw_id = raw_id.wrapping_add(1);
-        transfer_id
     }
 
     pub(super) fn recent_completed_limit(&self) -> usize {

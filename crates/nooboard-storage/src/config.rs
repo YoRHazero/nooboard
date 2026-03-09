@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::StorageError;
 
-pub const STORAGE_SCHEMA_VERSION: &str = "v0.1.0";
+pub const STORAGE_SCHEMA_VERSION: &str = "v0.2.0";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {

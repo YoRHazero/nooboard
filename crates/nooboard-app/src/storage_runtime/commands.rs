@@ -16,6 +16,7 @@ pub(super) enum StorageCommand {
         origin_device_id: Option<String>,
         created_at_ms: i64,
         applied_at_ms: i64,
+        source: nooboard_storage::HistoryRecordSource,
         reply: oneshot::Sender<AppResult<bool>>,
     },
     ListHistory {

@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use tokio::sync::{broadcast, mpsc, watch};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,6 +45,9 @@ pub enum TransferState {
     },
     Failed {
         reason: String,
+    },
+    Rejected {
+        reason: Option<String>,
     },
     Cancelled {
         reason: Option<String>,
@@ -108,14 +111,38 @@ pub struct SendFileRequest {
     pub targets: Option<Vec<String>>,
 }
 
+#[derive(Debug)]
+pub struct SendFileCommand {
+    pub request: SendFileRequest,
+    pub reply: oneshot::Sender<Result<Vec<ScheduledTransfer>, crate::SyncError>>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScheduledTransfer {
+    pub peer_noob_id: String,
+    pub transfer_id: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CancelTransferRequest {
+    pub peer_noob_id: String,
+    pub transfer_id: u32,
+}
+
+#[derive(Debug)]
 pub enum SyncControlCommand {
-    DisconnectPeer { peer_noob_id: String },
+    DisconnectPeer {
+        peer_noob_id: String,
+    },
+    CancelTransfer {
+        request: CancelTransferRequest,
+        reply: oneshot::Sender<Result<(), crate::SyncError>>,
+    },
 }
 
 pub struct SyncEngineHandle {
     pub text_tx: mpsc::Sender<SendTextRequest>,
-    pub file_tx: mpsc::Sender<SendFileRequest>,
+    pub file_tx: mpsc::Sender<SendFileCommand>,
     pub decision_tx: mpsc::Sender<FileDecisionInput>,
     pub control_tx: mpsc::Sender<SyncControlCommand>,
     pub event_rx: mpsc::Receiver<SyncEvent>,
@@ -124,4 +151,40 @@ pub struct SyncEngineHandle {
     pub status_rx: watch::Receiver<SyncStatus>,
     pub shutdown_tx: broadcast::Sender<()>,
     pub engine_task: Option<JoinHandle<()>>,
+}
+
+impl SyncEngineHandle {
+    pub async fn send_file(
+        &self,
+        request: SendFileRequest,
+    ) -> Result<Vec<ScheduledTransfer>, crate::SyncError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.file_tx
+            .send(SendFileCommand {
+                request,
+                reply: reply_tx,
+            })
+            .await
+            .map_err(|_| crate::SyncError::ChannelClosed)?;
+        reply_rx
+            .await
+            .map_err(|_| crate::SyncError::ChannelClosed)?
+    }
+
+    pub async fn cancel_transfer(
+        &self,
+        request: CancelTransferRequest,
+    ) -> Result<(), crate::SyncError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.control_tx
+            .send(SyncControlCommand::CancelTransfer {
+                request,
+                reply: reply_tx,
+            })
+            .await
+            .map_err(|_| crate::SyncError::ChannelClosed)?;
+        reply_rx
+            .await
+            .map_err(|_| crate::SyncError::ChannelClosed)?
+    }
 }

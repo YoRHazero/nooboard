@@ -21,6 +21,12 @@ pub struct TransferStateUpdate {
     pub state: TransferState,
 }
 
+#[derive(Debug)]
+struct PendingFile {
+    transfer_id: u32,
+    path: PathBuf,
+}
+
 struct OutgoingTransfer {
     transfer_id: u32,
     total_chunks: u32,
@@ -38,9 +44,8 @@ struct OutgoingTransfer {
 }
 
 pub struct FileSender {
-    pending_files: VecDeque<PathBuf>,
+    pending_files: VecDeque<PendingFile>,
     upload: Option<OutgoingTransfer>,
-    transfer_id_seed: u32,
     outbox: VecDeque<Packet>,
     updates: VecDeque<TransferStateUpdate>,
 }
@@ -50,14 +55,45 @@ impl FileSender {
         Self {
             pending_files: VecDeque::new(),
             upload: None,
-            transfer_id_seed: 1,
             outbox: VecDeque::new(),
             updates: VecDeque::new(),
         }
     }
 
-    pub fn enqueue_file(&mut self, path: PathBuf) {
-        self.pending_files.push_back(path);
+    pub fn enqueue_file(&mut self, transfer_id: u32, path: PathBuf) {
+        self.pending_files
+            .push_back(PendingFile { transfer_id, path });
+    }
+
+    pub fn cancel_transfer(&mut self, transfer_id: u32, reason: Option<String>) -> bool {
+        if let Some(position) = self
+            .pending_files
+            .iter()
+            .position(|pending| pending.transfer_id == transfer_id)
+        {
+            let _ = self.pending_files.remove(position);
+            self.updates.push_back(TransferStateUpdate {
+                transfer_id,
+                state: TransferState::Cancelled { reason },
+            });
+            return true;
+        }
+
+        let Some(upload) = self.upload.as_ref() else {
+            return false;
+        };
+        if upload.transfer_id != transfer_id || upload.end_sent {
+            return false;
+        }
+
+        self.outbox
+            .push_back(Packet::Data(DataPacket::FileCancel { transfer_id }));
+        self.updates.push_back(TransferStateUpdate {
+            transfer_id,
+            state: TransferState::Cancelled { reason },
+        });
+        self.upload = None;
+        true
     }
 
     pub fn on_file_decision(&mut self, transfer_id: u32, accept: bool, reason: Option<String>) {
@@ -95,27 +131,24 @@ impl FileSender {
         allow_new_data: bool,
     ) -> SessionResult<()> {
         if self.upload.is_none() && allow_new_data {
-            if let Some(path) = self.pending_files.pop_front() {
+            if let Some(pending) = self.pending_files.pop_front() {
                 match self
-                    .start_upload(config, &path, self.transfer_id_seed, peer_noob_id)
+                    .start_upload(config, &pending.path, pending.transfer_id, peer_noob_id)
                     .await
                 {
-                    Ok(()) => {
-                        self.transfer_id_seed = self.transfer_id_seed.wrapping_add(1);
-                    }
+                    Ok(()) => {}
                     Err(error) => {
                         warn!(
                             peer = %peer_noob_id,
-                            path = %path.display(),
+                            path = %pending.path.display(),
                             "skip file upload: {error}"
                         );
                         self.updates.push_back(TransferStateUpdate {
-                            transfer_id: self.transfer_id_seed,
+                            transfer_id: pending.transfer_id,
                             state: TransferState::Failed {
                                 reason: error.to_string(),
                             },
                         });
-                        self.transfer_id_seed = self.transfer_id_seed.wrapping_add(1);
                     }
                 }
             }
@@ -220,7 +253,7 @@ impl FileSender {
                 }));
                 self.updates.push_back(TransferStateUpdate {
                     transfer_id: state.transfer_id,
-                    state: TransferState::Cancelled {
+                    state: TransferState::Rejected {
                         reason: state.decision_reason.take(),
                     },
                 });

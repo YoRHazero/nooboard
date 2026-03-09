@@ -5,6 +5,7 @@ INSERT OR IGNORE INTO events (
     created_at_ms,
     applied_at_ms,
     content,
+    source,
     state
 )
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8);

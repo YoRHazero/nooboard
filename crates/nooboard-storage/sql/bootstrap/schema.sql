@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS events (
     created_at_ms INTEGER NOT NULL,
     applied_at_ms INTEGER NOT NULL,
     content TEXT,
+    source TEXT NOT NULL CHECK (source IN ('local_capture', 'remote_sync', 'user_submit')),
     state TEXT NOT NULL CHECK (state IN ('active', 'tombstone'))
 );
 

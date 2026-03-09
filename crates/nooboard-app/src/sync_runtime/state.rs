@@ -2,7 +2,7 @@ use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
 
 use nooboard_sync::{
-    ConnectedPeerInfo, FileDecisionInput, SendFileRequest, SendTextRequest, SyncControlCommand,
+    ConnectedPeerInfo, FileDecisionInput, SendFileCommand, SendTextRequest, SyncControlCommand,
     SyncEvent, SyncStatus, TransferUpdate,
 };
 
@@ -34,7 +34,7 @@ impl RuntimeState {
 
 pub(super) struct RunningEngine {
     pub(super) text_tx: mpsc::Sender<SendTextRequest>,
-    pub(super) file_tx: mpsc::Sender<SendFileRequest>,
+    pub(super) file_tx: mpsc::Sender<SendFileCommand>,
     pub(super) decision_tx: mpsc::Sender<FileDecisionInput>,
     pub(super) control_tx: mpsc::Sender<SyncControlCommand>,
     pub(super) status_rx: watch::Receiver<SyncStatus>,

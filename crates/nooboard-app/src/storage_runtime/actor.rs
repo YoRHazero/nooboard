@@ -40,17 +40,19 @@ pub(super) fn run_actor(
                 origin_device_id,
                 created_at_ms,
                 applied_at_ms,
+                source,
                 reply,
             } => {
                 let result = state
                     .repository
-                    .append_text(
+                    .append_text_with_source(
                         &text,
                         event_id,
                         origin_noob_id.as_deref(),
                         origin_device_id.as_deref(),
                         created_at_ms,
                         applied_at_ms,
+                        source,
                     )
                     .map_err(Into::into);
                 let _ = reply.send(result);

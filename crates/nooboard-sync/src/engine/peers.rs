@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_rustls::TlsStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
@@ -13,7 +13,8 @@ use crate::session::actor::SessionCommand;
 use super::candidates::{CandidateRegistry, ConnectTarget};
 use super::policy::DedupeDecision;
 use super::types::{
-    ConnectedPeerInfo, FileDecisionInput, PeerConnectionState, SendFileRequest, SendTextRequest,
+    CancelTransferRequest, ConnectedPeerInfo, FileDecisionInput, PeerConnectionState,
+    ScheduledTransfer, SendFileRequest, SendTextRequest,
 };
 
 #[derive(Debug)]
@@ -59,6 +60,7 @@ pub(super) struct PeerRegistry {
     peers: HashMap<String, PeerHandle>,
     connecting_addrs: HashSet<SocketAddr>,
     candidates: CandidateRegistry,
+    next_transfer_id_by_peer: HashMap<String, u32>,
 }
 
 impl PeerRegistry {
@@ -124,41 +126,55 @@ impl PeerRegistry {
         }
     }
 
-    pub(super) fn send_file(&self, request: SendFileRequest) {
+    pub(super) fn send_file(
+        &mut self,
+        request: SendFileRequest,
+    ) -> Result<Vec<ScheduledTransfer>, ConnectionError> {
         let SendFileRequest { path, targets } = request;
-        let session_request = SendFileRequest {
-            path,
-            targets: None,
-        };
+        let target_ids = self.resolve_targets(targets)?;
+        let mut reservations = Vec::with_capacity(target_ids.len());
 
-        match targets {
-            None => {
-                for (peer_noob_id, peer) in &self.peers {
-                    let _ = try_send_session_command(
-                        &peer.command_tx,
-                        SessionCommand::SendFile(session_request.clone()),
-                        peer_noob_id,
-                        "send file",
-                    );
-                }
-            }
-            Some(targets) => {
-                let mut deduped = HashSet::new();
-                for target in targets {
-                    if !deduped.insert(target.clone()) {
-                        continue;
-                    }
-                    if let Some(peer) = self.peers.get(&target) {
-                        let _ = try_send_session_command(
-                            &peer.command_tx,
-                            SessionCommand::SendFile(session_request.clone()),
-                            &target,
-                            "send file",
-                        );
-                    }
-                }
-            }
+        for target in &target_ids {
+            let peer = self
+                .peers
+                .get(target)
+                .ok_or_else(|| ConnectionError::State(format!("peer {target} is not connected")))?;
+            let command_tx = peer.command_tx.clone();
+            let permit = command_tx
+                .try_reserve_owned()
+                .map_err(|error| match error {
+                    mpsc::error::TrySendError::Full(_) => ConnectionError::State(format!(
+                        "peer {target} session queue is full while send file"
+                    )),
+                    mpsc::error::TrySendError::Closed(_) => ConnectionError::State(format!(
+                        "peer {target} session queue is closed while send file"
+                    )),
+                })?;
+            let transfer_id = *self
+                .next_transfer_id_by_peer
+                .entry(target.clone())
+                .or_insert(1);
+            reservations.push((target.clone(), transfer_id, permit));
         }
+
+        let mut scheduled = Vec::with_capacity(reservations.len());
+        for (target, transfer_id, permit) in reservations {
+            permit.send(SessionCommand::SendFile {
+                transfer_id,
+                path: path.clone(),
+            });
+            let entry = self
+                .next_transfer_id_by_peer
+                .entry(target.clone())
+                .or_insert(1);
+            *entry = transfer_id.wrapping_add(1);
+            scheduled.push(ScheduledTransfer {
+                peer_noob_id: target,
+                transfer_id,
+            });
+        }
+
+        Ok(scheduled)
     }
 
     pub(super) fn forward_file_decision(
@@ -223,7 +239,35 @@ impl PeerRegistry {
     }
 
     pub(super) fn insert_peer(&mut self, peer_noob_id: String, handle: PeerHandle) {
+        self.next_transfer_id_by_peer
+            .entry(peer_noob_id.clone())
+            .or_insert(1);
         self.peers.insert(peer_noob_id, handle);
+    }
+
+    pub(super) async fn cancel_transfer(
+        &self,
+        request: CancelTransferRequest,
+    ) -> Result<(), ConnectionError> {
+        let peer = self.peers.get(&request.peer_noob_id).ok_or_else(|| {
+            ConnectionError::State(format!("peer {} is not connected", request.peer_noob_id))
+        })?;
+        let (reply_tx, reply_rx) = oneshot::channel();
+        try_send_session_command(
+            &peer.command_tx,
+            SessionCommand::CancelTransfer {
+                transfer_id: request.transfer_id,
+                reply: reply_tx,
+            },
+            &request.peer_noob_id,
+            "cancel transfer",
+        )?;
+        reply_rx.await.map_err(|_| {
+            ConnectionError::State(format!(
+                "peer {} session dropped cancel transfer reply",
+                request.peer_noob_id
+            ))
+        })?
     }
 
     pub(super) fn peer_outbound(&self, peer_noob_id: &str) -> Option<bool> {
@@ -273,6 +317,43 @@ impl PeerRegistry {
         peer: &DiscoveredPeer,
     ) -> DedupeDecision {
         self.candidates.apply_discovered_peer(local_noob_id, peer)
+    }
+
+    fn resolve_targets(
+        &self,
+        targets: Option<Vec<String>>,
+    ) -> Result<Vec<String>, ConnectionError> {
+        match targets {
+            None => {
+                if self.peers.is_empty() {
+                    return Err(ConnectionError::State(
+                        "no connected peers available for file transfer".to_string(),
+                    ));
+                }
+                Ok(self.peers.keys().cloned().collect())
+            }
+            Some(targets) => {
+                let mut deduped = HashSet::new();
+                let mut resolved = Vec::new();
+                for target in targets {
+                    if !deduped.insert(target.clone()) {
+                        continue;
+                    }
+                    if !self.peers.contains_key(&target) {
+                        return Err(ConnectionError::State(format!(
+                            "peer {target} is not connected"
+                        )));
+                    }
+                    resolved.push(target);
+                }
+                if resolved.is_empty() {
+                    return Err(ConnectionError::State(
+                        "no connected peers available for file transfer".to_string(),
+                    ));
+                }
+                Ok(resolved)
+            }
+        }
     }
 }
 
@@ -450,19 +531,28 @@ mod tests {
         let mut receiver_b = insert_peer_for_test(&mut registry, "node-b");
         let mut receiver_c = insert_peer_for_test(&mut registry, "node-c");
 
-        registry.send_file(SendFileRequest {
-            path: std::path::PathBuf::from("/tmp/demo.txt"),
-            targets: Some(vec!["node-b".to_string()]),
-        });
+        let scheduled = registry
+            .send_file(SendFileRequest {
+                path: std::path::PathBuf::from("/tmp/demo.txt"),
+                targets: Some(vec!["node-b".to_string()]),
+            })
+            .expect("send_file should succeed");
+        assert_eq!(
+            scheduled,
+            vec![ScheduledTransfer {
+                peer_noob_id: "node-b".to_string(),
+                transfer_id: 1,
+            }]
+        );
 
         let received = timeout(Duration::from_millis(100), receiver_b.recv())
             .await
             .expect("node-b should receive file command")
             .expect("session command should exist");
         match received {
-            SessionCommand::SendFile(request) => {
-                assert_eq!(request.path, std::path::PathBuf::from("/tmp/demo.txt"));
-                assert!(request.targets.is_none());
+            SessionCommand::SendFile { transfer_id, path } => {
+                assert_eq!(transfer_id, 1);
+                assert_eq!(path, std::path::PathBuf::from("/tmp/demo.txt"));
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -473,5 +563,34 @@ mod tests {
                 .is_err(),
             "node-c should not receive targeted file"
         );
+    }
+
+    #[tokio::test]
+    async fn cancel_transfer_routes_to_target_peer() {
+        let mut registry = PeerRegistry::new();
+        let mut receiver_b = insert_peer_for_test(&mut registry, "node-b");
+
+        let cancel_task = tokio::spawn(async move {
+            registry
+                .cancel_transfer(CancelTransferRequest {
+                    peer_noob_id: "node-b".to_string(),
+                    transfer_id: 7,
+                })
+                .await
+        });
+
+        let received = timeout(Duration::from_millis(100), receiver_b.recv())
+            .await
+            .expect("node-b should receive cancel command")
+            .expect("session command should exist");
+        match received {
+            SessionCommand::CancelTransfer { transfer_id, reply } => {
+                assert_eq!(transfer_id, 7);
+                reply.send(Ok(())).expect("session reply should send");
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        assert!(cancel_task.await.expect("task should join").is_ok());
     }
 }

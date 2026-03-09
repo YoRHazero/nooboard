@@ -13,6 +13,32 @@ impl EventState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HistoryRecordSource {
+    LocalCapture,
+    RemoteSync,
+    UserSubmit,
+}
+
+impl HistoryRecordSource {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LocalCapture => "local_capture",
+            Self::RemoteSync => "remote_sync",
+            Self::UserSubmit => "user_submit",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "local_capture" => Some(Self::LocalCapture),
+            "remote_sync" => Some(Self::RemoteSync),
+            "user_submit" => Some(Self::UserSubmit),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HistoryRecord {
     pub event_id: [u8; 16],
@@ -21,6 +47,7 @@ pub struct HistoryRecord {
     pub created_at_ms: i64,
     pub applied_at_ms: i64,
     pub content: String,
+    pub source: HistoryRecordSource,
 }
 
 impl HistoryRecord {

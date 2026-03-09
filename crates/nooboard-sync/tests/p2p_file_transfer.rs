@@ -127,8 +127,7 @@ async fn file_transfer_accept_path_works() -> Result<(), Box<dyn std::error::Err
     fs::write(&source_file, b"hello stage3").await?;
 
     handle_a
-        .file_tx
-        .send(SendFileRequest {
+        .send_file(SendFileRequest {
             path: source_file.clone(),
             targets: None,
         })
@@ -219,8 +218,7 @@ async fn file_reject_cleans_tmp_file() -> Result<(), Box<dyn std::error::Error>>
     let source_file = dir_a.path().join("reject.txt");
     fs::write(&source_file, b"this file is too big").await?;
     handle_a
-        .file_tx
-        .send(SendFileRequest {
+        .send_file(SendFileRequest {
             path: source_file.clone(),
             targets: None,
         })

@@ -34,7 +34,7 @@ pub(super) async fn get_clipboard_record(
     event_id: EventId,
 ) -> AppResult<crate::service::types::ClipboardRecord> {
     let record = load_record_by_event_id(state, event_id).await?;
-    Ok(map_record(state, record))
+    Ok(map_record(record))
 }
 
 pub(super) async fn list_clipboard_history(
@@ -50,10 +50,7 @@ pub(super) async fn list_clipboard_history(
         .list_history(request.limit, storage_cursor)
         .await?;
     let next_cursor = records.last().map(ClipboardHistoryCursor::from);
-    let records = records
-        .into_iter()
-        .map(|record| map_record(state, record))
-        .collect();
+    let records = records.into_iter().map(map_record).collect();
     Ok(ClipboardHistoryPage {
         records,
         next_cursor,
@@ -149,20 +146,20 @@ async fn commit_clipboard_record(
     let now_ms = now_millis_i64();
     let inserted = state
         .storage_runtime
-        .append_text(
+        .append_text_with_source(
             &content,
             Some(event_id.as_uuid()),
             Some(origin_noob_id.as_str()),
             Some(origin_device_id.as_str()),
             now_ms,
             now_ms,
+            map_record_source_to_storage(source),
         )
         .await?;
     if !inserted {
         return Ok(false);
     }
 
-    state.clipboard_sources.insert(event_id, source);
     state.update_state(|app_state| {
         app_state.clipboard.latest_committed_event_id = Some(event_id);
     });
@@ -183,29 +180,26 @@ async fn load_record_by_event_id(
         })
 }
 
-fn map_record(
-    state: &ControlState,
-    record: nooboard_storage::HistoryRecord,
-) -> crate::service::types::ClipboardRecord {
-    let event_id = EventId::from(uuid::Uuid::from_bytes(record.event_id));
-    let source = state
-        .clipboard_sources
-        .get(&event_id)
-        .copied()
-        .unwrap_or_else(|| infer_record_source(state, &record));
+fn map_record(record: nooboard_storage::HistoryRecord) -> crate::service::types::ClipboardRecord {
+    let source = map_storage_source(record.source);
     crate::service::types::ClipboardRecord::from_storage(record, source)
 }
 
-fn infer_record_source(
-    state: &ControlState,
-    record: &nooboard_storage::HistoryRecord,
-) -> ClipboardRecordSource {
-    if record.origin_noob_id == state.app_state.identity.noob_id.as_str()
-        && record.origin_device_id == state.app_state.identity.device_id
-    {
-        ClipboardRecordSource::UserSubmit
-    } else {
-        ClipboardRecordSource::RemoteSync
+fn map_record_source_to_storage(
+    source: ClipboardRecordSource,
+) -> nooboard_storage::HistoryRecordSource {
+    match source {
+        ClipboardRecordSource::LocalCapture => nooboard_storage::HistoryRecordSource::LocalCapture,
+        ClipboardRecordSource::RemoteSync => nooboard_storage::HistoryRecordSource::RemoteSync,
+        ClipboardRecordSource::UserSubmit => nooboard_storage::HistoryRecordSource::UserSubmit,
+    }
+}
+
+fn map_storage_source(source: nooboard_storage::HistoryRecordSource) -> ClipboardRecordSource {
+    match source {
+        nooboard_storage::HistoryRecordSource::LocalCapture => ClipboardRecordSource::LocalCapture,
+        nooboard_storage::HistoryRecordSource::RemoteSync => ClipboardRecordSource::RemoteSync,
+        nooboard_storage::HistoryRecordSource::UserSubmit => ClipboardRecordSource::UserSubmit,
     }
 }
 

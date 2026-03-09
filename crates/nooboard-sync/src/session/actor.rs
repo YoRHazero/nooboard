@@ -2,15 +2,13 @@ use std::collections::{HashSet, VecDeque};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures::StreamExt;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::time::{MissedTickBehavior, interval};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing::{debug, warn};
 
 use crate::config::SyncConfig;
-use crate::engine::{
-    SendFileRequest, SendTextRequest, SyncEvent, TransferDirection, TransferState, TransferUpdate,
-};
+use crate::engine::{SendTextRequest, SyncEvent, TransferDirection, TransferState, TransferUpdate};
 use crate::error::{ConnectionError, TransportError};
 use crate::protocol::{DataPacket, Packet, decode_packet};
 
@@ -64,11 +62,18 @@ impl SeenTextIdCache {
 #[derive(Debug)]
 pub enum SessionCommand {
     SendText(SendTextRequest),
-    SendFile(SendFileRequest),
+    SendFile {
+        transfer_id: u32,
+        path: std::path::PathBuf,
+    },
     FileDecision {
         transfer_id: u32,
         accept: bool,
         reason: Option<String>,
+    },
+    CancelTransfer {
+        transfer_id: u32,
+        reply: oneshot::Sender<Result<(), ConnectionError>>,
     },
     Shutdown,
 }
@@ -247,7 +252,7 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                                 &ctx.peer_noob_id,
                                 TransferDirection::Incoming,
                                 transfer_id,
-                                TransferState::Cancelled {
+                                TransferState::Rejected {
                                     reason: Some(reason),
                                 },
                                 &ctx.progress_tx,
@@ -283,8 +288,8 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                             warn!(peer=%ctx.peer_noob_id, "drop outgoing text because data queue is full");
                         }
                     }
-                    Some(SessionCommand::SendFile(request)) => {
-                        sender.enqueue_file(request.path);
+                    Some(SessionCommand::SendFile { transfer_id, path }) => {
+                        sender.enqueue_file(transfer_id, path);
                     }
                     Some(SessionCommand::FileDecision { transfer_id, accept, reason }) => {
                         match receiver.apply_decision(transfer_id, accept).await {
@@ -296,19 +301,43 @@ pub async fn run_session_actor(mut ctx: SessionActorContext) -> SessionResult<()
                                 })).is_err() {
                                     warn!(peer=%ctx.peer_noob_id, transfer_id, "drop local FileDecision because data queue is full");
                                 }
-                                if !accept {
-                                    emit_transfer_update(
-                                        &ctx.peer_noob_id,
-                                        TransferDirection::Incoming,
-                                        transfer_id,
-                                        TransferState::Cancelled { reason },
-                                        &ctx.progress_tx,
-                                    )
-                                    .await;
-                                }
                             }
                             Err(error) => {
                                 warn!(peer=%ctx.peer_noob_id, transfer_id, "invalid local file decision: {error}");
+                            }
+                        }
+                    }
+                    Some(SessionCommand::CancelTransfer { transfer_id, reply }) => {
+                        let cancel_reason = Some("cancelled by local peer".to_string());
+                        if sender.cancel_transfer(transfer_id, cancel_reason.clone()) {
+                            let _ = reply.send(Ok(()));
+                            continue;
+                        }
+
+                        match receiver.handle_file_cancel_with_flag(transfer_id).await {
+                            Ok(true) => {
+                                if outbox.queue_data(Packet::Data(DataPacket::FileCancel { transfer_id })).is_err() {
+                                    warn!(peer=%ctx.peer_noob_id, transfer_id, "drop local FileCancel because data queue is full");
+                                }
+                                emit_transfer_update(
+                                    &ctx.peer_noob_id,
+                                    TransferDirection::Incoming,
+                                    transfer_id,
+                                    TransferState::Cancelled {
+                                        reason: cancel_reason,
+                                    },
+                                    &ctx.progress_tx,
+                                )
+                                .await;
+                                let _ = reply.send(Ok(()));
+                            }
+                            Ok(false) => {
+                                let _ = reply.send(Err(ConnectionError::State(format!(
+                                    "transfer {transfer_id} cannot be cancelled"
+                                ))));
+                            }
+                            Err(error) => {
+                                let _ = reply.send(Err(ConnectionError::from(error)));
                             }
                         }
                     }

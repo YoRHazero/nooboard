@@ -54,13 +54,14 @@ async fn append_and_list_history_roundtrip() {
 
     let event_id = Uuid::now_v7();
     runtime
-        .append_text(
+        .append_text_with_source(
             "alpha",
             Some(event_id),
             Some("noob-a"),
             Some("device-a"),
             1000,
             1000,
+            nooboard_storage::HistoryRecordSource::UserSubmit,
         )
         .await
         .expect("append");
@@ -89,13 +90,14 @@ async fn reconfigure_switches_active_database() {
     let runtime = StorageRuntime::new(config_a.clone()).expect("runtime");
 
     runtime
-        .append_text(
+        .append_text_with_source(
             "from-a",
             Some(Uuid::now_v7()),
             Some("noob-a"),
             Some("device-a"),
             1000,
             1000,
+            nooboard_storage::HistoryRecordSource::UserSubmit,
         )
         .await
         .expect("append a");
@@ -116,13 +118,14 @@ async fn reconfigure_switches_active_database() {
     assert!(after_switch.is_empty());
 
     runtime
-        .append_text(
+        .append_text_with_source(
             "from-b",
             Some(Uuid::now_v7()),
             Some("noob-b"),
             Some("device-b"),
             2000,
             2000,
+            nooboard_storage::HistoryRecordSource::UserSubmit,
         )
         .await
         .expect("append b");
@@ -146,13 +149,14 @@ async fn reconfigure_with_same_config_is_safe() {
     let runtime = StorageRuntime::new(config.clone()).expect("runtime");
 
     runtime
-        .append_text(
+        .append_text_with_source(
             "before",
             Some(Uuid::now_v7()),
             Some("noob-a"),
             Some("device-a"),
             1000,
             1000,
+            nooboard_storage::HistoryRecordSource::UserSubmit,
         )
         .await
         .expect("append before");

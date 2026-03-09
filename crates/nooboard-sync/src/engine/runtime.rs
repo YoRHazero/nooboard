@@ -22,7 +22,7 @@ use super::ingress::{run_accept_loop, run_discovery_forward_loop};
 use super::peers::{EngineControl, PeerHandle, PeerRegistry};
 use super::policy::{DedupeDecision, dedupe_decision};
 use super::types::{
-    ConnectedPeerInfo, FileDecisionInput, SendFileRequest, SendTextRequest, SyncControlCommand,
+    ConnectedPeerInfo, FileDecisionInput, SendFileCommand, SendTextRequest, SyncControlCommand,
     SyncEngineHandle, SyncEvent, SyncStatus, TransferUpdate,
 };
 
@@ -41,7 +41,7 @@ pub async fn start_sync_engine_with_discovery(
     std::fs::create_dir_all(&config.download_dir)?;
 
     let (text_tx, text_rx) = mpsc::channel::<SendTextRequest>(128);
-    let (file_tx, file_rx) = mpsc::channel::<SendFileRequest>(32);
+    let (file_tx, file_rx) = mpsc::channel::<SendFileCommand>(32);
     let (decision_tx, decision_rx) = mpsc::channel(128);
     let (control_tx, control_rx) = mpsc::channel(64);
     let (event_tx, event_rx) = mpsc::channel(128);
@@ -88,7 +88,7 @@ pub async fn start_sync_engine_with_discovery(
 async fn run_engine(
     config: SyncConfig,
     mut text_rx: mpsc::Receiver<SendTextRequest>,
-    mut file_rx: mpsc::Receiver<SendFileRequest>,
+    mut file_rx: mpsc::Receiver<SendFileCommand>,
     mut decision_rx: mpsc::Receiver<FileDecisionInput>,
     mut control_rx: mpsc::Receiver<SyncControlCommand>,
     event_tx: mpsc::Sender<SyncEvent>,
@@ -125,7 +125,7 @@ async fn run_engine(
 async fn run_engine_inner(
     config: SyncConfig,
     text_rx: &mut mpsc::Receiver<SendTextRequest>,
-    file_rx: &mut mpsc::Receiver<SendFileRequest>,
+    file_rx: &mut mpsc::Receiver<SendFileCommand>,
     decision_rx: &mut mpsc::Receiver<FileDecisionInput>,
     control_rx: &mut mpsc::Receiver<SyncControlCommand>,
     event_tx: mpsc::Sender<SyncEvent>,
@@ -219,7 +219,12 @@ async fn run_engine_inner(
             }
             maybe_path = file_rx.recv() => {
                 match maybe_path {
-                    Some(request) => registry.send_file(request),
+                    Some(command) => {
+                        let result = registry
+                            .send_file(command.request)
+                            .map_err(SyncError::Connection);
+                        let _ = command.reply.send(result);
+                    }
                     None => break,
                 }
             }
@@ -248,7 +253,7 @@ async fn run_engine_inner(
             maybe_control_command = control_rx.recv() => {
                 match maybe_control_command {
                     Some(command) => {
-                        let changed = handle_sync_control_command(command, &mut registry);
+                        let changed = handle_sync_control_command(command, &mut registry).await;
                         if changed {
                             publish_peer_snapshot(&registry, peers_tx);
                         }
@@ -291,7 +296,10 @@ async fn run_engine_inner(
     Ok(())
 }
 
-fn handle_sync_control_command(command: SyncControlCommand, registry: &mut PeerRegistry) -> bool {
+async fn handle_sync_control_command(
+    command: SyncControlCommand,
+    registry: &mut PeerRegistry,
+) -> bool {
     match command {
         SyncControlCommand::DisconnectPeer { peer_noob_id } => {
             if let Some(addr) = registry.disconnect_peer(&peer_noob_id) {
@@ -301,6 +309,14 @@ fn handle_sync_control_command(command: SyncControlCommand, registry: &mut PeerR
                 warn!(peer=%peer_noob_id, "disconnect peer requested but peer is not connected");
                 false
             }
+        }
+        SyncControlCommand::CancelTransfer { request, reply } => {
+            let result = registry
+                .cancel_transfer(request)
+                .await
+                .map_err(SyncError::Connection);
+            let _ = reply.send(result);
+            false
         }
     }
 }

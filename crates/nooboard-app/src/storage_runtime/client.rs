@@ -59,7 +59,7 @@ impl StorageRuntime {
         .await
     }
 
-    pub(crate) async fn append_text(
+    pub(crate) async fn append_text_with_source(
         &self,
         text: &str,
         event_id: Option<Uuid>,
@@ -67,6 +67,7 @@ impl StorageRuntime {
         origin_device_id: Option<&str>,
         created_at_ms: i64,
         applied_at_ms: i64,
+        source: nooboard_storage::HistoryRecordSource,
     ) -> AppResult<bool> {
         self.request(
             |reply| StorageCommand::AppendText {
@@ -76,6 +77,7 @@ impl StorageRuntime {
                 origin_device_id: origin_device_id.map(ToString::to_string),
                 created_at_ms,
                 applied_at_ms,
+                source,
                 reply,
             },
             "append_text",

@@ -1,11 +1,14 @@
 use std::collections::HashSet;
 
-use nooboard_sync::{FileDecisionInput, SendFileRequest as SyncSendFileRequest};
+use nooboard_sync::{
+    CancelTransferRequest as SyncCancelTransferRequest, FileDecisionInput,
+    SendFileRequest as SyncSendFileRequest,
+};
 
 use crate::service::mappers::map_transfer_id;
 use crate::service::types::{
     AppEvent, CompletedTransfer, IncomingTransfer, IncomingTransferDecision,
-    IncomingTransferDisposition, SendFilesRequest, Transfer, TransferDirection, TransferId,
+    IncomingTransferDisposition, NoobId, SendFilesRequest, Transfer, TransferDirection, TransferId,
     TransferOutcome, TransferState, now_millis_i64,
 };
 use crate::{AppError, AppResult};
@@ -21,54 +24,58 @@ pub(super) async fn send_files(
     }
 
     let targets = dedup_connected_targets(state, &request.targets)?;
-    let file_tx = state.sync_runtime.file_sender()?;
     let mut created = Vec::new();
 
-    for target in targets {
-        for file in &request.files {
-            let metadata = std::fs::metadata(&file.path)?;
-            let file_name = file
-                .path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .ok_or_else(|| {
-                    AppError::Io(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        format!("invalid file name: {}", file.path.display()),
-                    ))
-                })?
-                .to_string();
-            let transfer_id = state.allocate_outgoing_transfer_id(&target);
+    let target_names: Vec<String> = targets
+        .iter()
+        .map(|target| target.as_str().to_string())
+        .collect();
 
-            file_tx
-                .send(SyncSendFileRequest {
-                    path: file.path.clone(),
-                    targets: Some(vec![target.as_str().to_string()]),
-                })
-                .await
-                .map_err(|error| {
-                    AppError::ChannelClosed(format!("sync file_tx closed: {error}"))
-                })?;
+    for file in &request.files {
+        let metadata = std::fs::metadata(&file.path)?;
+        let file_name = file
+            .path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| {
+                AppError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("invalid file name: {}", file.path.display()),
+                ))
+            })?
+            .to_string();
 
-            let now_ms = now_millis_i64();
-            let transfer_id_for_state = transfer_id.clone();
-            let target_for_state = target.clone();
-            let file_name_for_state = file_name.clone();
-            state.update_state(|app_state| {
+        let scheduled = state
+            .sync_runtime
+            .send_file(SyncSendFileRequest {
+                path: file.path.clone(),
+                targets: Some(target_names.clone()),
+            })
+            .await?;
+
+        let now_ms = now_millis_i64();
+        let mut new_transfer_ids = Vec::with_capacity(scheduled.len());
+        state.update_state(|app_state| {
+            for scheduled_transfer in &scheduled {
+                let transfer_id = TransferId::new(
+                    NoobId::new(scheduled_transfer.peer_noob_id.clone()),
+                    scheduled_transfer.transfer_id,
+                );
+                new_transfer_ids.push(transfer_id.clone());
                 app_state.transfers.active.push(Transfer {
-                    transfer_id: transfer_id_for_state,
+                    transfer_id,
                     direction: TransferDirection::Upload,
-                    peer_noob_id: target_for_state,
-                    file_name: file_name_for_state,
+                    peer_noob_id: NoobId::new(scheduled_transfer.peer_noob_id.clone()),
+                    file_name: file_name.clone(),
                     file_size: metadata.len(),
                     transferred_bytes: 0,
                     state: TransferState::Queued,
                     started_at_ms: now_ms,
                     updated_at_ms: now_ms,
                 });
-            });
-            created.push(transfer_id);
-        }
+            }
+        });
+        created.extend(new_transfer_ids);
     }
 
     Ok(created)
@@ -108,11 +115,34 @@ pub(super) async fn decide_incoming_transfer(
 
     match request.decision {
         IncomingTransferDisposition::Accept => {
+            let accepted_at_ms = now_millis_i64();
+            let transfer_id_for_state = request.transfer_id.clone();
             state.update_state(|app_state| {
                 app_state
                     .transfers
                     .incoming_pending
                     .retain(|item| item.transfer_id != request.transfer_id);
+                if !app_state
+                    .transfers
+                    .active
+                    .iter()
+                    .any(|item| item.transfer_id == transfer_id_for_state)
+                {
+                    app_state.transfers.active.push(Transfer {
+                        transfer_id: transfer_id_for_state.clone(),
+                        direction: TransferDirection::Download,
+                        peer_noob_id: pending.peer_noob_id.clone(),
+                        file_name: pending.file_name.clone(),
+                        file_size: pending.file_size,
+                        transferred_bytes: 0,
+                        state: TransferState::Starting,
+                        started_at_ms: accepted_at_ms,
+                        updated_at_ms: accepted_at_ms,
+                    });
+                }
+            });
+            state.publish_event(AppEvent::TransferUpdated {
+                transfer_id: request.transfer_id,
             });
         }
         IncomingTransferDisposition::Reject => {
@@ -140,21 +170,67 @@ pub(super) async fn cancel_transfer(
     state: &mut ControlState,
     transfer_id: TransferId,
 ) -> AppResult<()> {
-    if !state
+    let Some(existing) = state
         .app_state
         .transfers
         .active
         .iter()
-        .any(|transfer| transfer.transfer_id == transfer_id)
-    {
+        .find(|transfer| transfer.transfer_id == transfer_id)
+        .cloned()
+    else {
+        if state
+            .app_state
+            .transfers
+            .incoming_pending
+            .iter()
+            .any(|transfer| transfer.transfer_id == transfer_id)
+            || state
+                .app_state
+                .transfers
+                .recent_completed
+                .iter()
+                .any(|transfer| transfer.transfer_id == transfer_id)
+        {
+            return Err(AppError::TransferNotCancelable {
+                transfer_id: transfer_id.to_string(),
+            });
+        }
         return Err(AppError::TransferNotFound {
+            transfer_id: transfer_id.to_string(),
+        });
+    };
+
+    if existing.state == TransferState::Cancelling {
+        return Err(AppError::TransferNotCancelable {
             transfer_id: transfer_id.to_string(),
         });
     }
 
-    Err(AppError::TransferNotCancelable {
-        transfer_id: transfer_id.to_string(),
-    })
+    state
+        .sync_runtime
+        .cancel_transfer(SyncCancelTransferRequest {
+            peer_noob_id: transfer_id.peer_noob_id().as_str().to_string(),
+            transfer_id: transfer_id.raw_id(),
+        })
+        .await?;
+
+    let transfer_id_for_state = transfer_id.clone();
+    state.update_state(|app_state| {
+        if let Some(active) = app_state
+            .transfers
+            .active
+            .iter_mut()
+            .find(|transfer| transfer.transfer_id == transfer_id_for_state)
+        {
+            active.state = TransferState::Cancelling;
+            active.updated_at_ms = now_millis_i64();
+        }
+    });
+    if existing.state != TransferState::Cancelling {
+        state.publish_event(AppEvent::TransferUpdated { transfer_id });
+    }
+
+    Ok(())
 }
 
 pub(super) fn handle_incoming_offer(
@@ -166,28 +242,35 @@ pub(super) fn handle_incoming_offer(
     total_chunks: u32,
 ) {
     let transfer_id = TransferId::new(peer_noob_id.clone(), raw_transfer_id);
-    if state
+    let already_pending = state
         .app_state
         .transfers
         .incoming_pending
         .iter()
-        .any(|pending| pending.transfer_id == transfer_id)
-    {
-        return;
-    }
+        .any(|pending| pending.transfer_id == transfer_id);
 
     let transfer_id_for_state = transfer_id.clone();
     state.update_state(|app_state| {
-        app_state.transfers.incoming_pending.push(IncomingTransfer {
-            transfer_id: transfer_id_for_state,
-            peer_noob_id: peer_noob_id.clone(),
-            file_name,
-            file_size,
-            total_chunks,
-            offered_at_ms: now_millis_i64(),
-        });
+        // If transfer updates raced ahead of the decision request, pending still wins:
+        // pre-accept incoming transfers must not appear in active.
+        app_state
+            .transfers
+            .active
+            .retain(|item| item.transfer_id != transfer_id_for_state);
+        if !already_pending {
+            app_state.transfers.incoming_pending.push(IncomingTransfer {
+                transfer_id: transfer_id_for_state,
+                peer_noob_id: peer_noob_id.clone(),
+                file_name,
+                file_size,
+                total_chunks,
+                offered_at_ms: now_millis_i64(),
+            });
+        }
     });
-    state.publish_event(AppEvent::IncomingTransferOffered { transfer_id });
+    if !already_pending {
+        state.publish_event(AppEvent::IncomingTransferOffered { transfer_id });
+    }
 }
 
 pub(super) fn apply_transfer_update(
@@ -218,7 +301,13 @@ pub(super) fn apply_transfer_update(
                     existing.file_size = *total_bytes;
                     existing.state = TransferState::Starting;
                     existing.updated_at_ms = now_ms;
-                } else {
+                } else if !(direction == TransferDirection::Download
+                    && app_state
+                        .transfers
+                        .incoming_pending
+                        .iter()
+                        .any(|transfer| transfer.transfer_id == transfer_id_for_state))
+                {
                     app_state.transfers.active.push(Transfer {
                         transfer_id: transfer_id_for_state.clone(),
                         direction,
@@ -252,7 +341,13 @@ pub(super) fn apply_transfer_update(
                     existing.transferred_bytes = *done_bytes;
                     existing.state = TransferState::InProgress;
                     existing.updated_at_ms = now_ms;
-                } else {
+                } else if !(direction == TransferDirection::Download
+                    && app_state
+                        .transfers
+                        .incoming_pending
+                        .iter()
+                        .any(|transfer| transfer.transfer_id == transfer_id_for_state))
+                {
                     app_state.transfers.active.push(Transfer {
                         transfer_id: transfer_id_for_state.clone(),
                         direction,
@@ -291,6 +386,19 @@ pub(super) fn apply_transfer_update(
                 now_ms,
                 None,
                 Some(reason.clone()),
+            );
+            complete_transfer(state, transfer_id, completed);
+        }
+        nooboard_sync::TransferState::Rejected { reason } => {
+            let completed = take_completed_from_active(
+                state,
+                &transfer_id,
+                direction,
+                peer_noob_id,
+                TransferOutcome::Rejected,
+                now_ms,
+                None,
+                reason.clone(),
             );
             complete_transfer(state, transfer_id, completed);
         }
