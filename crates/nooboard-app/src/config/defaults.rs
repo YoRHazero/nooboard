@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 pub const APP_CONFIG_VERSION: u32 = 2;
 pub const DEFAULT_RECENT_EVENT_LOOKUP_LIMIT: usize = 50;
+pub const DEFAULT_MAX_TEXT_BYTES: usize = 1024 * 1024;
 
 pub(super) fn default_config_version() -> u32 {
     APP_CONFIG_VERSION
@@ -14,6 +15,10 @@ pub(super) fn default_profile() -> String {
 
 pub(super) fn default_recent_event_lookup_limit() -> usize {
     DEFAULT_RECENT_EVENT_LOOKUP_LIMIT
+}
+
+pub(super) fn default_local_capture_enabled() -> bool {
+    false
 }
 
 pub(super) fn default_history_window_days() -> u32 {
@@ -30,6 +35,10 @@ pub(super) fn default_gc_every_inserts() -> u32 {
 
 pub(super) fn default_gc_batch_size() -> u32 {
     500
+}
+
+pub(super) fn default_max_text_bytes() -> usize {
+    DEFAULT_MAX_TEXT_BYTES
 }
 
 pub(super) fn default_network_enabled() -> bool {

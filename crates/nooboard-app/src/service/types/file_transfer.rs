@@ -1,54 +1,92 @@
 use std::path::PathBuf;
 
-use super::{NoobId, Targets};
+use super::{NoobId, TransferId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SendFileRequest {
+pub struct SendFileItem {
     pub path: PathBuf,
-    pub targets: Targets,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FileDecisionRequest {
-    pub peer_noob_id: NoobId,
-    pub transfer_id: u32,
-    pub accept: bool,
-    pub reason: Option<String>,
+pub struct SendFilesRequest {
+    pub targets: Vec<NoobId>,
+    pub files: Vec<SendFileItem>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IncomingTransferDisposition {
+    Accept,
+    Reject,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IncomingTransferDecision {
+    pub transfer_id: TransferId,
+    pub decision: IncomingTransferDisposition,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransferDirection {
-    Incoming,
-    Outgoing,
+    Upload,
+    Download,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransferState {
-    Started {
-        file_name: String,
-        total_bytes: u64,
-    },
-    Progress {
-        done_bytes: u64,
-        total_bytes: u64,
-        bps: Option<u64>,
-        eta_ms: Option<u64>,
-    },
-    Finished {
-        path: Option<PathBuf>,
-    },
-    Failed {
-        reason: String,
-    },
-    Cancelled {
-        reason: Option<String>,
-    },
+    Queued,
+    Starting,
+    InProgress,
+    Cancelling,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferOutcome {
+    Succeeded,
+    Rejected,
+    Cancelled,
+    Failed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TransferUpdate {
-    pub transfer_id: u32,
+pub struct IncomingTransfer {
+    pub transfer_id: TransferId,
     pub peer_noob_id: NoobId,
+    pub file_name: String,
+    pub file_size: u64,
+    pub total_chunks: u32,
+    pub offered_at_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Transfer {
+    pub transfer_id: TransferId,
     pub direction: TransferDirection,
+    pub peer_noob_id: NoobId,
+    pub file_name: String,
+    pub file_size: u64,
+    pub transferred_bytes: u64,
     pub state: TransferState,
+    pub started_at_ms: i64,
+    pub updated_at_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletedTransfer {
+    pub transfer_id: TransferId,
+    pub direction: TransferDirection,
+    pub peer_noob_id: NoobId,
+    pub file_name: String,
+    pub file_size: u64,
+    pub outcome: TransferOutcome,
+    pub started_at_ms: Option<i64>,
+    pub finished_at_ms: i64,
+    pub saved_path: Option<PathBuf>,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct TransfersState {
+    pub incoming_pending: Vec<IncomingTransfer>,
+    pub active: Vec<Transfer>,
+    pub recent_completed: Vec<CompletedTransfer>,
 }

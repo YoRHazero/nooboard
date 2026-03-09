@@ -1,64 +1,25 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use super::NoobId;
+use tokio::sync::watch;
+
+use super::{EventId, LocalIdentity, TransfersState};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NetworkPatch {
-    SetMdnsEnabled(bool),
-    SetNetworkEnabled(bool),
-    AddManualPeer(SocketAddr),
-    RemoveManualPeer(SocketAddr),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct StoragePatch {
-    pub db_root: Option<PathBuf>,
-    pub retain_old_versions: Option<usize>,
-    pub history_window_days: Option<u32>,
-    pub dedup_window_days: Option<u32>,
-    pub gc_every_inserts: Option<u32>,
-    pub gc_batch_size: Option<u32>,
+pub struct AppState {
+    pub revision: u64,
+    pub identity: LocalIdentity,
+    pub sync: SyncState,
+    pub peers: PeersState,
+    pub clipboard: ClipboardState,
+    pub transfers: TransfersState,
+    pub settings: SettingsState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AppPatch {
-    Network(NetworkPatch),
-    Storage(StoragePatch),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StorageConfigView {
-    pub db_root: PathBuf,
-    pub retain_old_versions: usize,
-    pub history_window_days: u32,
-    pub dedup_window_days: u32,
-    pub gc_every_inserts: u32,
-    pub gc_batch_size: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AppSyncStatus {
-    Disabled,
-    Starting,
-    Running,
-    Stopped,
-    Error(String),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PeerConnectionState {
-    Connected,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConnectedPeer {
-    pub peer_noob_id: NoobId,
-    pub peer_device_id: String,
-    pub addr: SocketAddr,
-    pub outbound: bool,
-    pub connected_at_ms: u64,
-    pub state: PeerConnectionState,
+pub struct SyncState {
+    pub desired: SyncDesiredState,
+    pub actual: SyncActualStatus,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -69,13 +30,128 @@ pub enum SyncDesiredState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AppServiceSnapshot {
-    pub local_noob_id: NoobId,
-    pub desired_state: SyncDesiredState,
-    pub actual_sync_status: AppSyncStatus,
-    pub connected_peers: Vec<ConnectedPeer>,
+pub enum SyncActualStatus {
+    Disabled,
+    Starting,
+    Running,
+    Stopped,
+    Error(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PeersState {
+    pub connected: Vec<ConnectedPeer>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectedPeer {
+    pub noob_id: super::NoobId,
+    pub addresses: Vec<SocketAddr>,
+    pub transport: PeerTransport,
+    pub latency_ms: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PeerTransport {
+    Mdns,
+    Manual,
+    Mixed,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ClipboardState {
+    pub latest_committed_event_id: Option<EventId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsState {
+    pub network: NetworkSettings,
+    pub storage: StorageSettings,
+    pub clipboard: ClipboardSettings,
+    pub transfers: TransferSettings,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NetworkSettings {
     pub network_enabled: bool,
     pub mdns_enabled: bool,
     pub manual_peers: Vec<SocketAddr>,
-    pub storage: StorageConfigView,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StorageSettings {
+    pub db_root: PathBuf,
+    pub history_window_days: u32,
+    pub dedup_window_days: u32,
+    pub max_text_bytes: usize,
+    pub gc_batch_size: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipboardSettings {
+    pub local_capture_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransferSettings {
+    pub download_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SettingsPatch {
+    Network(NetworkSettingsPatch),
+    Storage(StorageSettingsPatch),
+    Clipboard(ClipboardSettingsPatch),
+    Transfers(TransferSettingsPatch),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NetworkSettingsPatch {
+    SetNetworkEnabled(bool),
+    SetMdnsEnabled(bool),
+    SetManualPeers(Vec<SocketAddr>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct StorageSettingsPatch {
+    pub db_root: Option<PathBuf>,
+    pub history_window_days: Option<u32>,
+    pub dedup_window_days: Option<u32>,
+    pub max_text_bytes: Option<usize>,
+    pub gc_batch_size: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClipboardSettingsPatch {
+    SetLocalCaptureEnabled(bool),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransferSettingsPatch {
+    SetDownloadDir(PathBuf),
+}
+
+pub type StateRecvError = watch::error::RecvError;
+
+pub struct StateSubscription {
+    latest: AppState,
+    receiver: watch::Receiver<AppState>,
+}
+
+impl StateSubscription {
+    pub(crate) fn new(receiver: watch::Receiver<AppState>) -> Self {
+        let latest = receiver.borrow().clone();
+        Self { latest, receiver }
+    }
+
+    pub async fn recv(&mut self) -> Result<AppState, StateRecvError> {
+        self.receiver.changed().await?;
+        self.latest = self.receiver.borrow().clone();
+        Ok(self.latest.clone())
+    }
+
+    pub fn latest(&self) -> &AppState {
+        &self.latest
+    }
 }

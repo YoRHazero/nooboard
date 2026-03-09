@@ -38,6 +38,17 @@ pub enum AppError {
     EventNotFound { event_id: String },
     #[error("invalid event id `{event_id}`: expected UUID string")]
     InvalidEventId { event_id: String },
+    #[error("clipboard text exceeds max_text_bytes: actual={actual_bytes}, max={max_bytes}")]
+    TextTooLarge {
+        actual_bytes: usize,
+        max_bytes: usize,
+    },
+    #[error("peer `{peer_noob_id}` is not connected")]
+    PeerNotConnected { peer_noob_id: String },
+    #[error("transfer `{transfer_id}` was not found")]
+    TransferNotFound { transfer_id: String },
+    #[error("transfer `{transfer_id}` cannot be cancelled")]
+    TransferNotCancelable { transfer_id: String },
     #[error("manual peer `{peer}` already exists")]
     ManualPeerExists { peer: String },
     #[error("manual peer `{peer}` does not exist")]

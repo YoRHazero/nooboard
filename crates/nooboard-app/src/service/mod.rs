@@ -1,14 +1,19 @@
 mod app;
 mod events;
 mod mappers;
+mod state;
 mod types;
 
-pub use app::{AppService, AppServiceImpl};
+pub use app::{DesktopAppService, DesktopAppServiceImpl};
 pub use types::{
-    AppEvent, AppPatch, AppServiceSnapshot, AppSyncStatus, ConnectedPeer, EventId, EventStream,
-    EventSubscription, EventSubscriptionItem, FileDecisionRequest, HistoryCursor, HistoryPage,
-    HistoryRecord, IngestTextRequest, ListHistoryRequest, NetworkPatch, NoobId,
-    PeerConnectionState, RebroadcastEventRequest, SendFileRequest, StorageConfigView, StoragePatch,
-    SubscriptionCloseReason, SubscriptionLifecycle, SyncDesiredState, SyncEvent, Targets,
-    TextSource, TransferDirection, TransferState, TransferUpdate,
+    AppEvent, AppState, ClipboardBroadcastTargets, ClipboardHistoryCursor, ClipboardHistoryPage,
+    ClipboardRecord, ClipboardRecordSource, ClipboardSettings, ClipboardSettingsPatch,
+    ClipboardState, CompletedTransfer, ConnectedPeer, EventId, EventRecvError, EventSubscription,
+    IncomingTransfer, IncomingTransferDecision, IncomingTransferDisposition,
+    ListClipboardHistoryRequest, LocalIdentity, NetworkSettings, NetworkSettingsPatch, NoobId,
+    PeerTransport, PeersState, RebroadcastClipboardRequest, SendFileItem, SendFilesRequest,
+    SettingsPatch, SettingsState, StateRecvError, StateSubscription, StorageSettings,
+    StorageSettingsPatch, SubmitTextRequest, SyncActualStatus, SyncDesiredState, SyncState,
+    Transfer, TransferDirection, TransferId, TransferOutcome, TransferSettings,
+    TransferSettingsPatch, TransferState, TransfersState,
 };

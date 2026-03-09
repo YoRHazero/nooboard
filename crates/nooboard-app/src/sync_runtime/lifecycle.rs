@@ -8,7 +8,8 @@ use crate::{AppError, AppResult};
 
 use super::SyncRuntime;
 use super::bridge::{
-    abort_bridge_task, spawn_event_bridge, spawn_transfer_bridge, wait_for_engine_termination,
+    abort_bridge_task, spawn_event_bridge, spawn_peer_bridge, spawn_status_bridge,
+    spawn_transfer_bridge, wait_for_engine_termination,
 };
 use super::state::RunningEngine;
 
@@ -20,6 +21,14 @@ impl SyncRuntime {
         if self.state.engine.is_some() {
             return Ok(());
         }
+
+        if !config.enabled {
+            let _ = self.state.peers_tx.send(Vec::new());
+            let _ = self.state.status_tx.send(SyncStatus::Disabled);
+            return Ok(());
+        }
+
+        let _ = self.state.status_tx.send(SyncStatus::Starting);
 
         let handle = start_sync_engine(config).await?;
         let nooboard_sync::SyncEngineHandle {
@@ -39,18 +48,21 @@ impl SyncRuntime {
 
         let event_task = spawn_event_bridge(event_rx, self.state.event_tx.clone());
         let transfer_task = spawn_transfer_bridge(progress_rx, self.state.transfer_tx.clone());
+        let peer_task = spawn_peer_bridge(peers_rx.clone(), self.state.peers_tx.clone());
+        let status_task = spawn_status_bridge(status_rx.clone(), self.state.status_tx.clone());
 
         let running_engine = RunningEngine {
             text_tx,
             file_tx,
             decision_tx,
             control_tx,
-            peers_rx,
             status_rx,
             shutdown_tx,
             engine_task,
             event_task,
             transfer_task,
+            peer_task,
+            status_task,
         };
 
         if let Err(startup_error) =
@@ -67,6 +79,9 @@ impl SyncRuntime {
     pub async fn stop(&mut self) -> AppResult<()> {
         if let Some(engine) = self.state.engine.take() {
             shutdown_engine(engine).await;
+        } else {
+            let _ = self.state.peers_tx.send(Vec::new());
+            let _ = self.state.status_tx.send(SyncStatus::Stopped);
         }
         Ok(())
     }
@@ -77,19 +92,11 @@ impl SyncRuntime {
     }
 
     pub fn status(&self) -> SyncStatus {
-        self.state
-            .engine
-            .as_ref()
-            .map(|engine| engine.status_rx.borrow().clone())
-            .unwrap_or(SyncStatus::Stopped)
+        self.state.status_tx.borrow().clone()
     }
 
     pub fn connected_peers(&self) -> Vec<ConnectedPeerInfo> {
-        self.state
-            .engine
-            .as_ref()
-            .map(|engine| engine.peers_rx.borrow().clone())
-            .unwrap_or_default()
+        self.state.peers_tx.borrow().clone()
     }
 }
 
@@ -107,6 +114,8 @@ async fn shutdown_engine(mut engine: RunningEngine) {
     }
     abort_bridge_task(engine.event_task).await;
     abort_bridge_task(engine.transfer_task).await;
+    abort_bridge_task(engine.peer_task).await;
+    abort_bridge_task(engine.status_task).await;
 }
 
 async fn wait_for_engine_startup(

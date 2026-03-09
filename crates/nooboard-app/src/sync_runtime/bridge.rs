@@ -34,6 +34,30 @@ pub(super) fn spawn_transfer_bridge(
     })
 }
 
+pub(super) fn spawn_peer_bridge(
+    mut peers_rx: watch::Receiver<Vec<nooboard_sync::ConnectedPeerInfo>>,
+    peers_sender: watch::Sender<Vec<nooboard_sync::ConnectedPeerInfo>>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let _ = peers_sender.send(peers_rx.borrow().clone());
+        while peers_rx.changed().await.is_ok() {
+            let _ = peers_sender.send(peers_rx.borrow().clone());
+        }
+    })
+}
+
+pub(super) fn spawn_status_bridge(
+    mut status_rx: watch::Receiver<SyncStatus>,
+    status_sender: watch::Sender<SyncStatus>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let _ = status_sender.send(status_rx.borrow().clone());
+        while status_rx.changed().await.is_ok() {
+            let _ = status_sender.send(status_rx.borrow().clone());
+        }
+    })
+}
+
 pub(super) async fn wait_for_engine_termination(
     status_rx: &mut watch::Receiver<SyncStatus>,
     max_wait: Duration,

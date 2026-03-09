@@ -62,6 +62,10 @@ impl AppConfig {
         self.app.clipboard.recent_event_lookup_limit
     }
 
+    pub fn local_capture_enabled(&self) -> bool {
+        self.app.clipboard.local_capture_enabled
+    }
+
     pub fn noob_id(&self) -> Option<&str> {
         self.noob_id.as_deref()
     }

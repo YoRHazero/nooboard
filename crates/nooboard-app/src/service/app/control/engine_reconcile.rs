@@ -1,26 +1,26 @@
 use crate::AppResult;
-use crate::service::types::{AppServiceSnapshot, SubscriptionCloseReason, SyncDesiredState};
+use crate::service::types::SyncDesiredState;
 
 use super::state::ControlState;
 
 pub(super) async fn set_sync_desired_state(
     state: &mut ControlState,
     desired_state: SyncDesiredState,
-) -> AppResult<AppServiceSnapshot> {
-    state.desired_state = desired_state;
-    reconcile_engine_state(state, false).await?;
-    Ok(state.snapshot())
+) -> AppResult<()> {
+    state.update_state(|app_state| {
+        app_state.sync.desired = desired_state;
+    });
+    reconcile_engine_state(state, false).await
 }
 
 pub(super) async fn reconcile_engine_state(
     state: &mut ControlState,
     force_restart: bool,
 ) -> AppResult<()> {
-    match state.desired_state {
+    match state.app_state.sync.desired {
         SyncDesiredState::Running => {
             let has_engine = state.sync_runtime.has_engine();
             let should_reload = force_restart || !has_engine;
-
             if should_reload {
                 let sync_config = state.config.to_sync_config()?;
                 if has_engine {
@@ -28,30 +28,36 @@ pub(super) async fn reconcile_engine_state(
                 } else {
                     state.sync_runtime.start(sync_config).await?;
                 }
-                state.subscriptions.activate(&state.sync_runtime).await?;
             }
         }
         SyncDesiredState::Stopped => {
-            state
-                .subscriptions
-                .deactivate(SubscriptionCloseReason::EngineStopped)
-                .await;
             state.sync_runtime.stop().await?;
         }
     }
 
+    let actual = state.sync_actual_status();
+    let peers = state.connected_peers_state();
+    state.update_state(|app_state| {
+        app_state.sync.actual = actual;
+        app_state.peers.connected = peers;
+    });
     Ok(())
 }
 
 pub(super) async fn shutdown(state: &mut ControlState) -> AppResult<()> {
-    state.desired_state = SyncDesiredState::Stopped;
-    state
-        .subscriptions
-        .deactivate(SubscriptionCloseReason::EngineStopped)
-        .await;
+    state.update_state(|app_state| {
+        app_state.sync.desired = SyncDesiredState::Stopped;
+    });
+
     let clipboard_result = state.clipboard.stop_watch().await;
     let stop_result = state.sync_runtime.stop().await;
     let storage_result = state.storage_runtime.shutdown().await;
+    let actual = state.sync_actual_status();
+
+    state.update_state(|app_state| {
+        app_state.sync.actual = actual;
+        app_state.peers.connected.clear();
+    });
 
     if let Err(error) = clipboard_result {
         return Err(error);

@@ -8,8 +8,9 @@ use super::defaults::{
     default_connect_timeout_ms, default_decision_timeout_ms, default_dedup_window_days,
     default_download_dir, default_gc_batch_size, default_gc_every_inserts,
     default_handshake_timeout_ms, default_history_window_days, default_idle_timeout_ms,
-    default_listen_addr, default_max_file_size, default_max_packet_size, default_mdns_enabled,
-    default_network_enabled, default_ping_interval_ms, default_pong_timeout_ms, default_profile,
+    default_listen_addr, default_local_capture_enabled, default_max_file_size,
+    default_max_packet_size, default_max_text_bytes, default_mdns_enabled, default_network_enabled,
+    default_ping_interval_ms, default_pong_timeout_ms, default_profile,
     default_recent_event_lookup_limit, default_sync_token,
 };
 
@@ -59,12 +60,15 @@ pub struct AppSection {
 pub struct ClipboardAppConfig {
     #[serde(default = "default_recent_event_lookup_limit")]
     pub recent_event_lookup_limit: usize,
+    #[serde(default = "default_local_capture_enabled")]
+    pub local_capture_enabled: bool,
 }
 
 impl Default for ClipboardAppConfig {
     fn default() -> Self {
         Self {
             recent_event_lookup_limit: default_recent_event_lookup_limit(),
+            local_capture_enabled: default_local_capture_enabled(),
         }
     }
 }
@@ -72,6 +76,8 @@ impl Default for ClipboardAppConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageSection {
     pub db_root: PathBuf,
+    #[serde(default = "default_max_text_bytes")]
+    pub max_text_bytes: usize,
     #[serde(default)]
     pub retain_old_versions: usize,
     #[serde(default)]

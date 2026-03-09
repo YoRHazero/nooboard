@@ -1,16 +1,15 @@
 use nooboard_sync::{
-    ConnectedPeerInfo as SyncConnectedPeerInfo, PeerConnectionState as SyncPeerConnectionState,
-    SyncEvent as SyncEngineEvent, SyncStatus as SyncEngineStatus,
-    TransferDirection as SyncTransferDirection, TransferState as SyncTransferState,
+    ConnectedPeerInfo as SyncConnectedPeerInfo, SyncEvent as SyncEngineEvent,
+    SyncStatus as SyncEngineStatus, TransferDirection as SyncTransferDirection,
     TransferUpdate as SyncTransferUpdate,
 };
 
 use super::types::{
-    AppEvent, AppSyncStatus, ConnectedPeer, EventId, HistoryCursor, HistoryRecord, NoobId,
-    PeerConnectionState, SyncEvent, TransferDirection, TransferState, TransferUpdate,
+    AppEvent, ClipboardHistoryCursor, ClipboardRecord, ClipboardRecordSource, ConnectedPeer,
+    EventId, NoobId, PeerTransport, SyncActualStatus, TransferDirection, TransferId,
 };
 
-impl From<SyncEngineStatus> for AppSyncStatus {
+impl From<SyncEngineStatus> for SyncActualStatus {
     fn from(value: SyncEngineStatus) -> Self {
         match value {
             SyncEngineStatus::Disabled => Self::Disabled,
@@ -22,136 +21,33 @@ impl From<SyncEngineStatus> for AppSyncStatus {
     }
 }
 
-impl From<SyncPeerConnectionState> for PeerConnectionState {
-    fn from(value: SyncPeerConnectionState) -> Self {
-        match value {
-            SyncPeerConnectionState::Connected => Self::Connected,
-        }
-    }
-}
-
-impl From<SyncConnectedPeerInfo> for ConnectedPeer {
-    fn from(value: SyncConnectedPeerInfo) -> Self {
-        Self {
-            peer_noob_id: NoobId::new(value.peer_noob_id),
-            peer_device_id: value.peer_device_id,
-            addr: value.addr,
-            outbound: value.outbound,
-            connected_at_ms: value.connected_at_ms,
-            state: value.state.into(),
-        }
-    }
-}
-
 impl From<SyncTransferDirection> for TransferDirection {
     fn from(value: SyncTransferDirection) -> Self {
         match value {
-            SyncTransferDirection::Incoming => Self::Incoming,
-            SyncTransferDirection::Outgoing => Self::Outgoing,
+            SyncTransferDirection::Incoming => Self::Download,
+            SyncTransferDirection::Outgoing => Self::Upload,
         }
     }
 }
 
-impl From<SyncTransferState> for TransferState {
-    fn from(value: SyncTransferState) -> Self {
-        match value {
-            SyncTransferState::Started {
-                file_name,
-                total_bytes,
-            } => Self::Started {
-                file_name,
-                total_bytes,
-            },
-            SyncTransferState::Progress {
-                done_bytes,
-                total_bytes,
-                bps,
-                eta_ms,
-            } => Self::Progress {
-                done_bytes,
-                total_bytes,
-                bps,
-                eta_ms,
-            },
-            SyncTransferState::Finished { path } => Self::Finished { path },
-            SyncTransferState::Failed { reason } => Self::Failed { reason },
-            SyncTransferState::Cancelled { reason } => Self::Cancelled { reason },
-        }
-    }
-}
-
-impl From<SyncTransferUpdate> for TransferUpdate {
-    fn from(value: SyncTransferUpdate) -> Self {
+impl From<&nooboard_storage::HistoryRecord> for ClipboardHistoryCursor {
+    fn from(value: &nooboard_storage::HistoryRecord) -> Self {
         Self {
-            transfer_id: value.transfer_id,
-            peer_noob_id: NoobId::new(value.peer_noob_id),
-            direction: value.direction.into(),
-            state: value.state.into(),
+            created_at_ms: value.created_at_ms,
+            event_id: EventId::from(uuid::Uuid::from_bytes(value.event_id)),
         }
     }
 }
 
-impl TryFrom<SyncEngineEvent> for SyncEvent {
-    type Error = crate::AppError;
-
-    fn try_from(value: SyncEngineEvent) -> Result<Self, Self::Error> {
-        match value {
-            SyncEngineEvent::TextReceived {
-                event_id,
-                content,
-                noob_id,
-                device_id,
-            } => Ok(Self::TextReceived {
-                event_id: EventId::try_from(event_id.as_str())?,
-                content,
-                noob_id: NoobId::new(noob_id),
-                device_id,
-            }),
-            SyncEngineEvent::FileDecisionRequired {
-                peer_noob_id,
-                transfer_id,
-                file_name,
-                file_size,
-                total_chunks,
-            } => Ok(Self::FileDecisionRequired {
-                peer_noob_id: NoobId::new(peer_noob_id),
-                transfer_id,
-                file_name,
-                file_size,
-                total_chunks,
-            }),
-            SyncEngineEvent::ConnectionError {
-                peer_noob_id,
-                addr,
-                error,
-            } => Ok(Self::ConnectionError {
-                peer_noob_id: peer_noob_id.map(NoobId::new),
-                addr,
-                error,
-            }),
-        }
-    }
-}
-
-impl From<SyncTransferUpdate> for AppEvent {
-    fn from(value: SyncTransferUpdate) -> Self {
-        Self::Transfer(value.into())
-    }
-}
-
-impl TryFrom<SyncEngineEvent> for AppEvent {
-    type Error = crate::AppError;
-
-    fn try_from(value: SyncEngineEvent) -> Result<Self, Self::Error> {
-        Ok(Self::Sync(value.try_into()?))
-    }
-}
-
-impl From<nooboard_storage::HistoryRecord> for HistoryRecord {
-    fn from(value: nooboard_storage::HistoryRecord) -> Self {
+impl ClipboardRecord {
+    pub(crate) fn from_storage(
+        value: nooboard_storage::HistoryRecord,
+        source: ClipboardRecordSource,
+    ) -> Self {
         Self {
             event_id: EventId::from(uuid::Uuid::from_bytes(value.event_id)),
-            origin_noob_id: value.origin_noob_id,
+            source,
+            origin_noob_id: NoobId::new(value.origin_noob_id),
             origin_device_id: value.origin_device_id,
             created_at_ms: value.created_at_ms,
             applied_at_ms: value.applied_at_ms,
@@ -160,11 +56,33 @@ impl From<nooboard_storage::HistoryRecord> for HistoryRecord {
     }
 }
 
-impl From<&nooboard_storage::HistoryRecord> for HistoryCursor {
-    fn from(value: &nooboard_storage::HistoryRecord) -> Self {
-        Self {
-            created_at_ms: value.created_at_ms,
-            event_id: EventId::from(uuid::Uuid::from_bytes(value.event_id)),
-        }
+pub(crate) fn map_connected_peer(
+    value: SyncConnectedPeerInfo,
+    transport: PeerTransport,
+) -> ConnectedPeer {
+    ConnectedPeer {
+        noob_id: NoobId::new(value.peer_noob_id),
+        addresses: vec![value.addr],
+        transport,
+        latency_ms: None,
+    }
+}
+
+pub(crate) fn map_transfer_id(update: &SyncTransferUpdate) -> TransferId {
+    TransferId::new(NoobId::new(update.peer_noob_id.clone()), update.transfer_id)
+}
+
+pub(crate) fn map_sync_connection_error(value: SyncEngineEvent) -> Option<AppEvent> {
+    match value {
+        SyncEngineEvent::ConnectionError {
+            peer_noob_id,
+            addr,
+            error,
+        } => Some(AppEvent::PeerConnectionError {
+            peer_noob_id: peer_noob_id.map(NoobId::new),
+            addr,
+            error,
+        }),
+        _ => None,
     }
 }

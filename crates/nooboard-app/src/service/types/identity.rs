@@ -1,9 +1,14 @@
-use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 
 use uuid::Uuid;
 
 use crate::AppError;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalIdentity {
+    pub noob_id: NoobId,
+    pub device_id: String,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EventId(Uuid);
@@ -42,7 +47,7 @@ impl TryFrom<&str> for EventId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NoobId(String);
 
 impl NoobId {
@@ -55,42 +60,37 @@ impl NoobId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum Targets {
-    #[default]
-    All,
-    Nodes(Vec<NoobId>),
+impl Display for NoobId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
-impl Targets {
-    pub fn all() -> Self {
-        Self::All
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TransferId {
+    peer_noob_id: NoobId,
+    raw_id: u32,
+}
 
-    pub fn nodes(nodes: Vec<NoobId>) -> Self {
-        Self::Nodes(nodes)
-    }
-
-    pub(crate) fn should_send(&self) -> bool {
-        match self {
-            Self::All => true,
-            Self::Nodes(nodes) => nodes.iter().any(|node| !node.as_str().trim().is_empty()),
+impl TransferId {
+    pub fn new(peer_noob_id: NoobId, raw_id: u32) -> Self {
+        Self {
+            peer_noob_id,
+            raw_id,
         }
     }
 
-    pub(crate) fn to_sync_targets(&self) -> Option<Vec<String>> {
-        match self {
-            Self::All => None,
-            Self::Nodes(nodes) => {
-                let mut seen = HashSet::new();
-                let normalized: Vec<String> = nodes
-                    .iter()
-                    .map(|node| node.as_str().trim().to_string())
-                    .filter(|node| !node.is_empty())
-                    .filter(|node| seen.insert(node.clone()))
-                    .collect();
-                Some(normalized)
-            }
-        }
+    pub fn peer_noob_id(&self) -> &NoobId {
+        &self.peer_noob_id
+    }
+
+    pub fn raw_id(&self) -> u32 {
+        self.raw_id
+    }
+}
+
+impl Display for TransferId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.peer_noob_id, self.raw_id)
     }
 }

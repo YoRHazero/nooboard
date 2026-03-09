@@ -5,15 +5,20 @@ pub mod service;
 mod storage_runtime;
 pub mod sync_runtime;
 
-pub use clipboard_runtime::{ClipboardPort, LocalClipboardObserved, LocalClipboardSubscription};
-pub use config::{APP_CONFIG_VERSION, AppConfig, DEFAULT_RECENT_EVENT_LOOKUP_LIMIT};
+pub use clipboard_runtime::ClipboardPort;
+pub use config::{
+    APP_CONFIG_VERSION, AppConfig, DEFAULT_MAX_TEXT_BYTES, DEFAULT_RECENT_EVENT_LOOKUP_LIMIT,
+};
 pub use error::{AppError, AppResult};
 pub use service::{
-    AppEvent, AppPatch, AppService, AppServiceImpl, AppServiceSnapshot, AppSyncStatus,
-    ConnectedPeer, EventId, EventStream, EventSubscription, EventSubscriptionItem,
-    FileDecisionRequest, HistoryCursor, HistoryPage, HistoryRecord, IngestTextRequest,
-    ListHistoryRequest, NetworkPatch, NoobId, PeerConnectionState, RebroadcastEventRequest,
-    SendFileRequest, StorageConfigView, StoragePatch, SubscriptionCloseReason,
-    SubscriptionLifecycle, SyncDesiredState, SyncEvent, Targets, TextSource, TransferDirection,
-    TransferState, TransferUpdate,
+    AppEvent, AppState, ClipboardBroadcastTargets, ClipboardHistoryCursor, ClipboardHistoryPage,
+    ClipboardRecord, ClipboardRecordSource, ClipboardSettings, ClipboardSettingsPatch,
+    ClipboardState, CompletedTransfer, ConnectedPeer, DesktopAppService, DesktopAppServiceImpl,
+    EventId, EventRecvError, EventSubscription, IncomingTransfer, IncomingTransferDecision,
+    IncomingTransferDisposition, ListClipboardHistoryRequest, LocalIdentity, NetworkSettings,
+    NetworkSettingsPatch, NoobId, PeerTransport, PeersState, RebroadcastClipboardRequest,
+    SendFileItem, SendFilesRequest, SettingsPatch, SettingsState, StateRecvError,
+    StateSubscription, StorageSettings, StorageSettingsPatch, SubmitTextRequest, SyncActualStatus,
+    SyncDesiredState, SyncState, Transfer, TransferDirection, TransferId, TransferOutcome,
+    TransferSettings, TransferSettingsPatch, TransferState, TransfersState,
 };

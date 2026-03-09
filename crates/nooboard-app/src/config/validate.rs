@@ -24,6 +24,11 @@ impl AppConfig {
                 "app.clipboard.recent_event_lookup_limit must be > 0".to_string(),
             ));
         }
+        if self.storage.max_text_bytes == 0 {
+            return Err(AppError::InvalidConfig(
+                "storage.max_text_bytes must be > 0".to_string(),
+            ));
+        }
 
         if self.storage.lifecycle.history_window_days < 1 {
             return Err(AppError::InvalidConfig(

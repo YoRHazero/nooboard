@@ -1,69 +1,80 @@
 use tokio::sync::oneshot;
 
 use crate::AppResult;
-use crate::clipboard_runtime::{LocalClipboardObserved, LocalClipboardSubscription};
+use crate::clipboard_runtime::LocalClipboardObserved;
 use crate::service::types::{
-    AppPatch, AppServiceSnapshot, EventId, EventSubscription, FileDecisionRequest, HistoryPage,
-    IngestTextRequest, ListHistoryRequest, RebroadcastEventRequest, SendFileRequest,
-    SyncDesiredState,
+    AppState, ClipboardHistoryPage, ClipboardRecord, EventId, EventSubscription,
+    IncomingTransferDecision, ListClipboardHistoryRequest, RebroadcastClipboardRequest,
+    SendFilesRequest, SettingsPatch, StateSubscription, SubmitTextRequest, SyncDesiredState,
+    TransferId,
 };
 
 pub(crate) enum ControlCommand {
     Shutdown {
         reply: oneshot::Sender<AppResult<()>>,
     },
-    SetSyncDesiredState {
-        desired_state: SyncDesiredState,
-        reply: oneshot::Sender<AppResult<AppServiceSnapshot>>,
+    GetState {
+        reply: oneshot::Sender<AppResult<AppState>>,
     },
-    ApplyConfigPatch {
-        patch: AppPatch,
-        reply: oneshot::Sender<AppResult<AppServiceSnapshot>>,
+    SubscribeState {
+        reply: oneshot::Sender<AppResult<StateSubscription>>,
     },
-    Snapshot {
-        reply: oneshot::Sender<AppResult<AppServiceSnapshot>>,
-    },
-
-    IngestTextEvent {
-        request: IngestTextRequest,
-        reply: oneshot::Sender<AppResult<()>>,
-    },
-    WriteEventToClipboard {
-        event_id: EventId,
-        reply: oneshot::Sender<AppResult<()>>,
-    },
-    ListHistory {
-        request: ListHistoryRequest,
-        reply: oneshot::Sender<AppResult<HistoryPage>>,
-    },
-    RebroadcastEvent {
-        request: RebroadcastEventRequest,
-        reply: oneshot::Sender<AppResult<()>>,
-    },
-    SetLocalWatchEnabled {
-        enabled: bool,
-        reply: oneshot::Sender<AppResult<()>>,
-    },
-
-    SendFile {
-        request: SendFileRequest,
-        reply: oneshot::Sender<AppResult<()>>,
-    },
-    RespondFileDecision {
-        request: FileDecisionRequest,
-        reply: oneshot::Sender<AppResult<()>>,
-    },
-
     SubscribeEvents {
         reply: oneshot::Sender<AppResult<EventSubscription>>,
     },
-    SubscribeLocalClipboard {
-        reply: oneshot::Sender<AppResult<LocalClipboardSubscription>>,
+    SetSyncDesiredState {
+        desired_state: SyncDesiredState,
+        reply: oneshot::Sender<AppResult<()>>,
+    },
+    PatchSettings {
+        patch: SettingsPatch,
+        reply: oneshot::Sender<AppResult<()>>,
+    },
+    SubmitText {
+        request: SubmitTextRequest,
+        reply: oneshot::Sender<AppResult<EventId>>,
+    },
+    GetClipboardRecord {
+        event_id: EventId,
+        reply: oneshot::Sender<AppResult<ClipboardRecord>>,
+    },
+    ListClipboardHistory {
+        request: ListClipboardHistoryRequest,
+        reply: oneshot::Sender<AppResult<ClipboardHistoryPage>>,
+    },
+    AdoptClipboardRecord {
+        event_id: EventId,
+        reply: oneshot::Sender<AppResult<()>>,
+    },
+    RebroadcastClipboardRecord {
+        request: RebroadcastClipboardRequest,
+        reply: oneshot::Sender<AppResult<()>>,
+    },
+    SendFiles {
+        request: SendFilesRequest,
+        reply: oneshot::Sender<AppResult<Vec<TransferId>>>,
+    },
+    DecideIncomingTransfer {
+        request: IncomingTransferDecision,
+        reply: oneshot::Sender<AppResult<()>>,
+    },
+    CancelTransfer {
+        transfer_id: TransferId,
+        reply: oneshot::Sender<AppResult<()>>,
     },
     InternalLocalClipboardObserved {
         observed: LocalClipboardObserved,
     },
     InternalSyncEvent {
         event: nooboard_sync::SyncEvent,
+    },
+    InternalTransferUpdate {
+        update: nooboard_sync::TransferUpdate,
+    },
+    InternalSyncStatusChanged {
+        status: nooboard_sync::SyncStatus,
+    },
+    InternalConnectedPeersChanged {
+        peers: Vec<nooboard_sync::ConnectedPeerInfo>,
     },
 }

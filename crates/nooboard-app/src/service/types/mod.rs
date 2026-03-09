@@ -1,23 +1,26 @@
 mod clipboard;
 mod events;
 mod file_transfer;
-mod history;
 mod identity;
 mod network;
 mod time;
 
-pub use clipboard::{IngestTextRequest, RebroadcastEventRequest, TextSource};
-pub use events::{
-    AppEvent, EventStream, EventSubscription, EventSubscriptionItem, SubscriptionCloseReason,
-    SubscriptionLifecycle, SyncEvent,
+pub use clipboard::{
+    ClipboardBroadcastTargets, ClipboardHistoryCursor, ClipboardHistoryPage, ClipboardRecord,
+    ClipboardRecordSource, ListClipboardHistoryRequest, RebroadcastClipboardRequest,
+    SubmitTextRequest,
 };
+pub use events::{AppEvent, EventRecvError, EventSubscription};
 pub use file_transfer::{
-    FileDecisionRequest, SendFileRequest, TransferDirection, TransferState, TransferUpdate,
+    CompletedTransfer, IncomingTransfer, IncomingTransferDecision, IncomingTransferDisposition,
+    SendFileItem, SendFilesRequest, Transfer, TransferDirection, TransferOutcome, TransferState,
+    TransfersState,
 };
-pub use history::{HistoryCursor, HistoryPage, HistoryRecord, ListHistoryRequest};
-pub use identity::{EventId, NoobId, Targets};
+pub use identity::{EventId, LocalIdentity, NoobId, TransferId};
 pub use network::{
-    AppPatch, AppServiceSnapshot, AppSyncStatus, ConnectedPeer, NetworkPatch, PeerConnectionState,
-    StorageConfigView, StoragePatch, SyncDesiredState,
+    AppState, ClipboardSettings, ClipboardSettingsPatch, ClipboardState, ConnectedPeer,
+    NetworkSettings, NetworkSettingsPatch, PeerTransport, PeersState, SettingsPatch, SettingsState,
+    StateRecvError, StateSubscription, StorageSettings, StorageSettingsPatch, SyncActualStatus,
+    SyncDesiredState, SyncState, TransferSettings, TransferSettingsPatch,
 };
 pub(crate) use time::now_millis_i64;
