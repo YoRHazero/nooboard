@@ -60,18 +60,15 @@ async fn subscriptions_are_app_lifetime_before_sync_starts() -> Result<(), TestE
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn state_subscription_survives_running_engine_restart_from_network_patch()
--> Result<(), TestError> {
+async fn state_subscription_tracks_network_disable_and_explicit_restart() -> Result<(), TestError> {
     let (env_a, env_b) = new_service_pair()?;
     let service_a = &env_a.service;
     let service_b = &env_b.service;
     let mut state_subscription = service_a.subscribe_state().await?;
     let (_, noob_id_b) = connect_service_pair(service_a, service_b).await?;
 
-    let running_state = wait_for_state_update(
-        &mut state_subscription,
-        Duration::from_secs(10),
-        |state| {
+    let running_state =
+        wait_for_state_update(&mut state_subscription, Duration::from_secs(10), |state| {
             state.sync.desired == SyncDesiredState::Running
                 && state.sync.actual == SyncActualStatus::Running
                 && state
@@ -79,9 +76,8 @@ async fn state_subscription_survives_running_engine_restart_from_network_patch()
                     .connected
                     .iter()
                     .any(|peer| peer.noob_id == noob_id_b)
-        },
-    )
-    .await?;
+        })
+        .await?;
     let running_revision = running_state.revision;
 
     service_a
@@ -90,17 +86,14 @@ async fn state_subscription_survives_running_engine_restart_from_network_patch()
         ))
         .await?;
 
-    let disabled_state = wait_for_state_update(
-        &mut state_subscription,
-        Duration::from_secs(10),
-        |state| {
-            state.sync.desired == SyncDesiredState::Running
+    let disabled_state =
+        wait_for_state_update(&mut state_subscription, Duration::from_secs(10), |state| {
+            state.sync.desired == SyncDesiredState::Stopped
                 && state.sync.actual == SyncActualStatus::Disabled
                 && !state.settings.network.network_enabled
                 && state.peers.connected.is_empty()
-        },
-    )
-    .await?;
+        })
+        .await?;
     assert!(disabled_state.revision > running_revision);
 
     wait_for_service_state(service_b, Duration::from_secs(10), |state| {
@@ -114,10 +107,27 @@ async fn state_subscription_survives_running_engine_restart_from_network_patch()
         ))
         .await?;
 
-    let reenabled_state = wait_for_state_update(
-        &mut state_subscription,
-        Duration::from_secs(10),
-        |state| {
+    let reenabled_state =
+        wait_for_state_update(&mut state_subscription, Duration::from_secs(10), |state| {
+            state.sync.desired == SyncDesiredState::Stopped
+                && state.sync.actual == SyncActualStatus::Stopped
+                && state.settings.network.network_enabled
+                && state.peers.connected.is_empty()
+        })
+        .await?;
+    assert!(reenabled_state.revision > disabled_state.revision);
+
+    wait_for_service_state(service_b, Duration::from_secs(10), |state| {
+        state.sync.actual == SyncActualStatus::Running && state.peers.connected.is_empty()
+    })
+    .await?;
+
+    service_a
+        .set_sync_desired_state(SyncDesiredState::Running)
+        .await?;
+
+    let restarted_state =
+        wait_for_state_update(&mut state_subscription, Duration::from_secs(10), |state| {
             state.sync.desired == SyncDesiredState::Running
                 && state.sync.actual == SyncActualStatus::Running
                 && state.settings.network.network_enabled
@@ -126,10 +136,9 @@ async fn state_subscription_survives_running_engine_restart_from_network_patch()
                     .connected
                     .iter()
                     .any(|peer| peer.noob_id == noob_id_b)
-        },
-    )
-    .await?;
-    assert!(reenabled_state.revision > disabled_state.revision);
+        })
+        .await?;
+    assert!(restarted_state.revision > reenabled_state.revision);
 
     wait_for_service_state(service_b, Duration::from_secs(10), |state| {
         state.sync.actual == SyncActualStatus::Running
@@ -137,7 +146,7 @@ async fn state_subscription_survives_running_engine_restart_from_network_patch()
                 .peers
                 .connected
                 .iter()
-                .any(|peer| peer.noob_id == reenabled_state.identity.noob_id)
+                .any(|peer| peer.noob_id == restarted_state.identity.noob_id)
     })
     .await?;
 
@@ -164,15 +173,11 @@ async fn shutdown_publishes_final_state_to_existing_subscription() -> Result<(),
 
     let (shutdown_result, final_state_result) = tokio::join!(
         service.shutdown(),
-        wait_for_state_update(
-            &mut state_subscription,
-            Duration::from_secs(10),
-            |state| {
-                state.sync.desired == SyncDesiredState::Stopped
-                    && state.sync.actual == SyncActualStatus::Stopped
-                    && state.peers.connected.is_empty()
-            }
-        )
+        wait_for_state_update(&mut state_subscription, Duration::from_secs(10), |state| {
+            state.sync.desired == SyncDesiredState::Stopped
+                && state.sync.actual == SyncActualStatus::Stopped
+                && state.peers.connected.is_empty()
+        })
     );
     shutdown_result?;
     let _final_state = final_state_result?;

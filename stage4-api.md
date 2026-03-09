@@ -187,7 +187,10 @@ pub enum SyncActualStatus {
 说明：
 - `desired` 是 app 想要的目标状态
 - `actual` 是 runtime 当前真实状态
-- 当 `network_enabled=false` 且 `desired=Running` 时，`actual` 会进入 `Disabled`
+- 当 `network_enabled=false` 时，`desired` 会被收敛为 `Stopped`
+- 当 `network_enabled=false` 时，`actual` 会进入 `Disabled`
+- 当 `network_enabled=false` 时，`set_sync_desired_state(Running)` 返回 `AppError::SyncDisabled`
+- 重新开启 network setting 不会自动恢复到 `Running`；desktop 需要再次显式调用 `set_sync_desired_state(Running)`
 
 ### 5.4 `peers`
 
@@ -311,6 +314,7 @@ pub enum AppEvent {
 - `TransferUpdated`：active transfer 的状态或进度推进
 - `TransferCompleted`：transfer 已进入终态，并且已经体现在 `AppState.transfers.recent_completed`
 - `PeerConnectionError`：连接错误边沿事件；真实 connected peers 仍以 `AppState.peers.connected` 为准
+- `AppEvent` 不承载 desktop-local warning/error；宿主自己的桥接失败、查询失败、UI 本地诊断应进入 desktop 本地 activity/diagnostic 层，而不是反向塞进 app contract
 
 ---
 
@@ -639,6 +643,8 @@ pub enum AppError {
 desktop 集成中最常见的是：
 - `InvalidConfig`
 - `SyncDisabled`
+  - `set_sync_desired_state(Running)` 且 network setting 禁用
+  - 发送/广播等依赖 sync network 的动作发生在 network disabled 下
 - `EngineNotRunning`
 - `EventNotFound`
 - `TextTooLarge`
@@ -667,6 +673,7 @@ let initial = state_sub.latest().clone();
 推荐原则：
 - 页面主体直接渲染 `AppState`
 - toast、一次性提示、瞬时反馈走 `AppEvent`
+- recent activity 建议做成 desktop-local normalized feed：接收 `AppEvent`，再按需要补充 state edge 和 desktop diagnostic 项
 - clipboard 页面主体读 `list_clipboard_history()` 和 `AppState.clipboard.latest_committed_event_id`
 - transfer 页面主体直接读 `AppState.transfers`
 - peers 页面主体直接读 `AppState.peers.connected`

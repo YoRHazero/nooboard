@@ -37,10 +37,14 @@ impl ControlState {
         config: AppConfig,
         storage_runtime: Arc<StorageRuntime>,
         clipboard: ClipboardRuntime,
-        sync_runtime: SyncRuntime,
+        mut sync_runtime: SyncRuntime,
         state_hub: Option<StateHub>,
         event_hub: Option<EventHub>,
     ) -> AppResult<Self> {
+        if !config.sync.network.enabled {
+            sync_runtime.mark_disabled();
+        }
+
         let identity = LocalIdentity {
             noob_id: NoobId::new(config.noob_id().unwrap_or_default().to_string()),
             device_id: config.identity.device_id.clone(),

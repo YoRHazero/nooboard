@@ -1,5 +1,5 @@
-use crate::AppResult;
 use crate::service::types::SyncDesiredState;
+use crate::{AppError, AppResult};
 
 use super::state::ControlState;
 
@@ -7,6 +7,10 @@ pub(super) async fn set_sync_desired_state(
     state: &mut ControlState,
     desired_state: SyncDesiredState,
 ) -> AppResult<()> {
+    if matches!(desired_state, SyncDesiredState::Running) && !state.config.sync.network.enabled {
+        return Err(AppError::SyncDisabled);
+    }
+
     state.update_state(|app_state| {
         app_state.sync.desired = desired_state;
     });
@@ -17,6 +21,20 @@ pub(super) async fn reconcile_engine_state(
     state: &mut ControlState,
     force_restart: bool,
 ) -> AppResult<()> {
+    if !state.config.sync.network.enabled {
+        state.sync_runtime.stop().await?;
+        state.sync_runtime.mark_disabled();
+
+        let actual = state.sync_actual_status();
+        let peers = state.connected_peers_state();
+        state.update_state(|app_state| {
+            app_state.sync.desired = SyncDesiredState::Stopped;
+            app_state.sync.actual = actual;
+            app_state.peers.connected = peers;
+        });
+        return Ok(());
+    }
+
     match state.app_state.sync.desired {
         SyncDesiredState::Running => {
             let has_engine = state.sync_runtime.has_engine();

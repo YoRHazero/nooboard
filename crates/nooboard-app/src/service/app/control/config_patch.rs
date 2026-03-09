@@ -1,7 +1,7 @@
 use crate::config::AppConfig;
 use crate::service::types::{
     ClipboardSettingsPatch, NetworkSettingsPatch, SettingsPatch, StorageSettingsPatch,
-    SyncDesiredState, TransferSettingsPatch,
+    TransferSettingsPatch,
 };
 use crate::{AppError, AppResult};
 
@@ -52,7 +52,6 @@ pub(super) async fn patch_settings(
 
     if apply_error.is_none()
         && effect.sync_reconcile_required
-        && matches!(state.app_state.sync.desired, SyncDesiredState::Running)
         && let Err(error) = reconcile_engine_state(state, true).await
     {
         apply_error = Some(error);
@@ -214,7 +213,6 @@ async fn rollback_patch_failure(
     }
 
     if effect.sync_reconcile_required
-        && matches!(state.app_state.sync.desired, SyncDesiredState::Running)
         && let Err(error) = reconcile_engine_state(state, true).await
     {
         rollback_errors.push(format!("sync rollback failed: {error}"));

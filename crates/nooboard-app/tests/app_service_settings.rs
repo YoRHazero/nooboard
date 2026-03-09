@@ -16,6 +16,7 @@ use tokio::time::{Duration, timeout};
 use support::{
     MockClipboardBackend, TestError, connect_service_pair, new_service, new_service_pair,
     recv_clipboard_committed, restart_service, wait_for_event, wait_for_service_state,
+    wait_for_state_update,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -192,7 +193,6 @@ async fn network_settings_publish_to_state_subscription_and_persist_across_resta
     let env = new_service()?;
     let service = &env.service;
     let mut state_subscription = service.subscribe_state().await?;
-    let initial_revision = state_subscription.latest().revision;
     let manual_peers: Vec<SocketAddr> =
         vec!["127.0.0.1:24001".parse()?, "127.0.0.1:24002".parse()?];
 
@@ -201,8 +201,15 @@ async fn network_settings_publish_to_state_subscription_and_persist_across_resta
             NetworkSettingsPatch::SetNetworkEnabled(false),
         ))
         .await?;
-    let state_after_network = timeout(Duration::from_secs(2), state_subscription.recv()).await??;
-    assert_eq!(state_after_network.revision, initial_revision + 1);
+    let state_after_network =
+        wait_for_state_update(&mut state_subscription, Duration::from_secs(2), |state| {
+            !state.settings.network.network_enabled
+                && state.settings.network.mdns_enabled
+                && state.settings.network.manual_peers.is_empty()
+                && state.sync.desired == SyncDesiredState::Stopped
+                && state.sync.actual == SyncActualStatus::Disabled
+        })
+        .await?;
     assert!(!state_after_network.settings.network.network_enabled);
     assert!(state_after_network.settings.network.mdns_enabled);
     assert!(state_after_network.settings.network.manual_peers.is_empty());
@@ -212,8 +219,16 @@ async fn network_settings_publish_to_state_subscription_and_persist_across_resta
             NetworkSettingsPatch::SetMdnsEnabled(false),
         ))
         .await?;
-    let state_after_mdns = timeout(Duration::from_secs(2), state_subscription.recv()).await??;
-    assert_eq!(state_after_mdns.revision, initial_revision + 2);
+    let state_after_mdns =
+        wait_for_state_update(&mut state_subscription, Duration::from_secs(2), |state| {
+            !state.settings.network.network_enabled
+                && !state.settings.network.mdns_enabled
+                && state.settings.network.manual_peers.is_empty()
+                && state.sync.desired == SyncDesiredState::Stopped
+                && state.sync.actual == SyncActualStatus::Disabled
+        })
+        .await?;
+    assert!(state_after_mdns.revision > state_after_network.revision);
     assert!(!state_after_mdns.settings.network.network_enabled);
     assert!(!state_after_mdns.settings.network.mdns_enabled);
     assert!(state_after_mdns.settings.network.manual_peers.is_empty());
@@ -224,8 +239,15 @@ async fn network_settings_publish_to_state_subscription_and_persist_across_resta
         ))
         .await?;
     let state_after_manual_peers =
-        timeout(Duration::from_secs(2), state_subscription.recv()).await??;
-    assert_eq!(state_after_manual_peers.revision, initial_revision + 3);
+        wait_for_state_update(&mut state_subscription, Duration::from_secs(2), |state| {
+            !state.settings.network.network_enabled
+                && !state.settings.network.mdns_enabled
+                && state.settings.network.manual_peers == manual_peers
+                && state.sync.desired == SyncDesiredState::Stopped
+                && state.sync.actual == SyncActualStatus::Disabled
+        })
+        .await?;
+    assert!(state_after_manual_peers.revision > state_after_mdns.revision);
     assert!(!state_after_manual_peers.settings.network.network_enabled);
     assert!(!state_after_manual_peers.settings.network.mdns_enabled);
     assert_eq!(
@@ -245,6 +267,9 @@ async fn network_settings_publish_to_state_subscription_and_persist_across_resta
     assert!(!restarted_network.network_enabled);
     assert!(!restarted_network.mdns_enabled);
     assert_eq!(restarted_network.manual_peers, manual_peers);
+    let restarted_state = restarted.get_state().await?;
+    assert_eq!(restarted_state.sync.desired, SyncDesiredState::Stopped);
+    assert_eq!(restarted_state.sync.actual, SyncActualStatus::Disabled);
 
     restarted.shutdown().await?;
     Ok(())
@@ -280,7 +305,9 @@ async fn storage_settings_persist_across_restart_and_reconfigure_history_backend
         Err(AppError::EventNotFound { event_id }) => {
             assert_eq!(event_id, original_event.to_string());
         }
-        other => return Err(format!("expected EventNotFound after db switch, got {other:?}").into()),
+        other => {
+            return Err(format!("expected EventNotFound after db switch, got {other:?}").into());
+        }
     }
 
     let switched_event = service
@@ -327,10 +354,10 @@ async fn storage_settings_persist_across_restart_and_reconfigure_history_backend
             assert_eq!(event_id, original_event.to_string());
         }
         other => {
-            return Err(
-                format!("expected old db event to stay hidden after restart, got {other:?}")
-                    .into(),
-            );
+            return Err(format!(
+                "expected old db event to stay hidden after restart, got {other:?}"
+            )
+            .into());
         }
     }
 
@@ -355,7 +382,9 @@ async fn invalid_settings_patch_does_not_mutate_state_or_persist() -> Result<(),
         ))
         .await
         .expect_err("duplicate manual peers must fail validation");
-    assert!(matches!(error, AppError::InvalidConfig(ref message) if message.contains("duplicate address")));
+    assert!(
+        matches!(error, AppError::InvalidConfig(ref message) if message.contains("duplicate address"))
+    );
 
     let maybe_state = timeout(Duration::from_millis(200), state_subscription.recv()).await;
     assert!(
@@ -375,8 +404,8 @@ async fn invalid_settings_patch_does_not_mutate_state_or_persist() -> Result<(),
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn network_disabled_reports_disabled_actual_and_rejects_sync_actions()
--> Result<(), TestError> {
+async fn network_disabled_reports_disabled_actual_and_rejects_sync_actions() -> Result<(), TestError>
+{
     let env = new_service()?;
     let service = &env.service;
 
@@ -385,17 +414,22 @@ async fn network_disabled_reports_disabled_actual_and_rejects_sync_actions()
             NetworkSettingsPatch::SetNetworkEnabled(false),
         ))
         .await?;
-    service
-        .set_sync_desired_state(SyncDesiredState::Running)
-        .await?;
-
-    let disabled_state = wait_for_service_state(service, Duration::from_secs(10), |state| {
-        state.sync.desired == SyncDesiredState::Running
+    let state_after_disable = wait_for_service_state(service, Duration::from_secs(10), |state| {
+        state.sync.desired == SyncDesiredState::Stopped
             && state.sync.actual == SyncActualStatus::Disabled
             && !state.settings.network.network_enabled
     })
     .await?;
-    assert!(disabled_state.peers.connected.is_empty());
+    assert!(state_after_disable.peers.connected.is_empty());
+
+    let start_error = service
+        .set_sync_desired_state(SyncDesiredState::Running)
+        .await
+        .expect_err("set_sync_desired_state(Running) must fail when network is disabled");
+    assert!(matches!(start_error, AppError::SyncDisabled));
+    let disabled_state = service.get_state().await?;
+    assert_eq!(disabled_state.sync.desired, SyncDesiredState::Stopped);
+    assert_eq!(disabled_state.sync.actual, SyncActualStatus::Disabled);
 
     let event_id = service
         .submit_text(SubmitTextRequest {
@@ -429,12 +463,23 @@ async fn network_disabled_reports_disabled_actual_and_rejects_sync_actions()
         ))
         .await?;
     let reenabled_state = wait_for_service_state(service, Duration::from_secs(10), |state| {
+        state.sync.desired == SyncDesiredState::Stopped
+            && state.sync.actual == SyncActualStatus::Stopped
+            && state.settings.network.network_enabled
+    })
+    .await?;
+    assert!(reenabled_state.settings.network.network_enabled);
+
+    service
+        .set_sync_desired_state(SyncDesiredState::Running)
+        .await?;
+    let running_state = wait_for_service_state(service, Duration::from_secs(10), |state| {
         state.sync.desired == SyncDesiredState::Running
             && state.sync.actual == SyncActualStatus::Running
             && state.settings.network.network_enabled
     })
     .await?;
-    assert!(reenabled_state.settings.network.network_enabled);
+    assert_eq!(running_state.sync.actual, SyncActualStatus::Running);
 
     service.shutdown().await?;
     Ok(())

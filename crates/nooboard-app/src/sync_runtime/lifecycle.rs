@@ -17,14 +17,18 @@ const ENGINE_STOP_WAIT_TIMEOUT: Duration = Duration::from_secs(3);
 const ENGINE_START_WAIT_TIMEOUT: Duration = Duration::from_secs(3);
 
 impl SyncRuntime {
+    pub fn mark_disabled(&mut self) {
+        let _ = self.state.peers_tx.send(Vec::new());
+        let _ = self.state.status_tx.send(SyncStatus::Disabled);
+    }
+
     pub async fn start(&mut self, config: SyncConfig) -> AppResult<()> {
         if self.state.engine.is_some() {
             return Ok(());
         }
 
         if !config.enabled {
-            let _ = self.state.peers_tx.send(Vec::new());
-            let _ = self.state.status_tx.send(SyncStatus::Disabled);
+            self.mark_disabled();
             return Ok(());
         }
 

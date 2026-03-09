@@ -307,6 +307,10 @@ pub enum SyncActualStatus {
 - `actual` 是 sync runtime 观测态。
 - 两者可以不一致。
 - `actual` 必须直接由 runtime 权威状态派生，不得由页面推断。
+- 当 `network_enabled=false` 时，`desired` 必须收敛为 `Stopped`。
+- 当 `network_enabled=false` 时，`actual` 必须为 `Disabled`。
+- 当 `network_enabled=false` 时，`set_sync_desired_state(Running)` 必须返回 `AppError::SyncDisabled`。
+- network setting 重新开启后，不允许隐式恢复之前的 `Running` 意图；需要 desktop 再次显式调用 `set_sync_desired_state(Running)`。
 
 ### 7.4 Peers
 
@@ -537,6 +541,7 @@ pub enum AppEvent {
 - 事件允许只带主键或小型摘要；完整展示数据应从 `AppState` 或业务查询中读取。
 - `ClipboardCommitted` 只在 record 成功入库后发出。
 - `TransferCompleted` 发出时，相应结果必须已经体现在 `AppState.transfers.recent_completed` 中。
+- desktop-local warning/error 不属于 `AppEvent`；宿主自己的桥接失败、查询失败、UI 本地诊断要进入 desktop 本地 edge-feedback 层。
 
 ---
 
@@ -846,7 +851,10 @@ async fn set_sync_desired_state(
 
 - 只修改目标态，不伪造实际态。
 - `actual` 的变化由 runtime 观测推进。
-- `desired=Running` 且 network setting 禁用时，允许 `actual=Disabled`。
+- `network_enabled=false` 时，`desired` 必须被收敛为 `Stopped`。
+- `network_enabled=false` 时，`actual` 必须为 `Disabled`。
+- `network_enabled=false` 时，`set_sync_desired_state(Running)` 必须返回 `AppError::SyncDisabled`。
+- network setting 重新开启后，不允许隐式恢复之前的 `Running` 意图；需要 desktop 再次显式调用 `set_sync_desired_state(Running)`。
 
 ### 12.2 Peers 只承诺 connected
 
@@ -910,6 +918,24 @@ UI local state：
 - 日志/调试面板
 
 页面主内容不要直接依赖 event stream 维持正确性。
+
+recent activity 的基础约束：
+
+- 它是 desktop-local normalized feed，不等同于 `AppEvent` 原样列表。
+- 允许由三类来源合成：`AppEvent`、`AppState` 的边沿变化、desktop 本地 diagnostic。
+- 默认应覆盖的种类至少包括：
+  - `ClipboardCommitted`
+  - `IncomingTransferOffered`
+  - `TransferCompleted`
+  - `PeerConnectionError`
+  - `SyncStarting`
+  - `SyncRunning`
+  - `SyncStopped`
+  - `SyncDisabledBySettings`
+  - `SyncError`
+  - `DesktopWarning`
+  - `DesktopError`
+- `TransferUpdated` 默认不应直接进入 Home recent activity，否则噪音过高；它更适合 transfer 进度区或 toast。
 
 ### 13.4 Clipboard 页面工作流
 

@@ -9,7 +9,7 @@ use gpui_component::{Root, TitleBar};
 use gpui_component_assets::Assets as ComponentAssets;
 use gpui_platform::application;
 
-use crate::state::SharedState;
+use crate::state::{SharedState, install_desktop_live_app};
 use crate::ui::WorkspaceView;
 
 struct DesktopAssets {
@@ -93,6 +93,8 @@ impl AssetSource for DesktopAssets {
 pub fn run() {
     application().with_assets(DesktopAssets::new()).run(|cx| {
         gpui_component::init(cx);
+        install_desktop_live_app(desktop_config_path(), cx)
+            .expect("desktop live app bootstrap must succeed");
 
         let shared = Arc::new(SharedState::demo());
         let workspace_options = workspace_window_options(cx);
@@ -103,6 +105,18 @@ pub fn run() {
         })
         .detach();
     });
+}
+
+fn desktop_config_path() -> PathBuf {
+    std::env::var_os("NOOBOARD_DESKTOP_CONFIG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("..")
+                .join("configs")
+                .join("dev.toml")
+        })
 }
 
 fn open_workspace_window(

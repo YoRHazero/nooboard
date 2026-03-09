@@ -30,6 +30,7 @@ pub(crate) fn spawn_control_actor(mut state: ControlState) -> mpsc::Sender<Contr
     tokio::spawn(async move {
         let mut runtime = ActorRuntime::default();
         if start_runtime_tasks(&mut runtime, &state, &actor_tx).is_ok() {
+            let _ = engine_reconcile::reconcile_engine_state(&mut state, false).await;
             let _ = reconcile_local_capture_runtime(&mut state).await;
         }
         run_control_actor(&mut state, &mut runtime, command_rx).await;
