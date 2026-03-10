@@ -5,18 +5,12 @@ use crate::ui::theme;
 
 use super::WorkspaceView;
 use super::components::settings_status_chip;
+use super::settings_status_tokens;
 
 impl WorkspaceView {
     pub(super) fn settings_header(&self) -> Div {
         let dirty_fields = self.settings_dirty_field_count();
-        let validation_issues = self.storage_validation_issues();
-        let (status_label, status_accent) = if !validation_issues.is_empty() {
-            ("Review", theme::accent_rose())
-        } else if dirty_fields > 0 {
-            ("Modified", theme::accent_amber())
-        } else {
-            ("Current", theme::accent_green())
-        };
+        let (status_label, status_accent) = settings_status_tokens(self.settings_status());
 
         div()
             .h_flex()
@@ -71,7 +65,9 @@ impl WorkspaceView {
                                     .text_color(theme::fg_muted())
                                     .line_clamp(1)
                                     .text_ellipsis()
-                                    .child("Review draft changes against the current settings."),
+                                    .child(
+                                        "Read the live app settings, stage local edits, and apply section patches.",
+                                    ),
                             ),
                     ),
             )

@@ -9,123 +9,122 @@ use crate::ui::theme;
 use super::StorageSettingField;
 use super::WorkspaceView;
 use super::components::{
-    settings_action_button, settings_action_row, settings_button_with_tooltip,
-    settings_control_button, settings_path_field_row, settings_section_footer,
-    settings_section_shell, settings_status_chip, settings_stepper_field_row,
-    settings_themed_tooltip,
+    settings_action_button, settings_action_row, settings_control_button, settings_path_field_row,
+    settings_section_footer, settings_section_shell, settings_status_chip,
+    settings_stepper_field_row, settings_themed_tooltip,
 };
+use super::{SettingsSectionPhase, settings_status_tokens};
 
 impl WorkspaceView {
     pub(super) fn storage_settings_panel(&self, cx: &mut Context<Self>) -> Div {
-        let dirty = self.storage_settings_dirty();
+        let dirty = !self.storage_patch_labels().is_empty();
         let issues = self.storage_validation_issues();
         let patch_labels = self.storage_patch_labels();
-        let status = if !issues.is_empty() {
-            settings_status_chip("Review", theme::accent_rose())
-        } else if dirty {
-            settings_status_chip("Modified", theme::accent_amber())
-        } else {
-            settings_status_chip("Current", theme::accent_green())
-        };
+        let (status_label, status_accent) = settings_status_tokens(self.storage_settings_status());
+        let status = settings_status_chip(status_label, status_accent);
 
         settings_section_shell(
             "Storage",
-            "Adjust the draft settings for retention, cleanup, and storage location.",
+            "Edit the app's persistent storage paths and retention windows.",
             status,
         )
-            .child(self.settings_db_root_row(cx))
-            .child(self.settings_number_row(
-                "retain_versions",
-                "Retained old versions",
-                "How many older revisions should stay available after cleanup runs.",
-                StorageSettingField::RetainOldVersions,
-                self.storage_settings_draft().retain_old_versions.to_string(),
-                self.storage_settings_confirmed()
-                    .retain_old_versions
-                    .to_string(),
-                cx,
-            ))
-            .child(self.settings_number_row(
+        .child(self.settings_db_root_row(cx))
+        .child(
+            self.settings_number_row(
                 "history_days",
                 "History retention window",
                 "How long clipboard history should stay available before it expires.",
                 StorageSettingField::HistoryWindowDays,
-                self.storage_settings_draft().history_window_days.to_string(),
+                self.storage_settings_draft()
+                    .history_window_days
+                    .to_string(),
                 self.storage_settings_confirmed()
                     .history_window_days
                     .to_string(),
                 cx,
-            ))
-            .child(self.settings_number_row(
+            ),
+        )
+        .child(
+            self.settings_number_row(
                 "dedup_days",
                 "Deduplication window",
                 "How far back the app should look when merging repeated text.",
                 StorageSettingField::DedupWindowDays,
                 self.storage_settings_draft().dedup_window_days.to_string(),
-                self.storage_settings_confirmed().dedup_window_days.to_string(),
+                self.storage_settings_confirmed()
+                    .dedup_window_days
+                    .to_string(),
                 cx,
-            ))
-            .child(self.settings_number_row(
-                "gc_every_inserts",
-                "Cleanup trigger interval",
-                "How many inserts should happen before a cleanup pass starts.",
-                StorageSettingField::GcEveryInserts,
-                self.storage_settings_draft().gc_every_inserts.to_string(),
-                self.storage_settings_confirmed().gc_every_inserts.to_string(),
-                cx,
-            ))
-            .child(self.settings_number_row(
-                "gc_batch_size",
-                "Cleanup batch size",
-                "How many records each cleanup pass should process at most.",
-                StorageSettingField::GcBatchSize,
-                self.storage_settings_draft().gc_batch_size.to_string(),
-                self.storage_settings_confirmed().gc_batch_size.to_string(),
-                cx,
-            ))
-            .child(settings_section_footer(
-                if !issues.is_empty() {
-                    format!("Validation: {}", issues.join("; "))
-                } else if patch_labels.is_empty() {
-                    "No storage changes ready for review.".to_string()
-                } else {
-                    format!("Changed: {}", patch_labels.join(", "))
-                },
-                if issues.is_empty() {
-                    theme::fg_muted()
-                } else {
-                    theme::accent_rose()
-                },
-                settings_action_row([
-                    settings_action_button(
-                        "settings-reset-storage-draft",
-                        "Reset",
-                        theme::accent_rose(),
-                        cx,
-                    )
-                    .disabled(!dirty)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.reset_storage_settings_draft(cx);
-                    }))
-                    .into_any_element(),
-                    settings_button_with_tooltip(
-                        "settings-review-storage-tooltip",
-                        settings_action_button(
-                            "settings-stage-storage-patch",
-                            "Review",
-                            theme::accent_cyan(),
-                            cx,
-                        )
-                        .disabled(!dirty || !issues.is_empty())
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.stage_storage_patch(cx);
-                        })),
-                        Some(
-                            "Preview which storage settings would be prepared from this draft. No backend call happens yet.",
+            ),
+        )
+        .child(self.settings_number_row(
+            "max_text_bytes",
+            "Maximum text bytes",
+            "Upper bound for a single committed text record before the app rejects it.",
+            StorageSettingField::MaxTextBytes,
+            self.storage_settings_draft().max_text_bytes.to_string(),
+            self.storage_settings_confirmed().max_text_bytes.to_string(),
+            cx,
+        ))
+        .child(self.settings_number_row(
+            "gc_batch_size",
+            "Cleanup batch size",
+            "How many records each cleanup pass should process at most.",
+            StorageSettingField::GcBatchSize,
+            self.storage_settings_draft().gc_batch_size.to_string(),
+            self.storage_settings_confirmed().gc_batch_size.to_string(),
+            cx,
+        ))
+        .child(settings_section_footer(
+            if !issues.is_empty() {
+                format!("Validation: {}", issues.join("; "))
+            } else if patch_labels.is_empty() {
+                "Storage settings match the current app state.".to_string()
+            } else if let Some(message) = Self::settings_phase_summary(
+                self.storage_settings_phase(),
+                "Live storage settings changed while this draft was open.",
+            ) {
+                message
+            } else {
+                format!("Changed: {}", patch_labels.join(", "))
+            },
+            if issues.is_empty() {
+                theme::fg_muted()
+            } else {
+                theme::accent_rose()
+            },
+            settings_action_row([
+                settings_action_button(
+                    "settings-reset-storage-draft",
+                    "Reset",
+                    theme::accent_rose(),
+                    cx,
+                )
+                .disabled(!dirty)
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.reset_storage_settings_draft(cx);
+                }))
+                .into_any_element(),
+                settings_action_button(
+                    "settings-apply-storage-patch",
+                    "Apply",
+                    theme::accent_cyan(),
+                    cx,
+                )
+                .disabled(
+                    !dirty
+                        || !issues.is_empty()
+                        || matches!(
+                            self.storage_settings_phase(),
+                            SettingsSectionPhase::Applying
                         ),
-                    ),
-                ]),
-            ))
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.apply_storage_settings(cx);
+                }))
+                .into_any_element(),
+            ]),
+        ))
     }
 
     fn settings_db_root_row(&self, cx: &mut Context<Self>) -> Div {

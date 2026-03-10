@@ -26,7 +26,7 @@ use crate::ui::theme;
 use self::clipboard::ClipboardPageState;
 use self::components::{titlebar_brand, titlebar_chip};
 use self::peers::PeersPageState;
-use self::settings::SettingsPageState;
+use self::settings::{SettingsPageState, build_settings_snapshot};
 use self::shared::MAIN_CANVAS_MIN_WIDTH;
 use self::transfers::TransfersPageState;
 
@@ -44,16 +44,21 @@ pub struct WorkspaceView {
 }
 
 impl WorkspaceView {
-    pub fn new(state: Arc<SharedState>, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, state: Arc<SharedState>, cx: &mut Context<Self>) -> Self {
         let live_store = cx.global::<DesktopLiveApp>().store();
-        cx.observe(&live_store, |_, _, cx| {
+        cx.observe(&live_store, |this, _, cx| {
+            this.sync_settings_page_state(cx);
             cx.notify();
         })
         .detach();
 
         let clipboard_page = ClipboardPageState::new(&state.app.clipboard);
         let peers_page_state = PeersPageState::new();
-        let settings_page_state = SettingsPageState::new(state.app.system_core.network_enabled);
+        let settings_snapshot = {
+            let store = live_store.read(cx);
+            build_settings_snapshot(&store)
+        };
+        let settings_page_state = SettingsPageState::new(settings_snapshot, window, cx);
         let transfers_page_state = TransfersPageState::new();
 
         Self {

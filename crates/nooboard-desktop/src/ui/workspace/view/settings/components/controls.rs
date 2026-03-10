@@ -1,7 +1,4 @@
-use gpui::{
-    AnyElement, AnyView, App, Hsla, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, Window, div, px,
-};
+use gpui::{AnyView, App, Hsla, ParentElement, Styled, Window, div, px};
 use gpui_component::Sizable;
 use gpui_component::StyledExt;
 use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
@@ -19,23 +16,6 @@ pub(in crate::ui::workspace::view::settings) fn settings_themed_tooltip(
         .text_color(theme::fg_primary())
         .border_color(theme::border_base())
         .build(window, cx)
-}
-
-pub(in crate::ui::workspace::view::settings) fn settings_button_with_tooltip(
-    id: &'static str,
-    button: Button,
-    tooltip: Option<&'static str>,
-) -> AnyElement {
-    match tooltip {
-        Some(text) => div()
-            .id(id)
-            .tooltip(move |window: &mut Window, cx| {
-                settings_themed_tooltip(text.to_string(), window, cx)
-            })
-            .child(button)
-            .into_any_element(),
-        None => button.into_any_element(),
-    }
 }
 
 pub(in crate::ui::workspace::view::settings) fn settings_action_button(

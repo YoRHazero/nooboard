@@ -2,7 +2,7 @@ use anyhow::Error;
 use gpui::{AsyncApp, Context, Entity};
 use nooboard_app::{
     AppError, DesktopAppService, EventId, IncomingTransferDecision, SendFilesRequest,
-    SyncDesiredState, TransferId,
+    SettingsPatch, SyncDesiredState, TransferId,
 };
 
 use super::live_app::{DesktopLiveApp, LiveAppStore};
@@ -120,6 +120,23 @@ impl LiveCommandClient {
                 self.record_desktop_warning(
                     cx,
                     format!("failed to cancel transfer {transfer_id}: {error}"),
+                );
+                Err(error)
+            }
+        }
+    }
+
+    pub async fn patch_settings(
+        &self,
+        patch: SettingsPatch,
+        cx: &mut AsyncApp,
+    ) -> Result<(), AppError> {
+        match self.live_app.service().patch_settings(patch.clone()).await {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.record_desktop_warning(
+                    cx,
+                    format!("failed to patch settings {patch:?}: {error}"),
                 );
                 Err(error)
             }

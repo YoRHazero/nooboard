@@ -1,8 +1,16 @@
+mod apply;
+mod clipboard;
 mod components;
+mod derived;
+mod draft_ops;
 mod header;
 mod network;
 mod page_state;
+mod patches;
+mod section_state;
+mod snapshot;
 mod storage;
+mod transfers;
 
 use gpui::{Context, Div, ParentElement, Styled, div, px};
 use gpui_component::StyledExt;
@@ -12,44 +20,27 @@ use crate::ui::theme;
 
 use super::WorkspaceView;
 
-pub(super) use page_state::{SettingsPageState, SettingsSaveState, StorageSettingField};
+pub(super) use page_state::SettingsPageState;
+pub(super) use section_state::{
+    SettingsSection, SettingsSectionPhase, SettingsStatus, StorageSettingField,
+    settings_section_status,
+};
+pub(super) use snapshot::build_settings_snapshot;
+
+pub(super) fn settings_status_tokens(status: SettingsStatus) -> (&'static str, gpui::Hsla) {
+    match status {
+        SettingsStatus::Current => ("Current", theme::accent_green()),
+        SettingsStatus::Modified => ("Modified", theme::accent_amber()),
+        SettingsStatus::Applying => ("Applying", theme::accent_cyan()),
+        SettingsStatus::Review => ("Review", theme::accent_rose()),
+        SettingsStatus::Error => ("Error", theme::accent_rose()),
+        SettingsStatus::Stale => ("Stale", theme::accent_blue()),
+    }
+}
 
 impl WorkspaceView {
     pub(super) fn settings_page(&self, cx: &mut Context<Self>) -> Div {
-        let dirty_fields = self.settings_dirty_field_count();
-        let has_validation_issues = !self.storage_validation_issues().is_empty();
-        let (label, accent, message) = match self.settings_save_state() {
-            SettingsSaveState::Ready => (
-                "Preview",
-                theme::accent_cyan(),
-                self.settings_feedback()
-                    .unwrap_or("Draft changes are ready for review.")
-                    .to_string(),
-            ),
-            SettingsSaveState::Invalid => (
-                "Review",
-                theme::accent_rose(),
-                self.settings_feedback()
-                    .unwrap_or("Resolve the highlighted storage issues first.")
-                    .to_string(),
-            ),
-            SettingsSaveState::Idle if dirty_fields > 0 => (
-                "Draft",
-                theme::accent_amber(),
-                self.settings_feedback()
-                    .unwrap_or("Draft values differ from the current settings.")
-                    .to_string(),
-            ),
-            _ => (
-                "Current",
-                theme::accent_green(),
-                if has_validation_issues {
-                    "Resolve the highlighted storage issues first.".to_string()
-                } else {
-                    "Draft values match the current settings.".to_string()
-                },
-            ),
-        };
+        let (label, accent) = settings_status_tokens(self.settings_status());
 
         div()
             .w_full()
@@ -61,9 +52,15 @@ impl WorkspaceView {
                     .w_full()
                     .v_flex()
                     .gap(px(18.0))
-                    .child(self.storage_settings_panel(cx))
-                    .child(self.network_settings_panel(cx)),
+                    .child(self.network_settings_panel(cx))
+                    .child(self.clipboard_settings_panel(cx))
+                    .child(self.transfer_settings_panel(cx))
+                    .child(self.storage_settings_panel(cx)),
             )
-            .child(settings_feedback_banner(label, accent, message))
+            .child(settings_feedback_banner(
+                label,
+                accent,
+                self.settings_status_message(),
+            ))
     }
 }

@@ -56,7 +56,7 @@ pub(in crate::ui::workspace::view::settings) fn settings_stepper_field_row(
     hint: &str,
     value: impl Into<String>,
     current_value: impl Into<String>,
-    step: u32,
+    step: usize,
     dirty: bool,
     decrement_button: impl IntoElement,
     increment_button: impl IntoElement,

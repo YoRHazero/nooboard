@@ -126,7 +126,7 @@ fn open_workspace_window(
 ) -> anyhow::Result<()> {
     cx.open_window(options, move |window, cx| {
         let state = shared.clone();
-        let view = cx.new(|cx| WorkspaceView::new(state, cx));
+        let view = cx.new(|cx| WorkspaceView::new(window, state, cx));
         cx.new(|cx| Root::new(view, window, cx))
     })?;
     Ok(())
