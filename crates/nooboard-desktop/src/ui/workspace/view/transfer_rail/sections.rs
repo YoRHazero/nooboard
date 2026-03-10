@@ -1,61 +1,76 @@
-use gpui::{Context, Div, ElementId, Hsla, ParentElement, Styled, div, px};
+use gpui::{Context, Div, ParentElement, Styled, div, px};
 use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::progress::Progress;
 use gpui_component::{Sizable, StyledExt};
 
-use crate::state::{TransferItem, TransferStatus};
 use crate::ui::theme;
 
+use super::super::transfers::snapshot::{
+    ActiveTransferCardSnapshot, CompletedTransferCardSnapshot, IncomingTransferCardSnapshot,
+    TransferVisualAccent, TransfersSnapshot,
+};
 use super::WorkspaceView;
 
 impl WorkspaceView {
-    pub(super) fn transfer_sections(&self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn transfer_sections(
+        &self,
+        snapshot: &TransfersSnapshot,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let active_cards = snapshot
+            .active_uploads
+            .iter()
+            .chain(snapshot.active_downloads.iter())
+            .collect::<Vec<_>>();
+        let completed_cards = snapshot
+            .completed_uploads
+            .iter()
+            .chain(snapshot.completed_downloads.iter())
+            .collect::<Vec<_>>();
+
         div()
             .v_flex()
             .gap(px(18.0))
-            .child(self.awaiting_review_section(cx))
-            .child(self.progress_section())
-            .child(self.complete_section(cx))
+            .child(self.awaiting_review_section(&snapshot.incoming_pending, cx))
+            .child(self.progress_section(&active_cards))
+            .child(self.complete_section(&completed_cards, cx))
     }
 
-    fn awaiting_review_section(&self, cx: &mut Context<Self>) -> Div {
-        let cards = self
-            .transfer_items
+    fn awaiting_review_section(
+        &self,
+        items: &[IncomingTransferCardSnapshot],
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let cards = items
             .iter()
-            .filter(|item| item.is_awaiting_review())
             .enumerate()
             .map(|(index, item)| self.awaiting_review_card(index, item, cx))
             .collect::<Vec<_>>();
 
-        self.transfer_section(
-            "Awaiting Review",
-            cards.len(),
-            cards,
-            "No files awaiting review.",
-        )
+        self.transfer_section("Awaiting", cards.len(), cards, "No files awaiting review.")
     }
 
-    fn progress_section(&self) -> Div {
-        let cards = self
-            .transfer_items
+    fn progress_section(&self, items: &[&ActiveTransferCardSnapshot]) -> Div {
+        let cards = items
             .iter()
-            .filter(|item| item.is_progress())
-            .map(Self::progress_card)
+            .map(|item| Self::progress_card(item))
             .collect::<Vec<_>>();
 
-        self.transfer_section("Progress", cards.len(), cards, "No files in progress.")
+        self.transfer_section("Active", cards.len(), cards, "No files in progress.")
     }
 
-    fn complete_section(&self, cx: &mut Context<Self>) -> Div {
-        let cards = self
-            .transfer_items
+    fn complete_section(
+        &self,
+        items: &[&CompletedTransferCardSnapshot],
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let cards = items
             .iter()
-            .filter(|item| item.is_complete())
             .enumerate()
             .map(|(index, item)| self.complete_card(index, item, cx))
             .collect::<Vec<_>>();
 
-        self.transfer_section("Complete", cards.len(), cards, "No completed files.")
+        self.transfer_section("Completed", cards.len(), cards, "No completed files.")
     }
 
     fn transfer_section(
@@ -110,14 +125,9 @@ impl WorkspaceView {
     fn awaiting_review_card(
         &self,
         index: usize,
-        item: &TransferItem,
+        item: &IncomingTransferCardSnapshot,
         cx: &mut Context<Self>,
     ) -> Div {
-        let queued_at_label = match &item.status {
-            TransferStatus::AwaitingReview { queued_at_label } => queued_at_label,
-            _ => unreachable!("awaiting review section only renders awaiting review items"),
-        };
-
         div()
             .v_flex()
             .gap(px(12.0))
@@ -127,50 +137,33 @@ impl WorkspaceView {
             .border_color(theme::border_soft())
             .rounded(px(18.0))
             .child(Self::transfer_card_heading(
-                item.file_name.as_str(),
+                &item.file_name,
                 theme::accent_amber(),
             ))
             .child(Self::transfer_meta_row(
-                item.source_device.as_str(),
-                item.size_label.as_str(),
+                &item.peer_device_id,
+                &item.file_size_label,
             ))
+            .child(Self::transfer_inline_note("Offered", &item.offered_at_label).flex_1())
             .child(
-                div()
-                    .h_flex()
-                    .items_center()
-                    .justify_between()
-                    .gap(px(10.0))
-                    .child(Self::transfer_inline_note("Queued", queued_at_label.as_str()).flex_1())
-                    .child(
-                        Self::transfer_action_button(
-                            ("transfer-queue-open", index),
-                            "Check",
-                            theme::accent_amber(),
-                            cx,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| this.open_transfers(cx))),
-                    ),
+                div().h_flex().justify_end().child(
+                    Self::transfer_action_button(
+                        ("transfer-queue-open", index),
+                        "Review",
+                        theme::accent_amber(),
+                        cx,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.open_transfers(cx))),
+                ),
             )
     }
 
-    fn progress_card(item: &TransferItem) -> Div {
-        let (progress, speed_label, started_at_label, elapsed_label, eta_label) = match &item.status
-        {
-            TransferStatus::Progress {
-                progress,
-                speed_label,
-                started_at_label,
-                elapsed_label,
-                eta_label,
-            } => (
-                *progress,
-                speed_label.as_str(),
-                started_at_label.as_str(),
-                elapsed_label.as_str(),
-                eta_label.as_str(),
-            ),
-            _ => unreachable!("in progress section only renders active transfer items"),
-        };
+    fn progress_card(item: &ActiveTransferCardSnapshot) -> Div {
+        let accent = transfer_accent_color(item.state_accent);
+        let speed_label = item
+            .speed_label
+            .clone()
+            .unwrap_or_else(|| fallback_estimate_label(&item.state_label));
 
         div()
             .v_flex()
@@ -180,13 +173,10 @@ impl WorkspaceView {
             .border_1()
             .border_color(theme::border_soft())
             .rounded(px(18.0))
-            .child(Self::transfer_card_heading(
-                item.file_name.as_str(),
-                theme::accent_blue(),
-            ))
+            .child(Self::transfer_card_heading(&item.file_name, accent))
             .child(Self::transfer_meta_row(
-                item.source_device.as_str(),
-                item.size_label.as_str(),
+                &item.peer_device_id,
+                &item.file_size_label,
             ))
             .child(
                 div()
@@ -198,40 +188,45 @@ impl WorkspaceView {
                         div()
                             .text_size(px(12.0))
                             .text_color(theme::fg_secondary())
-                            .child(speed_label.to_string()),
+                            .child(item.transferred_label.clone()),
                     )
                     .child(
                         div()
                             .text_size(px(12.0))
                             .font_semibold()
-                            .text_color(theme::accent_blue())
-                            .child(format!("{:.0}%", progress * 100.0)),
+                            .text_color(accent)
+                            .child(item.progress_percent_label.clone()),
                     ),
             )
             .child(
-                Progress::new(format!("transfer-rail-progress-{}", item.id))
-                    .value(progress * 100.0),
+                Progress::new(format!("transfer-rail-progress-{}", item.transfer_id))
+                    .value(item.progress_fraction * 100.0),
             )
             .child(
                 div()
                     .grid()
                     .grid_cols(2)
                     .gap(px(10.0))
-                    .child(Self::transfer_detail_pair("Started", started_at_label))
-                    .child(Self::transfer_detail_pair("Elapsed", elapsed_label))
-                    .child(Self::transfer_detail_pair("Remaining", eta_label))
-                    .child(Self::transfer_detail_pair("Speed", speed_label)),
+                    .child(Self::transfer_detail_pair("State", item.state_label))
+                    .child(Self::transfer_detail_pair("Speed", &speed_label))
+                    .child(Self::transfer_detail_pair(
+                        "Started",
+                        &item.started_at_label,
+                    ))
+                    .child(Self::transfer_detail_pair(
+                        "Updated",
+                        &item.updated_at_label,
+                    )),
             )
     }
 
-    fn complete_card(&self, index: usize, item: &TransferItem, cx: &mut Context<Self>) -> Div {
-        let (completed_at_label, duration_label) = match &item.status {
-            TransferStatus::Complete {
-                completed_at_label,
-                duration_label,
-            } => (completed_at_label.as_str(), duration_label.as_str()),
-            _ => unreachable!("complete section only renders complete items"),
-        };
+    fn complete_card(
+        &self,
+        index: usize,
+        item: &CompletedTransferCardSnapshot,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let accent = transfer_accent_color(item.outcome_accent);
 
         div()
             .v_flex()
@@ -241,35 +236,23 @@ impl WorkspaceView {
             .border_1()
             .border_color(theme::border_soft())
             .rounded(px(18.0))
-            .child(Self::transfer_card_heading(
-                item.file_name.as_str(),
-                theme::accent_green(),
-            ))
+            .child(Self::transfer_card_heading(&item.file_name, accent))
             .child(Self::transfer_complete_meta_row(
-                item.source_device.as_str(),
-                item.size_label.as_str(),
-                duration_label,
+                &item.peer_device_id,
+                &item.file_size_label,
+                item.duration_label.as_deref().unwrap_or("completed"),
             ))
+            .child(Self::transfer_inline_note(item.outcome_label, &item.finished_at_label).flex_1())
             .child(
-                div()
-                    .h_flex()
-                    .items_center()
-                    .justify_between()
-                    .gap(px(10.0))
-                    .child(Self::transfer_inline_note("Complete", completed_at_label).flex_1())
-                    .child({
-                        let item_id = item.id.clone();
-
-                        Self::transfer_action_button(
-                            ("dismiss-transfer-complete", index),
-                            "Got it",
-                            theme::accent_green(),
-                            cx,
-                        )
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.dismiss_complete_item(item_id.as_str(), cx);
-                        }))
-                    }),
+                div().h_flex().justify_end().child(
+                    Self::transfer_action_button(
+                        ("open-transfer-complete", index),
+                        "View",
+                        accent,
+                        cx,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.open_transfers(cx))),
+                ),
             )
     }
 
@@ -307,15 +290,15 @@ impl WorkspaceView {
             .text_color(theme::fg_muted())
             .truncate()
             .child(format!(
-                "{} · {} · done in {}",
+                "{} · {} · {}",
                 source_device, size_label, duration_label
             ))
     }
 
     fn transfer_action_button(
-        id: impl Into<ElementId>,
+        id: impl Into<gpui::ElementId>,
         label: &str,
-        accent: Hsla,
+        accent: gpui::Hsla,
         cx: &mut Context<Self>,
     ) -> Button {
         let variant = ButtonCustomVariant::new(cx)
@@ -375,9 +358,28 @@ impl WorkspaceView {
             )
             .child(
                 div()
-                    .text_size(px(12.0))
+                    .text_size(px(11.0))
                     .text_color(theme::fg_secondary())
+                    .line_clamp(1)
+                    .text_ellipsis()
                     .child(value.to_string()),
             )
+    }
+}
+
+fn transfer_accent_color(accent: TransferVisualAccent) -> gpui::Hsla {
+    match accent {
+        TransferVisualAccent::Amber => theme::accent_amber(),
+        TransferVisualAccent::Blue => theme::accent_blue(),
+        TransferVisualAccent::Green => theme::accent_green(),
+        TransferVisualAccent::Rose => theme::accent_rose(),
+    }
+}
+
+fn fallback_estimate_label(state_label: &str) -> String {
+    match state_label {
+        "In Progress" => "Estimating".to_string(),
+        "Cancelling" => "Stopping".to_string(),
+        _ => "Pending".to_string(),
     }
 }

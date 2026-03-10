@@ -321,6 +321,7 @@ pub struct PeersState {
 
 pub struct ConnectedPeer {
     pub noob_id: NoobId,
+    pub device_id: String,
     pub addresses: Vec<std::net::SocketAddr>,
     pub transport: PeerTransport,
     pub latency_ms: Option<u32>,
@@ -340,6 +341,8 @@ pub enum PeerTransport {
 - 不承诺 discovered peers。
 - 不承诺 offline peer 目录。
 - 不承诺 mesh topology。
+- `device_id` 是 peer 当前上报的人类可读设备标签，对应对端当前生效的 `identity.device_id`。
+- `device_id` 不保证唯一，desktop 可以对重复标签做高亮或告警，但任何匹配、目标选择、状态归属都必须继续以 `noob_id` 为准。
 - peers 变化必须出现在 `AppState` 中，不要求单独 peer event。
 
 ### 7.5 Clipboard
@@ -373,6 +376,7 @@ pub struct TransfersState {
 pub struct IncomingTransfer {
     pub transfer_id: TransferId,
     pub peer_noob_id: NoobId,
+    pub peer_device_id: String,
     pub file_name: String,
     pub file_size: u64,
     pub total_chunks: u32,
@@ -383,6 +387,7 @@ pub struct IncomingTransfer {
 强约束：
 
 - 只表示等待本机决策的 incoming offer。
+- `peer_device_id` 是对端当前上报的人类可读设备标签；它不保证唯一，只用于 UI 展示。
 - 一旦 accept 或 reject，这条记录必须从 `incoming_pending` 移除。
 - reject 后如需保留历史，应进入 `recent_completed`，而不是继续留在 pending。
 
@@ -393,6 +398,7 @@ pub struct Transfer {
     pub transfer_id: TransferId,
     pub direction: TransferDirection,
     pub peer_noob_id: NoobId,
+    pub peer_device_id: String,
     pub file_name: String,
     pub file_size: u64,
     pub transferred_bytes: u64,
@@ -417,6 +423,7 @@ pub enum TransferState {
 强约束：
 
 - `active` 只保留未结束传输。
+- `peer_device_id` 只用于显示；任何匹配、取消、归属都必须继续使用 `transfer_id` / `peer_noob_id`。
 - 不允许出现 UI-style 的 `Accepted` / `Rejected` sender 状态。
 - `Rejected` 不是 active state，而是 completed outcome。
 
@@ -427,6 +434,7 @@ pub struct CompletedTransfer {
     pub transfer_id: TransferId,
     pub direction: TransferDirection,
     pub peer_noob_id: NoobId,
+    pub peer_device_id: String,
     pub file_name: String,
     pub file_size: u64,
     pub outcome: TransferOutcome,

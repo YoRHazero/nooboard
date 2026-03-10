@@ -78,6 +78,13 @@ async fn state_subscription_tracks_network_disable_and_explicit_restart() -> Res
                     .any(|peer| peer.noob_id == noob_id_b)
         })
         .await?;
+    assert!(
+        running_state
+            .peers
+            .connected
+            .iter()
+            .any(|peer| peer.noob_id == noob_id_b && peer.device_id == "pair-b-device")
+    );
     let running_revision = running_state.revision;
 
     service_a
@@ -138,9 +145,16 @@ async fn state_subscription_tracks_network_disable_and_explicit_restart() -> Res
                     .any(|peer| peer.noob_id == noob_id_b)
         })
         .await?;
+    assert!(
+        restarted_state
+            .peers
+            .connected
+            .iter()
+            .any(|peer| peer.noob_id == noob_id_b && peer.device_id == "pair-b-device")
+    );
     assert!(restarted_state.revision > reenabled_state.revision);
 
-    wait_for_service_state(service_b, Duration::from_secs(10), |state| {
+    let peer_visible_from_b = wait_for_service_state(service_b, Duration::from_secs(10), |state| {
         state.sync.actual == SyncActualStatus::Running
             && state
                 .peers
@@ -149,6 +163,9 @@ async fn state_subscription_tracks_network_disable_and_explicit_restart() -> Res
                 .any(|peer| peer.noob_id == restarted_state.identity.noob_id)
     })
     .await?;
+    assert!(peer_visible_from_b.peers.connected.iter().any(|peer| {
+        peer.noob_id == restarted_state.identity.noob_id && peer.device_id == "pair-a-device"
+    }));
 
     service_a.shutdown().await?;
     service_b.shutdown().await?;

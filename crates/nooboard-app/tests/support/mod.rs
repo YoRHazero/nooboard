@@ -90,6 +90,7 @@ fn free_port() -> u16 {
 
 fn write_test_config(
     dir: &TempDir,
+    device_id: &str,
     listen_addr: SocketAddr,
     manual_peers: &[SocketAddr],
     mdns_enabled: bool,
@@ -112,7 +113,7 @@ profile = "test"
 
 [identity]
 noob_id_file = "{noob_id_file}"
-device_id = "test-device"
+device_id = "{device_id}"
 
 [app.clipboard]
 recent_event_lookup_limit = 50
@@ -154,6 +155,7 @@ pong_timeout_ms = 2000
 max_packet_size = 65536
 "#,
         noob_id_file = toml_path(&noob_id_file),
+        device_id = device_id,
         db_root = toml_path(&db_root),
         download_dir = toml_path(&download_dir),
         listen_addr = listen_addr,
@@ -174,12 +176,13 @@ pub struct TestServiceEnv {
 }
 
 fn new_service_with_network(
+    device_id: &str,
     listen_addr: SocketAddr,
     manual_peers: &[SocketAddr],
     mdns_enabled: bool,
 ) -> Result<TestServiceEnv, TestError> {
     let dir = TempDir::new()?;
-    let config_path = write_test_config(&dir, listen_addr, manual_peers, mdns_enabled)?;
+    let config_path = write_test_config(&dir, device_id, listen_addr, manual_peers, mdns_enabled)?;
     let backend = Arc::new(MockClipboardBackend::default());
     let service = DesktopAppServiceImpl::new_with_clipboard(&config_path, backend.clone())?;
     Ok(TestServiceEnv {
@@ -193,14 +196,16 @@ fn new_service_with_network(
 
 pub fn new_service() -> Result<TestServiceEnv, TestError> {
     let listen_addr: SocketAddr = format!("127.0.0.1:{}", free_port()).parse()?;
-    new_service_with_network(listen_addr, &[], true)
+    new_service_with_network("test-device", listen_addr, &[], true)
 }
 
 pub fn new_service_pair() -> Result<(TestServiceEnv, TestServiceEnv), TestError> {
     let listen_addr_a: SocketAddr = format!("127.0.0.1:{}", free_port()).parse()?;
     let listen_addr_b: SocketAddr = format!("127.0.0.1:{}", free_port()).parse()?;
-    let service_a = new_service_with_network(listen_addr_a, &[listen_addr_b], false)?;
-    let service_b = new_service_with_network(listen_addr_b, &[listen_addr_a], false)?;
+    let service_a =
+        new_service_with_network("pair-a-device", listen_addr_a, &[listen_addr_b], false)?;
+    let service_b =
+        new_service_with_network("pair-b-device", listen_addr_b, &[listen_addr_a], false)?;
     Ok((service_a, service_b))
 }
 
@@ -208,10 +213,16 @@ pub fn new_service_fanout() -> Result<(TestServiceEnv, TestServiceEnv, TestServi
     let listen_addr_a: SocketAddr = format!("127.0.0.1:{}", free_port()).parse()?;
     let listen_addr_b: SocketAddr = format!("127.0.0.1:{}", free_port()).parse()?;
     let listen_addr_c: SocketAddr = format!("127.0.0.1:{}", free_port()).parse()?;
-    let service_a =
-        new_service_with_network(listen_addr_a, &[listen_addr_b, listen_addr_c], false)?;
-    let service_b = new_service_with_network(listen_addr_b, &[listen_addr_a], false)?;
-    let service_c = new_service_with_network(listen_addr_c, &[listen_addr_a], false)?;
+    let service_a = new_service_with_network(
+        "fanout-a-device",
+        listen_addr_a,
+        &[listen_addr_b, listen_addr_c],
+        false,
+    )?;
+    let service_b =
+        new_service_with_network("fanout-b-device", listen_addr_b, &[listen_addr_a], false)?;
+    let service_c =
+        new_service_with_network("fanout-c-device", listen_addr_c, &[listen_addr_a], false)?;
     Ok((service_a, service_b, service_c))
 }
 

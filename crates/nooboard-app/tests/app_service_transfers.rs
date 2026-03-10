@@ -41,6 +41,7 @@ async fn send_files_returns_authoritative_transfer_id_in_active_state() -> Resul
         .find(|transfer| transfer.transfer_id == transfer_id)
         .expect("returned transfer id must exist in active state");
     assert_eq!(active.peer_noob_id, noob_id_b);
+    assert_eq!(active.peer_device_id, "pair-b-device");
     assert_eq!(active.file_name, "authoritative.txt");
 
     let receiver_state = wait_for_service_state(service_b, Duration::from_secs(10), |state| {
@@ -58,6 +59,7 @@ async fn send_files_returns_authoritative_transfer_id_in_active_state() -> Resul
         .find(|pending| pending.peer_noob_id == noob_id_a)
         .expect("receiver must expose incoming pending transfer");
     assert_eq!(incoming.transfer_id.raw_id(), transfer_id.raw_id());
+    assert_eq!(incoming.peer_device_id, "pair-a-device");
 
     service_a.cancel_transfer(transfer_id).await?;
     service_a.shutdown().await?;
@@ -182,6 +184,7 @@ async fn decide_incoming_transfer_accept_moves_to_succeeded_completion() -> Resu
         .find(|completed| completed.transfer_id == sender_transfer_id)
         .expect("sender must expose completed transfer");
     assert_eq!(sender_completed.outcome, TransferOutcome::Succeeded);
+    assert_eq!(sender_completed.peer_device_id, "pair-b-device");
     assert_eq!(sender_completed.saved_path, None);
 
     let receiver_state = wait_for_service_state(service_b, Duration::from_secs(10), |state| {
@@ -198,6 +201,7 @@ async fn decide_incoming_transfer_accept_moves_to_succeeded_completion() -> Resu
         .iter()
         .find(|completed| completed.transfer_id == receiver_transfer_id)
         .expect("receiver must expose completed transfer");
+    assert_eq!(receiver_completed.peer_device_id, "pair-a-device");
     let saved_path = receiver_completed
         .saved_path
         .as_ref()
@@ -277,7 +281,8 @@ async fn decide_incoming_transfer_reject_moves_both_sides_to_rejected_completion
             .recent_completed
             .iter()
             .any(|completed| completed.transfer_id == receiver_transfer_id
-                && completed.outcome == TransferOutcome::Rejected)
+                && completed.outcome == TransferOutcome::Rejected
+                && completed.peer_device_id == "pair-a-device")
     );
 
     let sender_completed_id = wait_for_event(
@@ -300,7 +305,8 @@ async fn decide_incoming_transfer_reject_moves_both_sides_to_rejected_completion
             .recent_completed
             .iter()
             .any(|completed| completed.transfer_id == sender_transfer_id
-                && completed.outcome == TransferOutcome::Rejected)
+                && completed.outcome == TransferOutcome::Rejected
+                && completed.peer_device_id == "pair-b-device")
     );
 
     let receiver_state = wait_for_service_state(service_b, Duration::from_secs(10), |state| {
@@ -331,7 +337,8 @@ async fn decide_incoming_transfer_reject_moves_both_sides_to_rejected_completion
             .recent_completed
             .iter()
             .any(|completed| completed.transfer_id == sender_transfer_id
-                && completed.outcome == TransferOutcome::Rejected)
+                && completed.outcome == TransferOutcome::Rejected
+                && completed.peer_device_id == "pair-b-device")
     );
 
     service_a.shutdown().await?;
@@ -423,7 +430,8 @@ async fn cancel_transfer_moves_transfer_to_cancelled_completion() -> Result<(), 
             .recent_completed
             .iter()
             .any(|completed| completed.transfer_id == transfer_id
-                && completed.outcome == TransferOutcome::Cancelled)
+                && completed.outcome == TransferOutcome::Cancelled
+                && completed.peer_device_id == "pair-b-device")
     );
 
     let sender_state = wait_for_service_state(service_a, Duration::from_secs(10), |state| {
@@ -444,7 +452,8 @@ async fn cancel_transfer_moves_transfer_to_cancelled_completion() -> Result<(), 
             .recent_completed
             .iter()
             .any(|completed| completed.transfer_id == transfer_id
-                && completed.outcome == TransferOutcome::Cancelled)
+                && completed.outcome == TransferOutcome::Cancelled
+                && completed.peer_device_id == "pair-b-device")
     );
 
     let receiver_state = wait_for_service_state(service_b, Duration::from_secs(10), |state| {
@@ -465,6 +474,7 @@ async fn cancel_transfer_moves_transfer_to_cancelled_completion() -> Result<(), 
                 completed.transfer_id.peer_noob_id() == &noob_id_a
                     && completed.transfer_id.raw_id() == transfer_id.raw_id()
                     && completed.outcome == TransferOutcome::Cancelled
+                    && completed.peer_device_id == "pair-a-device"
             })
     );
 

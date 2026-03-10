@@ -1,13 +1,12 @@
 use gpui::Context;
 
-use crate::state::SystemPeerStatus;
-
 use super::WorkspaceView;
+use super::snapshot::PeerVisualStatus;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum PeersFilter {
     All,
-    Connected,
+    Idle,
     Transferring,
 }
 
@@ -15,16 +14,16 @@ impl PeersFilter {
     pub(super) fn label(self) -> &'static str {
         match self {
             Self::All => "All",
-            Self::Connected => "Connected",
+            Self::Idle => "Idle",
             Self::Transferring => "Transferring",
         }
     }
 
-    pub(super) fn matches(self, status: SystemPeerStatus) -> bool {
+    pub(super) fn matches(self, status: PeerVisualStatus) -> bool {
         match self {
             Self::All => true,
-            Self::Connected => status == SystemPeerStatus::Connected,
-            Self::Transferring => status == SystemPeerStatus::Transferring,
+            Self::Idle => status == PeerVisualStatus::Connected,
+            Self::Transferring => status == PeerVisualStatus::Transferring,
         }
     }
 }

@@ -1,6 +1,8 @@
 mod sections;
 mod summary;
 
+use std::collections::BTreeSet;
+
 use gpui::{
     AnimationExt as _, Context, Div, Hsla, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, div, px,
@@ -11,6 +13,7 @@ use gpui_component::scroll::ScrollableElement;
 use crate::state::WorkspaceRoute;
 use crate::ui::theme;
 
+use super::transfers::snapshot::build_transfers_snapshot;
 use super::{
     WorkspaceView,
     shared::{TRANSFER_RAIL_COLLAPSED_WIDTH, TRANSFER_RAIL_WIDTH, panel_toggle_animation},
@@ -131,6 +134,12 @@ impl WorkspaceView {
     }
 
     fn expanded_transfer_rail(&self, cx: &mut Context<Self>) -> Div {
+        let selected_targets = BTreeSet::new();
+        let snapshot = {
+            let store = self.live_store.read(cx);
+            build_transfers_snapshot(&store, &selected_targets)
+        };
+
         div()
             .v_flex()
             .h_full()
@@ -146,14 +155,14 @@ impl WorkspaceView {
                     .border_1()
                     .border_color(theme::border_soft())
                     .rounded(px(22.0))
-                    .child(self.transfer_summary(cx)),
+                    .child(self.transfer_summary(&snapshot, cx)),
             )
             .child(
                 div().flex_1().min_h_0().child(
                     div()
                         .size_full()
                         .overflow_y_scrollbar()
-                        .child(self.transfer_sections(cx)),
+                        .child(self.transfer_sections(&snapshot, cx)),
                 ),
             )
     }

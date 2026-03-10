@@ -13,6 +13,8 @@ use nooboard_app::{
 };
 use tokio::runtime::{Builder, Runtime};
 
+use super::transfer_telemetry::TransferTelemetryCache;
+
 const RECENT_ACTIVITY_CAPACITY: usize = 64;
 
 #[derive(Clone)]
@@ -127,6 +129,7 @@ pub struct LiveAppStore {
     config_path: PathBuf,
     app_state: AppState,
     latest_committed_record: Option<ClipboardRecord>,
+    transfer_telemetry: TransferTelemetryCache,
     recent_activity: VecDeque<RecentActivityItem>,
     local_preferences: DesktopLocalPreferences,
     bridge: DesktopLiveBridgeState,
@@ -139,10 +142,13 @@ impl LiveAppStore {
         app_state: AppState,
         latest_committed_record: Option<ClipboardRecord>,
     ) -> Self {
+        let mut transfer_telemetry = TransferTelemetryCache::default();
+        transfer_telemetry.observe_active_transfers(&app_state.transfers.active);
         Self {
             config_path,
             app_state,
             latest_committed_record,
+            transfer_telemetry,
             recent_activity: VecDeque::with_capacity(RECENT_ACTIVITY_CAPACITY),
             local_preferences: DesktopLocalPreferences::default(),
             bridge: DesktopLiveBridgeState::default(),
@@ -165,6 +171,10 @@ impl LiveAppStore {
         &self.recent_activity
     }
 
+    pub fn transfer_telemetry(&self) -> &TransferTelemetryCache {
+        &self.transfer_telemetry
+    }
+
     pub fn local_preferences(&self) -> &DesktopLocalPreferences {
         &self.local_preferences
     }
@@ -183,6 +193,8 @@ impl LiveAppStore {
     }
 
     pub(crate) fn apply_state_snapshot(&mut self, app_state: AppState) {
+        self.transfer_telemetry
+            .observe_active_transfers(&app_state.transfers.active);
         self.app_state = app_state;
     }
 

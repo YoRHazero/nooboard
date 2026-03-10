@@ -3,16 +3,14 @@ use gpui_component::StyledExt;
 
 use crate::ui::theme;
 
-use super::super::page_state::LocalUploadStatus;
-
 pub(in crate::ui::workspace::view::transfers) fn transfer_target_chip(
-    device_id: String,
-    connected: bool,
+    device_id: &str,
+    noob_id: &str,
     selected: bool,
     accent: Hsla,
 ) -> Div {
     div()
-        .min_w(px(146.0))
+        .min_w(px(172.0))
         .px(px(12.0))
         .py(px(10.0))
         .rounded(px(16.0))
@@ -35,14 +33,23 @@ pub(in crate::ui::workspace::view::transfers) fn transfer_target_chip(
                 .gap(px(8.0))
                 .child(
                     div()
-                        .text_size(px(12.0))
-                        .font_semibold()
-                        .text_color(if connected {
-                            theme::fg_primary()
-                        } else {
-                            theme::fg_secondary()
-                        })
-                        .child(device_id),
+                        .v_flex()
+                        .gap(px(4.0))
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .font_semibold()
+                                .text_color(theme::fg_primary())
+                                .child(device_id.to_string()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.0))
+                                .text_color(theme::fg_muted())
+                                .line_clamp(1)
+                                .text_ellipsis()
+                                .child(noob_id.to_string()),
+                        ),
                 )
                 .child(
                     div()
@@ -55,23 +62,16 @@ pub(in crate::ui::workspace::view::transfers) fn transfer_target_chip(
                                 .text_size(px(10.0))
                                 .font_semibold()
                                 .text_color(accent)
-                                .child(if connected { "Connected" } else { "Offline" }),
+                                .child("Connected"),
                         ),
                 ),
         )
 }
 
-pub(in crate::ui::workspace::view::transfers) fn local_upload_status_badge(
-    status: &LocalUploadStatus,
+pub(in crate::ui::workspace::view::transfers) fn transfer_status_badge(
+    label: &str,
+    accent: Hsla,
 ) -> Div {
-    let (label, accent) = match status {
-        LocalUploadStatus::Draft => ("Draft", theme::fg_muted()),
-        LocalUploadStatus::Accepted { .. } => ("Accepted", theme::accent_green()),
-        LocalUploadStatus::Rejected { .. } => ("Rejected", theme::accent_rose()),
-        LocalUploadStatus::Progress { .. } => ("Progress", theme::accent_blue()),
-        LocalUploadStatus::Complete { .. } => ("Complete", theme::accent_cyan()),
-    };
-
     div()
         .px(px(10.0))
         .py(px(6.0))
@@ -82,10 +82,10 @@ pub(in crate::ui::workspace::view::transfers) fn local_upload_status_badge(
         .text_size(px(10.0))
         .font_semibold()
         .text_color(accent)
-        .child(label)
+        .child(label.to_string())
 }
 
-pub(in crate::ui::workspace::view::transfers) fn transfer_download_title(
+pub(in crate::ui::workspace::view::transfers) fn transfer_card_heading(
     file_name: &str,
     accent: Hsla,
 ) -> Div {

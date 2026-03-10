@@ -256,6 +256,7 @@ mod tests {
             peers: PeersState {
                 connected: vec![nooboard_app::ConnectedPeer {
                     noob_id: NoobId::new("remote-node"),
+                    device_id: "remote-mbp".to_string(),
                     addresses: vec!["127.0.0.1:17890".parse().unwrap()],
                     transport: PeerTransport::Manual,
                     latency_ms: Some(22),
@@ -268,6 +269,7 @@ mod tests {
                     transfer_id: TransferId::new(NoobId::new("remote-node"), 1),
                     direction: TransferDirection::Upload,
                     peer_noob_id: NoobId::new("remote-node"),
+                    peer_device_id: "remote-mbp".to_string(),
                     file_name: "demo.txt".to_string(),
                     file_size: 10,
                     transferred_bytes: 5,

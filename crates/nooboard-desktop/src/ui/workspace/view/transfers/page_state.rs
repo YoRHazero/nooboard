@@ -1,22 +1,26 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use anyhow::Error;
 use gpui::{Context, PathPromptOptions, Window};
-use gpui_component::WindowExt;
+use nooboard_app::{
+    IncomingTransferDecision, IncomingTransferDisposition, NoobId, SendFileItem, SendFilesRequest,
+    TransferId,
+};
 
-use crate::state::{ClipboardStore, ClipboardTarget, TransferStatus};
+use crate::state::{WorkspaceRoute, live_commands};
 
 use super::WorkspaceView;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum UploadSource {
+pub(super) enum StagedFileSource {
     Dropped,
     Browsed,
 }
 
-impl UploadSource {
+impl StagedFileSource {
     pub(super) fn label(self) -> &'static str {
         match self {
             Self::Dropped => "Dropped",
@@ -26,63 +30,40 @@ impl UploadSource {
 }
 
 #[derive(Clone)]
-pub(super) enum LocalUploadStatus {
-    Draft,
-    Accepted {
-        at_label: String,
-        accepted_targets: usize,
-    },
-    Rejected {
-        at_label: String,
-        reason: String,
-    },
-    Progress {
-        progress: f32,
-        speed_label: String,
-        eta_label: String,
-    },
-    Complete {
-        at_label: String,
-    },
-}
-
-#[derive(Clone)]
-pub(super) struct LocalUploadCard {
+pub(super) struct StagedTransferFile {
     pub(super) id: String,
     pub(super) file_name: String,
     pub(super) file_path: PathBuf,
     pub(super) size_bytes: u64,
     pub(super) size_label: String,
     pub(super) modified_at_label: String,
-    pub(super) source: UploadSource,
-    pub(super) status: LocalUploadStatus,
-    pub(super) sent_target_ids: Vec<String>,
+    pub(super) source: StagedFileSource,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TransfersSendState {
+    Idle,
+    Sending,
 }
 
 pub(in crate::ui::workspace::view) struct TransfersPageState {
     pub(super) selected_target_noob_ids: BTreeSet<String>,
-    pub(super) global_folder: PathBuf,
-    pub(super) uploads: Vec<LocalUploadCard>,
+    pub(super) staged_files: Vec<StagedTransferFile>,
+    pub(super) pending_transfer_actions: BTreeSet<String>,
+    pub(super) send_state: TransfersSendState,
     pub(super) feedback: Option<String>,
-    pub(super) moved_download_paths: BTreeMap<String, PathBuf>,
-    next_upload_id: usize,
-    send_cycle: usize,
+    next_staged_file_id: usize,
 }
 
 impl TransfersPageState {
-    pub(in crate::ui::workspace::view) fn new(clipboard: &ClipboardStore) -> Self {
+    pub(in crate::ui::workspace::view) fn new() -> Self {
         Self {
-            selected_target_noob_ids: clipboard
-                .default_selected_target_noob_ids
-                .iter()
-                .cloned()
-                .collect(),
-            global_folder: PathBuf::from(".dev-data/downloads"),
-            uploads: Vec::new(),
+            selected_target_noob_ids: BTreeSet::new(),
+            staged_files: Vec::new(),
+            pending_transfer_actions: BTreeSet::new(),
+            send_state: TransfersSendState::Idle,
             feedback: None,
-            moved_download_paths: BTreeMap::new(),
-            next_upload_id: 1,
-            send_cycle: 0,
+            next_staged_file_id: 1,
         }
     }
 
@@ -90,9 +71,30 @@ impl TransfersPageState {
         self.selected_target_noob_ids.len()
     }
 
-    fn next_upload_id(&mut self) -> String {
-        let id = format!("transfer-upload-{}", self.next_upload_id);
-        self.next_upload_id += 1;
+    pub(super) fn staged_file_count(&self) -> usize {
+        self.staged_files.len()
+    }
+
+    pub(super) fn send_in_flight(&self) -> bool {
+        self.send_state == TransfersSendState::Sending
+    }
+
+    pub(super) fn transfer_action_pending(&self, transfer_id: &TransferId) -> bool {
+        self.pending_transfer_actions
+            .contains(&transfer_id.to_string())
+    }
+
+    pub(super) fn retain_connected_targets(
+        &mut self,
+        connected_target_noob_ids: &BTreeSet<String>,
+    ) {
+        self.selected_target_noob_ids
+            .retain(|noob_id| connected_target_noob_ids.contains(noob_id));
+    }
+
+    fn next_staged_file_id(&mut self) -> String {
+        let id = format!("transfer-stage-{}", self.next_staged_file_id);
+        self.next_staged_file_id += 1;
         id
     }
 }
@@ -100,16 +102,6 @@ impl TransfersPageState {
 impl WorkspaceView {
     pub(super) fn set_transfers_feedback(&mut self, message: impl Into<String>) {
         self.transfers_page_state.feedback = Some(message.into());
-    }
-
-    pub(super) fn transfer_target_is_selected(&self, noob_id: &str) -> bool {
-        self.transfers_page_state
-            .selected_target_noob_ids
-            .contains(noob_id)
-    }
-
-    pub(super) fn selected_transfer_target_count(&self) -> usize {
-        self.transfers_page_state.selected_target_count()
     }
 
     pub(super) fn toggle_transfer_target(&mut self, noob_id: &str, cx: &mut Context<Self>) {
@@ -136,36 +128,19 @@ impl WorkspaceView {
         cx.notify();
     }
 
-    pub(super) fn transfer_selected_targets(&self) -> Vec<ClipboardTarget> {
-        self.state
-            .app
-            .clipboard
-            .targets
-            .iter()
-            .filter(|target| {
-                target.is_connected()
-                    && self
-                        .transfers_page_state
-                        .selected_target_noob_ids
-                        .contains(&target.noob_id)
-            })
-            .cloned()
-            .collect()
-    }
-
     pub(super) fn queue_upload_paths(
         &mut self,
         paths: Vec<PathBuf>,
-        source: UploadSource,
+        source: StagedFileSource,
         cx: &mut Context<Self>,
     ) {
-        let mut added = 0usize;
-        let existing: BTreeSet<PathBuf> = self
+        let mut existing = self
             .transfers_page_state
-            .uploads
+            .staged_files
             .iter()
             .map(|item| item.file_path.clone())
-            .collect();
+            .collect::<BTreeSet<_>>();
+        let mut staged_now = 0usize;
 
         for path in paths {
             if existing.contains(&path) {
@@ -181,32 +156,43 @@ impl WorkspaceView {
             let Some(file_name) = path.file_name() else {
                 continue;
             };
-
-            let card = LocalUploadCard {
-                id: self.transfers_page_state.next_upload_id(),
-                file_name: file_name.to_string_lossy().into_owned(),
-                file_path: path.clone(),
-                size_bytes: metadata.len(),
-                size_label: bytes_to_label(metadata.len()),
-                modified_at_label: metadata
-                    .modified()
-                    .ok()
-                    .map(system_time_to_clock_label)
-                    .unwrap_or_else(|| "unknown".to_string()),
-                source,
-                status: LocalUploadStatus::Draft,
-                sent_target_ids: Vec::new(),
-            };
-            self.transfers_page_state.uploads.push(card);
-            added += 1;
+            let staged_file_id = self.transfers_page_state.next_staged_file_id();
+            self.transfers_page_state
+                .staged_files
+                .push(StagedTransferFile {
+                    id: staged_file_id,
+                    file_name: file_name.to_string_lossy().into_owned(),
+                    file_path: path.clone(),
+                    size_bytes: metadata.len(),
+                    size_label: bytes_to_label(metadata.len()),
+                    modified_at_label: metadata
+                        .modified()
+                        .ok()
+                        .map(system_time_to_clock_label)
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    source,
+                });
+            existing.insert(path);
+            staged_now += 1;
         }
 
-        if added > 0 {
+        if staged_now > 0 {
             self.set_transfers_feedback(format!(
-                "{} file{} queued for upload review.",
-                added,
-                if added == 1 { "" } else { "s" }
+                "Staged {} file{} for transfer.",
+                staged_now,
+                if staged_now == 1 { "" } else { "s" }
             ));
+            cx.notify();
+        }
+    }
+
+    pub(super) fn dismiss_staged_file(&mut self, staged_file_id: &str, cx: &mut Context<Self>) {
+        let before = self.transfers_page_state.staged_files.len();
+        self.transfers_page_state
+            .staged_files
+            .retain(|item| item.id != staged_file_id);
+        if self.transfers_page_state.staged_files.len() != before {
+            self.set_transfers_feedback("Removed staged file.");
             cx.notify();
         }
     }
@@ -220,7 +206,7 @@ impl WorkspaceView {
             files: true,
             directories: false,
             multiple: true,
-            prompt: Some("Select files to upload".into()),
+            prompt: Some("Select files to transfer".into()),
         });
         let view = cx.entity().downgrade();
 
@@ -231,256 +217,200 @@ impl WorkspaceView {
             };
 
             let _ = view.update(cx, |this, cx| {
-                this.queue_upload_paths(paths, UploadSource::Browsed, cx);
+                this.queue_upload_paths(paths, StagedFileSource::Browsed, cx);
             });
         })
         .detach();
     }
 
-    pub(super) fn pick_transfer_global_folder(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let paths_receiver = cx.prompt_for_paths(PathPromptOptions {
-            files: false,
-            directories: true,
-            multiple: false,
-            prompt: Some("Select transfer folder".into()),
-        });
-        let view = cx.entity().downgrade();
+    pub(super) fn submit_staged_transfers(&mut self, cx: &mut Context<Self>) {
+        if self.transfers_page_state.send_in_flight() {
+            return;
+        }
 
-        cx.spawn_in(window, async move |_, cx| {
-            let path = match paths_receiver.await {
-                Ok(Ok(Some(mut paths))) => paths.drain(..).next(),
-                _ => None,
-            };
+        if self.transfers_page_state.staged_files.is_empty() {
+            self.set_transfers_feedback("Stage at least one file before sending.");
+            cx.notify();
+            return;
+        }
 
-            let Some(path) = path else {
-                return;
-            };
-
-            let _ = view.update(cx, |this, cx| {
-                this.transfers_page_state.global_folder = path.clone();
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-
-    pub(super) fn set_transfer_global_folder(&mut self, folder: PathBuf, cx: &mut Context<Self>) {
-        self.transfers_page_state.global_folder = folder;
-        cx.notify();
-    }
-
-    pub(super) fn request_send_local_upload(
-        &mut self,
-        upload_id: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let selected_targets = self.transfer_selected_targets();
-        if selected_targets.is_empty() {
+        if self
+            .transfers_page_state
+            .selected_target_noob_ids
+            .is_empty()
+        {
             self.set_transfers_feedback("Select at least one connected target.");
             cx.notify();
             return;
         }
 
-        let Some(card) = self
+        let target_ids = self
             .transfers_page_state
-            .uploads
+            .selected_target_noob_ids
             .iter()
-            .find(|item| item.id == upload_id)
-        else {
-            return;
-        };
-
-        let file_name = card.file_name.clone();
-        let item_id = card.id.clone();
-        let target_lines = selected_targets
-            .iter()
-            .map(|target| format!("• {} ({})", target.device_id, target.noob_id))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let description = format!(
-            "Upload \"{}\" to {} selected target{}?\n\n{}",
-            file_name,
-            selected_targets.len(),
-            if selected_targets.len() == 1 { "" } else { "s" },
-            target_lines
-        );
-        let view = cx.entity().downgrade();
-
-        window.open_alert_dialog(cx, move |alert, _, _| {
-            let view = view.clone();
-            let item_id = item_id.clone();
-            let description = description.clone();
-
-            alert
-                .confirm()
-                .title("Confirm File Upload")
-                .description(description)
-                .on_ok(move |_, _, cx| {
-                    let _ = view.update(cx, |this, cx| {
-                        this.confirm_send_local_upload(item_id.as_str(), cx);
-                    });
-                    true
-                })
-        });
-    }
-
-    pub(super) fn confirm_send_local_upload(&mut self, upload_id: &str, cx: &mut Context<Self>) {
-        let selected_target_ids = self
-            .transfer_selected_targets()
-            .into_iter()
-            .map(|target| target.noob_id)
+            .cloned()
             .collect::<Vec<_>>();
-        let target_count = selected_target_ids.len();
-
-        let at_label = now_clock_label();
-        let slot = self.transfers_page_state.send_cycle % 4;
-        self.transfers_page_state.send_cycle += 1;
-
-        let file_name = {
-            let Some(card) = self
-                .transfers_page_state
-                .uploads
-                .iter_mut()
-                .find(|item| item.id == upload_id)
-            else {
-                return;
-            };
-
-            card.sent_target_ids = selected_target_ids;
-            card.status = match slot {
-                0 => LocalUploadStatus::Accepted {
-                    at_label: at_label.clone(),
-                    accepted_targets: target_count,
-                },
-                1 => LocalUploadStatus::Rejected {
-                    at_label: at_label.clone(),
-                    reason: "Remote policy denied this upload".to_string(),
-                },
-                2 => LocalUploadStatus::Progress {
-                    progress: 0.46,
-                    speed_label: "2.8 MB/s".to_string(),
-                    eta_label: "ETA 11s".to_string(),
-                },
-                _ => LocalUploadStatus::Complete {
-                    at_label: at_label.clone(),
-                },
-            };
-            card.file_name.clone()
-        };
-
-        self.set_transfers_feedback(format!("{} dispatch queued.", file_name));
-        cx.notify();
-    }
-
-    pub(super) fn dismiss_local_upload(&mut self, upload_id: &str, cx: &mut Context<Self>) {
-        let before = self.transfers_page_state.uploads.len();
-        self.transfers_page_state
-            .uploads
-            .retain(|item| item.id != upload_id);
-        if self.transfers_page_state.uploads.len() != before {
-            self.set_transfers_feedback("Local upload card dismissed.");
-            cx.notify();
-        }
-    }
-
-    pub(super) fn accept_download_transfer(&mut self, item_id: &str, cx: &mut Context<Self>) {
-        let mut changed = false;
-        for item in &mut self.transfer_items {
-            if item.id != item_id {
-                continue;
-            }
-            if matches!(item.status, TransferStatus::AwaitingReview { .. }) {
-                item.status = TransferStatus::Progress {
-                    progress: 0.18,
-                    speed_label: "2.4 MB/s".to_string(),
-                    started_at_label: now_clock_label(),
-                    elapsed_label: "8s".to_string(),
-                    eta_label: "ETA 36s".to_string(),
-                };
-                changed = true;
-            }
-            break;
-        }
-
-        if changed {
-            self.set_transfers_feedback("Download accepted and transfer started.");
-            cx.notify();
-        }
-    }
-
-    pub(super) fn reject_download_transfer(&mut self, item_id: &str, cx: &mut Context<Self>) {
-        let before = self.transfer_items.len();
-        self.transfer_items.retain(|item| {
-            !(item.id == item_id && matches!(item.status, TransferStatus::AwaitingReview { .. }))
-        });
-        if self.transfer_items.len() != before {
-            self.set_transfers_feedback("Incoming file rejected.");
-            cx.notify();
-        }
-    }
-
-    pub(super) fn cancel_download_transfer(&mut self, item_id: &str, cx: &mut Context<Self>) {
-        let before = self.transfer_items.len();
-        self.transfer_items.retain(|item| {
-            !(item.id == item_id && matches!(item.status, TransferStatus::Progress { .. }))
-        });
-        if self.transfer_items.len() != before {
-            self.set_transfers_feedback("In-progress transfer canceled.");
-            cx.notify();
-        }
-    }
-
-    pub(super) fn got_it_download_transfer(&mut self, item_id: &str, cx: &mut Context<Self>) {
-        let before = self.transfer_items.len();
-        self.transfer_items.retain(|item| {
-            !(item.id == item_id && matches!(item.status, TransferStatus::Complete { .. }))
-        });
-        if self.transfer_items.len() != before {
-            self.transfers_page_state
-                .moved_download_paths
-                .remove(item_id);
-            self.set_transfers_feedback("Completed transfer dismissed.");
-            cx.notify();
-        }
-    }
-
-    pub(super) fn move_complete_download_transfer(
-        &mut self,
-        item_id: String,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let paths_receiver = cx.prompt_for_paths(PathPromptOptions {
-            files: false,
-            directories: true,
-            multiple: false,
-            prompt: Some("Select destination folder".into()),
-        });
+        let staged_files = self.transfers_page_state.staged_files.clone();
+        let commands = live_commands::client(cx);
         let view = cx.entity().downgrade();
 
-        cx.spawn_in(window, async move |_, cx| {
-            let path = match paths_receiver.await {
-                Ok(Ok(Some(mut paths))) => paths.drain(..).next(),
-                _ => None,
-            };
-            let Some(path) = path else {
-                return;
+        self.transfers_page_state.send_state = TransfersSendState::Sending;
+        self.set_transfers_feedback("Submitting staged files to the app service.");
+        cx.notify();
+
+        cx.spawn(async move |_, cx| {
+            let request = SendFilesRequest {
+                targets: target_ids.iter().cloned().map(NoobId::new).collect(),
+                files: staged_files
+                    .iter()
+                    .map(|item| SendFileItem {
+                        path: item.file_path.clone(),
+                    })
+                    .collect(),
             };
 
-            let _ = view.update(cx, |this, cx| {
-                this.transfers_page_state
-                    .moved_download_paths
-                    .insert(item_id.clone(), path.clone());
-                this.set_transfers_feedback(format!("Move scheduled to {}.", path.display()));
-                cx.notify();
-            });
+            let target_count = target_ids.len();
+            let file_count = staged_files.len();
+
+            match commands.send_files(request, cx).await {
+                Ok(_) => {
+                    let _ = view.update(cx, |this, cx| {
+                        this.transfers_page_state.send_state = TransfersSendState::Idle;
+                        this.transfers_page_state.staged_files.clear();
+                        this.set_transfers_feedback(format!(
+                            "Submitted {} file{} to {} target{}.",
+                            file_count,
+                            if file_count == 1 { "" } else { "s" },
+                            target_count,
+                            if target_count == 1 { "" } else { "s" }
+                        ));
+                        cx.notify();
+                    });
+                }
+                Err(error) => {
+                    let _ = view.update(cx, |this, cx| {
+                        this.transfers_page_state.send_state = TransfersSendState::Idle;
+                        this.set_transfers_feedback(format!(
+                            "Failed to submit staged files: {error}"
+                        ));
+                        cx.notify();
+                    });
+                }
+            }
+
+            Ok::<_, Error>(())
         })
         .detach();
+    }
+
+    pub(super) fn request_incoming_transfer_decision(
+        &mut self,
+        transfer_id: TransferId,
+        decision: IncomingTransferDisposition,
+        cx: &mut Context<Self>,
+    ) {
+        let action_key = transfer_id.to_string();
+        if !self
+            .transfers_page_state
+            .pending_transfer_actions
+            .insert(action_key.clone())
+        {
+            return;
+        }
+
+        let commands = live_commands::client(cx);
+        let view = cx.entity().downgrade();
+        let detail = match decision {
+            IncomingTransferDisposition::Accept => "Accepting incoming transfer.",
+            IncomingTransferDisposition::Reject => "Rejecting incoming transfer.",
+        };
+        self.set_transfers_feedback(detail);
+        cx.notify();
+
+        cx.spawn(async move |_, cx| {
+            let request = IncomingTransferDecision {
+                transfer_id: transfer_id.clone(),
+                decision: decision.clone(),
+            };
+
+            let result = commands.decide_incoming_transfer(request, cx).await;
+            let _ = view.update(cx, |this, cx| {
+                this.transfers_page_state
+                    .pending_transfer_actions
+                    .remove(&action_key);
+                match result {
+                    Ok(()) => {
+                        this.set_transfers_feedback(match decision {
+                            IncomingTransferDisposition::Accept => {
+                                "Accepted incoming transfer. Waiting for app state."
+                            }
+                            IncomingTransferDisposition::Reject => {
+                                "Rejected incoming transfer. Waiting for app state."
+                            }
+                        });
+                    }
+                    Err(error) => {
+                        this.set_transfers_feedback(format!(
+                            "Failed to update incoming transfer {}: {error}",
+                            transfer_id
+                        ));
+                    }
+                }
+                cx.notify();
+            });
+
+            Ok::<_, Error>(())
+        })
+        .detach();
+    }
+
+    pub(super) fn request_cancel_transfer(
+        &mut self,
+        transfer_id: TransferId,
+        cx: &mut Context<Self>,
+    ) {
+        let action_key = transfer_id.to_string();
+        if !self
+            .transfers_page_state
+            .pending_transfer_actions
+            .insert(action_key.clone())
+        {
+            return;
+        }
+
+        let commands = live_commands::client(cx);
+        let view = cx.entity().downgrade();
+        self.set_transfers_feedback("Cancelling transfer.");
+        cx.notify();
+
+        cx.spawn(async move |_, cx| {
+            let result = commands.cancel_transfer(transfer_id.clone(), cx).await;
+            let _ = view.update(cx, |this, cx| {
+                this.transfers_page_state
+                    .pending_transfer_actions
+                    .remove(&action_key);
+                match result {
+                    Ok(()) => {
+                        this.set_transfers_feedback("Cancel requested. Waiting for app state.");
+                    }
+                    Err(error) => {
+                        this.set_transfers_feedback(format!(
+                            "Failed to cancel transfer {}: {error}",
+                            transfer_id
+                        ));
+                    }
+                }
+                cx.notify();
+            });
+
+            Ok::<_, Error>(())
+        })
+        .detach();
+    }
+
+    pub(super) fn open_transfer_settings(&mut self, cx: &mut Context<Self>) {
+        self.route = WorkspaceRoute::Settings;
+        cx.notify();
     }
 }
 
@@ -501,18 +431,34 @@ fn bytes_to_label(bytes: u64) -> String {
     }
 }
 
-fn now_clock_label() -> String {
-    system_time_to_clock_label(SystemTime::now())
-}
-
 fn system_time_to_clock_label(time: SystemTime) -> String {
     let seconds = time
         .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs() % 86_400)
-        .unwrap_or(0);
-
+        .map(|duration| i64::try_from(duration.as_secs()).unwrap_or(i64::MAX))
+        .unwrap_or(0)
+        .rem_euclid(86_400);
     let hour = seconds / 3_600;
     let minute = (seconds % 3_600) / 60;
     let second = seconds % 60;
-    format!("{:02}:{:02}:{:02}", hour, minute, second)
+    format!("{hour:02}:{minute:02}:{second:02}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retain_connected_targets_prunes_stale_selection() {
+        let mut page_state = TransfersPageState::new();
+        page_state
+            .selected_target_noob_ids
+            .extend(["peer-a".to_string(), "peer-b".to_string()]);
+
+        page_state.retain_connected_targets(&BTreeSet::from(["peer-b".to_string()]));
+
+        assert_eq!(
+            page_state.selected_target_noob_ids,
+            BTreeSet::from(["peer-b".to_string()])
+        );
+    }
 }

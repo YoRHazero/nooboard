@@ -55,17 +55,25 @@ pub(super) async fn send_files(
 
         let now_ms = now_millis_i64();
         let mut new_transfer_ids = Vec::with_capacity(scheduled.len());
+        let scheduled_peer_device_ids = scheduled
+            .iter()
+            .map(|scheduled_transfer| {
+                let peer_noob_id = NoobId::new(scheduled_transfer.peer_noob_id.clone());
+                (peer_noob_id.clone(), state.peer_device_id(&peer_noob_id))
+            })
+            .collect::<Vec<_>>();
         state.update_state(|app_state| {
-            for scheduled_transfer in &scheduled {
-                let transfer_id = TransferId::new(
-                    NoobId::new(scheduled_transfer.peer_noob_id.clone()),
-                    scheduled_transfer.transfer_id,
-                );
+            for (scheduled_transfer, (peer_noob_id, peer_device_id)) in
+                scheduled.iter().zip(scheduled_peer_device_ids.iter())
+            {
+                let transfer_id =
+                    TransferId::new(peer_noob_id.clone(), scheduled_transfer.transfer_id);
                 new_transfer_ids.push(transfer_id.clone());
                 app_state.transfers.active.push(Transfer {
                     transfer_id,
                     direction: TransferDirection::Upload,
-                    peer_noob_id: NoobId::new(scheduled_transfer.peer_noob_id.clone()),
+                    peer_device_id: peer_device_id.clone(),
+                    peer_noob_id: peer_noob_id.clone(),
                     file_name: file_name.clone(),
                     file_size: metadata.len(),
                     transferred_bytes: 0,
@@ -131,6 +139,7 @@ pub(super) async fn decide_incoming_transfer(
                     app_state.transfers.active.push(Transfer {
                         transfer_id: transfer_id_for_state.clone(),
                         direction: TransferDirection::Download,
+                        peer_device_id: pending.peer_device_id.clone(),
                         peer_noob_id: pending.peer_noob_id.clone(),
                         file_name: pending.file_name.clone(),
                         file_size: pending.file_size,
@@ -150,6 +159,7 @@ pub(super) async fn decide_incoming_transfer(
             let completed = CompletedTransfer {
                 transfer_id: request.transfer_id.clone(),
                 direction: TransferDirection::Download,
+                peer_device_id: pending.peer_device_id.clone(),
                 peer_noob_id: pending.peer_noob_id,
                 file_name: pending.file_name,
                 file_size: pending.file_size,
@@ -242,6 +252,7 @@ pub(super) fn handle_incoming_offer(
     total_chunks: u32,
 ) {
     let transfer_id = TransferId::new(peer_noob_id.clone(), raw_transfer_id);
+    let peer_device_id = state.peer_device_id(&peer_noob_id);
     let already_pending = state
         .app_state
         .transfers
@@ -261,6 +272,7 @@ pub(super) fn handle_incoming_offer(
             app_state.transfers.incoming_pending.push(IncomingTransfer {
                 transfer_id: transfer_id_for_state,
                 peer_noob_id: peer_noob_id.clone(),
+                peer_device_id: peer_device_id.clone(),
                 file_name,
                 file_size,
                 total_chunks,
@@ -289,6 +301,7 @@ pub(super) fn apply_transfer_update(
         } => {
             let transfer_id_for_state = transfer_id.clone();
             let peer_for_state = peer_noob_id.clone();
+            let peer_device_id = state.peer_device_id(&peer_for_state);
             let file_name_for_state = file_name.clone();
             state.update_state(|app_state| {
                 if let Some(existing) = app_state
@@ -311,6 +324,7 @@ pub(super) fn apply_transfer_update(
                     app_state.transfers.active.push(Transfer {
                         transfer_id: transfer_id_for_state.clone(),
                         direction,
+                        peer_device_id: peer_device_id.clone(),
                         peer_noob_id: peer_for_state.clone(),
                         file_name: file_name_for_state.clone(),
                         file_size: *total_bytes,
@@ -330,6 +344,7 @@ pub(super) fn apply_transfer_update(
         } => {
             let transfer_id_for_state = transfer_id.clone();
             let peer_for_state = peer_noob_id.clone();
+            let peer_device_id = state.peer_device_id(&peer_for_state);
             state.update_state(|app_state| {
                 if let Some(existing) = app_state
                     .transfers
@@ -351,6 +366,7 @@ pub(super) fn apply_transfer_update(
                     app_state.transfers.active.push(Transfer {
                         transfer_id: transfer_id_for_state.clone(),
                         direction,
+                        peer_device_id: peer_device_id.clone(),
                         peer_noob_id: peer_for_state.clone(),
                         file_name: String::new(),
                         file_size: *total_bytes,
@@ -495,6 +511,10 @@ fn take_completed_from_active(
     CompletedTransfer {
         transfer_id: transfer_id.clone(),
         direction,
+        peer_device_id: active
+            .as_ref()
+            .map(|transfer| transfer.peer_device_id.clone())
+            .unwrap_or_else(|| state.peer_device_id(&peer_noob_id)),
         peer_noob_id,
         file_name: active
             .as_ref()

@@ -46,6 +46,7 @@ pub struct PeersState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectedPeer {
     pub noob_id: super::NoobId,
+    pub device_id: String,
     pub addresses: Vec<SocketAddr>,
     pub transport: PeerTransport,
     pub latency_ms: Option<u32>,

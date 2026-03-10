@@ -6,10 +6,15 @@ use gpui_component::StyledExt;
 
 use crate::ui::theme;
 
+use super::super::transfers::snapshot::TransfersSnapshot;
 use super::WorkspaceView;
 
 impl WorkspaceView {
-    pub(super) fn transfer_summary(&self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn transfer_summary(
+        &self,
+        snapshot: &TransfersSnapshot,
+        cx: &mut Context<Self>,
+    ) -> Div {
         div()
             .v_flex()
             .gap(px(14.0))
@@ -39,22 +44,22 @@ impl WorkspaceView {
                     .gap(px(10.0))
                     .child(self.transfer_summary_card(
                         0,
-                        "Awaiting Review",
-                        self.awaiting_review_count(),
+                        "Awaiting",
+                        snapshot.metrics.awaiting,
                         theme::accent_amber(),
                         cx,
                     ))
                     .child(self.transfer_summary_card(
                         1,
-                        "Progress",
-                        self.progress_count(),
+                        "Active",
+                        snapshot.metrics.active,
                         theme::accent_blue(),
                         cx,
                     ))
                     .child(self.transfer_summary_card(
                         2,
-                        "Complete",
-                        self.complete_count(),
+                        "Completed",
+                        snapshot.metrics.completed,
                         theme::accent_green(),
                         cx,
                     )),

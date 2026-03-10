@@ -18,7 +18,7 @@ use gpui_component::scroll::ScrollableElement;
 use gpui_component::{StyledExt, TitleBar};
 
 use crate::state::{
-    SharedState, TransferItem, TransferStage, WorkspaceRoute,
+    SharedState, WorkspaceRoute,
     live_app::{DesktopLiveApp, LiveAppStore},
 };
 use crate::ui::theme;
@@ -39,7 +39,6 @@ pub struct WorkspaceView {
     peers_page_state: PeersPageState,
     settings_page_state: SettingsPageState,
     transfers_page_state: TransfersPageState,
-    transfer_items: Vec<TransferItem>,
     transfer_rail_expanded: bool,
     transfer_rail_has_toggled: bool,
 }
@@ -55,8 +54,7 @@ impl WorkspaceView {
         let clipboard_page = ClipboardPageState::new(&state.app.clipboard);
         let peers_page_state = PeersPageState::new();
         let settings_page_state = SettingsPageState::new(state.app.system_core.network_enabled);
-        let transfers_page_state = TransfersPageState::new(&state.app.clipboard);
-        let transfer_items = state.app.transfer_items.clone();
+        let transfers_page_state = TransfersPageState::new();
 
         Self {
             state,
@@ -67,7 +65,6 @@ impl WorkspaceView {
             peers_page_state,
             settings_page_state,
             transfers_page_state,
-            transfer_items,
             transfer_rail_expanded: true,
             transfer_rail_has_toggled: false,
         }
@@ -123,31 +120,6 @@ impl WorkspaceView {
             .child(self.sidebar(cx).h_full())
             .child(self.main_viewport(main).h_full())
             .child(self.transfer_rail(cx))
-    }
-
-    fn transfer_count(&self, stage: TransferStage) -> usize {
-        self.transfer_items
-            .iter()
-            .filter(|item| item.stage() == stage)
-            .count()
-    }
-
-    fn awaiting_review_count(&self) -> usize {
-        self.transfer_count(TransferStage::AwaitingReview)
-    }
-
-    fn progress_count(&self) -> usize {
-        self.transfer_count(TransferStage::Progress)
-    }
-
-    fn complete_count(&self) -> usize {
-        self.transfer_count(TransferStage::Complete)
-    }
-
-    fn dismiss_complete_item(&mut self, item_id: &str, cx: &mut Context<Self>) {
-        self.transfer_items
-            .retain(|item| !(item.id == item_id && item.is_complete()));
-        cx.notify();
     }
 }
 

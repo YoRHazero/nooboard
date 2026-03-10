@@ -201,6 +201,7 @@ pub struct PeersState {
 
 pub struct ConnectedPeer {
     pub noob_id: NoobId,
+    pub device_id: String,
     pub addresses: Vec<std::net::SocketAddr>,
     pub transport: PeerTransport,
     pub latency_ms: Option<u32>,
@@ -217,6 +218,8 @@ pub enum PeerTransport {
 说明：
 - 这里只包含当前已连接 peers
 - 不包含 discovered/offline peers
+- `device_id` 是 peer 当前上报的人类可读设备标签，对应对端当前生效的 `identity.device_id`
+- `device_id` 不保证唯一；desktop 可以对重复标签做高亮或告警，但所有业务逻辑仍必须以 `noob_id` 为准
 - `transport` 是基于当前配置对连接来源的解释，不是独立发现目录
 
 ### 5.5 `clipboard`
@@ -240,12 +243,36 @@ pub struct TransfersState {
     pub active: Vec<Transfer>,
     pub recent_completed: Vec<CompletedTransfer>,
 }
+
+pub struct IncomingTransfer {
+    pub transfer_id: TransferId,
+    pub peer_noob_id: NoobId,
+    pub peer_device_id: String,
+    pub file_name: String,
+    pub file_size: u64,
+    pub total_chunks: u32,
+    pub offered_at_ms: i64,
+}
+
+pub struct Transfer {
+    pub transfer_id: TransferId,
+    pub direction: TransferDirection,
+    pub peer_noob_id: NoobId,
+    pub peer_device_id: String,
+    pub file_name: String,
+    pub file_size: u64,
+    pub transferred_bytes: u64,
+    pub state: TransferState,
+    pub started_at_ms: i64,
+    pub updated_at_ms: i64,
+}
 ```
 
 说明：
 - `incoming_pending`：等待 accept/reject 的入站传输
 - `active`：当前进行中的上传/下载
 - `recent_completed`：最近完成的终态记录
+- `peer_device_id` 是对端当前上报的人类可读设备标签；它不保证唯一，desktop 只能用于显示，不能代替 `peer_noob_id`
 - 当前实现的 completed 缓冲上限为 64 条
 - transfer 状态目前不跨重启持久化
 
@@ -501,6 +528,7 @@ pub struct CompletedTransfer {
     pub transfer_id: TransferId,
     pub direction: TransferDirection,
     pub peer_noob_id: NoobId,
+    pub peer_device_id: String,
     pub file_name: String,
     pub file_size: u64,
     pub outcome: TransferOutcome,

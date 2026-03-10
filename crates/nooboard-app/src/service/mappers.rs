@@ -62,6 +62,7 @@ pub(crate) fn map_connected_peer(
 ) -> ConnectedPeer {
     ConnectedPeer {
         noob_id: NoobId::new(value.peer_noob_id),
+        device_id: value.peer_device_id,
         addresses: vec![value.addr],
         transport,
         latency_ms: None,

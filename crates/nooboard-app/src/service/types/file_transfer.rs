@@ -51,6 +51,7 @@ pub enum TransferOutcome {
 pub struct IncomingTransfer {
     pub transfer_id: TransferId,
     pub peer_noob_id: NoobId,
+    pub peer_device_id: String,
     pub file_name: String,
     pub file_size: u64,
     pub total_chunks: u32,
@@ -62,6 +63,7 @@ pub struct Transfer {
     pub transfer_id: TransferId,
     pub direction: TransferDirection,
     pub peer_noob_id: NoobId,
+    pub peer_device_id: String,
     pub file_name: String,
     pub file_size: u64,
     pub transferred_bytes: u64,
@@ -75,6 +77,7 @@ pub struct CompletedTransfer {
     pub transfer_id: TransferId,
     pub direction: TransferDirection,
     pub peer_noob_id: NoobId,
+    pub peer_device_id: String,
     pub file_name: String,
     pub file_size: u64,
     pub outcome: TransferOutcome,

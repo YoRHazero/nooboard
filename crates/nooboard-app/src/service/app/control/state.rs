@@ -125,6 +125,16 @@ impl ControlState {
         });
     }
 
+    pub(super) fn peer_device_id(&self, peer_noob_id: &NoobId) -> String {
+        self.app_state
+            .peers
+            .connected
+            .iter()
+            .find(|peer| peer.noob_id == *peer_noob_id)
+            .map(|peer| peer.device_id.clone())
+            .unwrap_or_else(|| peer_noob_id.as_str().to_string())
+    }
+
     pub(super) fn recent_completed_limit(&self) -> usize {
         RECENT_COMPLETED_LIMIT
     }
