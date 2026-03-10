@@ -153,7 +153,7 @@ impl WorkspaceView {
                         theme::accent_amber(),
                         cx,
                     )
-                    .on_click(cx.listener(|this, _, _, cx| this.open_transfers(cx))),
+                    .on_click(cx.listener(|this, _, window, cx| this.open_transfers(window, cx))),
                 ),
             )
     }
@@ -251,7 +251,7 @@ impl WorkspaceView {
                         accent,
                         cx,
                     )
-                    .on_click(cx.listener(|this, _, _, cx| this.open_transfers(cx))),
+                    .on_click(cx.listener(|this, _, window, cx| this.open_transfers(window, cx))),
                 ),
             )
     }

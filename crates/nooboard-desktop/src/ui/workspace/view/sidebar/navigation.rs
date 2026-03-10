@@ -66,8 +66,8 @@ impl WorkspaceView {
             .id(id)
             .w_full()
             .cursor_pointer()
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.route = route;
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.request_workspace_route(route, window, cx);
                 cx.notify();
             }))
             .px(px(14.0))

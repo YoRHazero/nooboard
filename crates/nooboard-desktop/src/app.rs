@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fs, io::ErrorKind, path::PathBuf, sync::Arc};
+use std::{borrow::Cow, fs, io::ErrorKind, path::PathBuf};
 
 use anyhow::Result;
 use gpui::{
@@ -9,7 +9,7 @@ use gpui_component::{Root, TitleBar};
 use gpui_component_assets::Assets as ComponentAssets;
 use gpui_platform::application;
 
-use crate::state::{SharedState, install_desktop_live_app};
+use crate::state::install_desktop_live_app;
 use crate::ui::WorkspaceView;
 
 struct DesktopAssets {
@@ -96,11 +96,10 @@ pub fn run() {
         install_desktop_live_app(desktop_config_path(), cx)
             .expect("desktop live app bootstrap must succeed");
 
-        let shared = Arc::new(SharedState::demo());
         let workspace_options = workspace_window_options(cx);
 
         cx.spawn(async move |cx| {
-            open_workspace_window(shared, workspace_options, cx)?;
+            open_workspace_window(workspace_options, cx)?;
             Ok::<_, anyhow::Error>(())
         })
         .detach();
@@ -119,14 +118,9 @@ fn desktop_config_path() -> PathBuf {
         })
 }
 
-fn open_workspace_window(
-    shared: Arc<SharedState>,
-    options: WindowOptions,
-    cx: &AsyncApp,
-) -> anyhow::Result<()> {
+fn open_workspace_window(options: WindowOptions, cx: &AsyncApp) -> anyhow::Result<()> {
     cx.open_window(options, move |window, cx| {
-        let state = shared.clone();
-        let view = cx.new(|cx| WorkspaceView::new(window, state, cx));
+        let view = cx.new(|cx| WorkspaceView::new(window, cx));
         cx.new(|cx| Root::new(view, window, cx))
     })?;
     Ok(())

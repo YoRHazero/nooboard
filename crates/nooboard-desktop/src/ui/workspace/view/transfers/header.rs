@@ -155,8 +155,8 @@ impl WorkspaceView {
                                     .border_color(theme::border_strong())
                             })
                             .active(|this| this.bg(theme::bg_panel()))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.open_transfer_settings(cx);
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_transfer_settings(window, cx);
                             }))
                             .child(
                                 div()

@@ -59,6 +59,10 @@ pub enum RecentActivityKind {
         event_id: EventId,
         source: ClipboardRecordSource,
     },
+    ClipboardAdoptFailed {
+        event_id: EventId,
+        message: String,
+    },
     IncomingTransferOffered {
         transfer_id: TransferId,
     },
@@ -245,6 +249,12 @@ impl LiveAppStore {
             message,
         }));
     }
+
+    pub(crate) fn record_clipboard_adopt_failed(&mut self, event_id: EventId, message: String) {
+        self.push_recent_activity(RecentActivityItem::new(
+            RecentActivityKind::ClipboardAdoptFailed { event_id, message },
+        ));
+    }
 }
 
 pub fn install_desktop_live_app(
@@ -308,7 +318,8 @@ fn activity_severity(kind: &RecentActivityKind) -> RecentActivitySeverity {
         | RecentActivityKind::SyncStarting
         | RecentActivityKind::SyncRunning
         | RecentActivityKind::SyncStopped => RecentActivitySeverity::Info,
-        RecentActivityKind::PeerConnectionError { .. }
+        RecentActivityKind::ClipboardAdoptFailed { .. }
+        | RecentActivityKind::PeerConnectionError { .. }
         | RecentActivityKind::SyncDisabledBySettings
         | RecentActivityKind::DesktopWarning { .. } => RecentActivitySeverity::Warning,
         RecentActivityKind::SyncError { .. } | RecentActivityKind::DesktopError { .. } => {

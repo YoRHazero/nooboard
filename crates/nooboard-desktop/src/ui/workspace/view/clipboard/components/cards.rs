@@ -5,8 +5,8 @@ use crate::ui::theme;
 
 pub(in crate::ui::workspace::view::clipboard) fn clipboard_target_chip(
     device_id: String,
-    connected: bool,
     selected: bool,
+    interactive: bool,
     accent: Hsla,
 ) -> Div {
     div()
@@ -25,6 +25,7 @@ pub(in crate::ui::workspace::view::clipboard) fn clipboard_target_chip(
         } else {
             theme::border_soft()
         })
+        .opacity(if interactive { 1.0 } else { 0.74 })
         .child(
             div()
                 .h_flex()
@@ -35,11 +36,7 @@ pub(in crate::ui::workspace::view::clipboard) fn clipboard_target_chip(
                     div()
                         .text_size(px(12.0))
                         .font_semibold()
-                        .text_color(if connected {
-                            theme::fg_primary()
-                        } else {
-                            theme::fg_secondary()
-                        })
+                        .text_color(theme::fg_primary())
                         .child(device_id),
                 )
                 .child(
@@ -47,17 +44,17 @@ pub(in crate::ui::workspace::view::clipboard) fn clipboard_target_chip(
                         .h_flex()
                         .items_center()
                         .gap(px(6.0))
-                        .child(div().size(px(6.0)).rounded(px(999.0)).bg(if connected {
-                            accent
-                        } else {
-                            theme::border_base()
-                        }))
+                        .child(div().size(px(6.0)).rounded(px(999.0)).bg(accent))
                         .child(
                             div()
                                 .text_size(px(10.0))
                                 .font_semibold()
-                                .text_color(if connected { accent } else { theme::fg_muted() })
-                                .child(if connected { "Connected" } else { "Offline" }),
+                                .text_color(if interactive {
+                                    accent
+                                } else {
+                                    theme::fg_muted()
+                                })
+                                .child(if interactive { "Selected" } else { "Broadcast" }),
                         ),
                 ),
         )
@@ -87,9 +84,9 @@ pub(in crate::ui::workspace::view::clipboard) fn clipboard_history_item_shell(
 }
 
 pub(in crate::ui::workspace::view::clipboard) fn clipboard_history_item_body(
-    device_id: String,
+    title: String,
     recorded_at_label: String,
-    origin_badge: Div,
+    source_badge: Div,
     preview: String,
 ) -> Div {
     div()
@@ -116,7 +113,7 @@ pub(in crate::ui::workspace::view::clipboard) fn clipboard_history_item_body(
                                 .text_color(theme::fg_primary())
                                 .line_clamp(1)
                                 .text_ellipsis()
-                                .child(device_id),
+                                .child(title),
                         )
                         .child(
                             div()
@@ -129,7 +126,7 @@ pub(in crate::ui::workspace::view::clipboard) fn clipboard_history_item_body(
                                 .child(recorded_at_label),
                         ),
                 )
-                .child(div().flex_shrink_0().child(origin_badge)),
+                .child(div().flex_shrink_0().child(source_badge)),
         )
         .child(
             div()

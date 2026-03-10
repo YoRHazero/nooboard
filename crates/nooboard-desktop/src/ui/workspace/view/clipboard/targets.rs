@@ -1,16 +1,20 @@
+use gpui::{AnyElement, Hsla, InteractiveElement, StatefulInteractiveElement};
+
+use super::components::{clipboard_mode_tab, clipboard_themed_tooltip};
+use super::page_state::ClipboardBroadcastScope;
 use super::*;
-use crate::ui::workspace::view::clipboard::components::clipboard_themed_tooltip;
-use gpui::StatefulInteractiveElement;
+use gpui_component::StyledExt;
 
 impl WorkspaceView {
-    pub(super) fn clipboard_targets_panel(&self, cx: &mut Context<Self>) -> Div {
-        let chips: Vec<_> = self
-            .state
-            .app
-            .clipboard
-            .targets
+    pub(super) fn clipboard_targets_panel(
+        &self,
+        snapshot: &ClipboardSnapshot,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let chips: Vec<_> = snapshot
+            .target_rows
             .iter()
-            .map(|target| self.clipboard_target_chip(target, cx))
+            .map(|target| self.clipboard_target_row(target, snapshot, cx))
             .collect();
 
         clipboard_panel_shell()
@@ -19,13 +23,28 @@ impl WorkspaceView {
             .gap(px(14.0))
             .p(px(20.0))
             .child(clipboard_panel_header(
-                "Targets",
-                format!(
-                    "{} of {} selected",
-                    self.clipboard_page.selected_target_count(),
-                    self.state.app.clipboard.targets.len()
-                ),
+                "Broadcast Targets",
+                format!("{} connected peer(s)", snapshot.connected_target_count),
             ))
+            .child(
+                div()
+                    .h_flex()
+                    .gap(px(8.0))
+                    .child(self.clipboard_scope_tab(
+                        "All connected",
+                        snapshot.broadcast_scope == ClipboardBroadcastScope::AllConnected,
+                        theme::accent_blue(),
+                        ClipboardBroadcastScope::AllConnected,
+                        cx,
+                    ))
+                    .child(self.clipboard_scope_tab(
+                        "Selected peers",
+                        snapshot.broadcast_scope == ClipboardBroadcastScope::SelectedPeers,
+                        theme::accent_cyan(),
+                        ClipboardBroadcastScope::SelectedPeers,
+                        cx,
+                    )),
+            )
             .child(
                 div()
                     .w_full()
@@ -34,31 +53,47 @@ impl WorkspaceView {
             )
     }
 
-    fn clipboard_target_chip(
+    fn clipboard_scope_tab(
         &self,
-        target: &ClipboardTarget,
+        label: &'static str,
+        selected: bool,
+        accent: Hsla,
+        scope: ClipboardBroadcastScope,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let accent = if target.status == ClipboardTargetStatus::Connected {
-            theme::accent_cyan()
-        } else {
-            theme::fg_muted()
-        };
-        let selected = self.clipboard_page.target_is_selected(&target.noob_id);
-        let noob_id = target.noob_id.clone();
-        let tooltip = format!("noob_id: {}", target.noob_id);
+        clipboard_mode_tab(label, selected, accent)
+            .id(format!("clipboard-scope-tab-{label}"))
+            .cursor_pointer()
+            .hover(|this| {
+                this.bg(theme::bg_panel_alt())
+                    .border_color(theme::border_strong())
+            })
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.set_clipboard_broadcast_scope(scope, cx);
+            }))
+            .into_any_element()
+    }
+
+    fn clipboard_target_row(
+        &self,
+        target: &snapshot::ClipboardTargetSnapshot,
+        _snapshot: &ClipboardSnapshot,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let mut chip = clipboard_target_chip(
             target.device_id.clone(),
-            target.is_connected(),
-            selected,
-            accent,
+            target.selected,
+            target.interactive,
+            theme::accent_cyan(),
         )
         .id(format!("clipboard-target-chip-{}", target.noob_id))
-        .tooltip(move |window: &mut Window, cx| {
-            clipboard_themed_tooltip(tooltip.clone(), window, cx)
+        .tooltip({
+            let tooltip = format!("noob_id: {}", target.noob_id);
+            move |window, cx| clipboard_themed_tooltip(tooltip.clone(), window, cx)
         });
 
-        if target.is_connected() {
+        if target.interactive {
+            let noob_id = target.noob_id.clone();
             chip = chip
                 .cursor_pointer()
                 .hover(|this| {
@@ -69,8 +104,6 @@ impl WorkspaceView {
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.toggle_clipboard_target(&noob_id, cx);
                 }));
-        } else {
-            chip = chip.opacity(0.72);
         }
 
         chip.into_any_element()

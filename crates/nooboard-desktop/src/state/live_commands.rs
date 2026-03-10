@@ -1,8 +1,9 @@
 use anyhow::Error;
 use gpui::{AsyncApp, Context, Entity};
 use nooboard_app::{
-    AppError, DesktopAppService, EventId, IncomingTransferDecision, SendFilesRequest,
-    SettingsPatch, SyncDesiredState, TransferId,
+    AppError, ClipboardHistoryPage, DesktopAppService, EventId, IncomingTransferDecision,
+    ListClipboardHistoryRequest, RebroadcastClipboardRequest, SendFilesRequest, SettingsPatch,
+    SubmitTextRequest, SyncDesiredState, TransferId,
 };
 
 use super::live_app::{DesktopLiveApp, LiveAppStore};
@@ -63,6 +64,44 @@ impl LiveCommandClient {
                 Err(error)
             }
         }
+    }
+
+    pub async fn adopt_clipboard_record_quiet(&self, event_id: EventId) -> Result<(), AppError> {
+        self.live_app
+            .service()
+            .adopt_clipboard_record(event_id)
+            .await
+    }
+
+    pub async fn get_clipboard_record(
+        &self,
+        event_id: EventId,
+    ) -> Result<nooboard_app::ClipboardRecord, AppError> {
+        self.live_app.service().get_clipboard_record(event_id).await
+    }
+
+    pub async fn list_clipboard_history(
+        &self,
+        request: ListClipboardHistoryRequest,
+    ) -> Result<ClipboardHistoryPage, AppError> {
+        self.live_app
+            .service()
+            .list_clipboard_history(request)
+            .await
+    }
+
+    pub async fn submit_text(&self, request: SubmitTextRequest) -> Result<EventId, AppError> {
+        self.live_app.service().submit_text(request).await
+    }
+
+    pub async fn rebroadcast_clipboard_record(
+        &self,
+        request: RebroadcastClipboardRequest,
+    ) -> Result<(), AppError> {
+        self.live_app
+            .service()
+            .rebroadcast_clipboard_record(request)
+            .await
     }
 
     pub async fn send_files(

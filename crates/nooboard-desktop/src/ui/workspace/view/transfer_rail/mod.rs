@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 
 use gpui::{
     AnimationExt as _, Context, Div, Hsla, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, div, px,
+    StatefulInteractiveElement, Styled, Window, div, px,
 };
 use gpui_component::StyledExt;
 use gpui_component::scroll::ScrollableElement;
@@ -231,8 +231,7 @@ impl WorkspaceView {
         }
     }
 
-    fn open_transfers(&mut self, cx: &mut Context<Self>) {
-        self.route = WorkspaceRoute::Transfers;
-        cx.notify();
+    fn open_transfers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.request_workspace_route(WorkspaceRoute::Transfers, window, cx);
     }
 }

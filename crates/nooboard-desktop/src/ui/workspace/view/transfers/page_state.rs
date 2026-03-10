@@ -408,9 +408,12 @@ impl WorkspaceView {
         .detach();
     }
 
-    pub(super) fn open_transfer_settings(&mut self, cx: &mut Context<Self>) {
-        self.route = WorkspaceRoute::Settings;
-        cx.notify();
+    pub(super) fn open_transfer_settings(
+        &mut self,
+        window: &mut gpui::Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.request_workspace_route(WorkspaceRoute::Settings, window, cx);
     }
 }
 

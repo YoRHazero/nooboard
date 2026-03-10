@@ -7,6 +7,7 @@ use crate::ui::theme;
 pub(crate) fn activity_kind_icon(item: &RecentActivityItem) -> IconName {
     match item.kind {
         RecentActivityKind::ClipboardCommitted { .. } => IconName::Copy,
+        RecentActivityKind::ClipboardAdoptFailed { .. } => IconName::TriangleAlert,
         RecentActivityKind::IncomingTransferOffered { .. }
         | RecentActivityKind::TransferCompleted { .. } => IconName::Folder,
         RecentActivityKind::PeerConnectionError { .. }
@@ -39,6 +40,7 @@ pub(crate) fn activity_accent(item: &RecentActivityItem) -> Hsla {
 pub(crate) fn activity_kind_label(item: &RecentActivityItem) -> &'static str {
     match item.kind {
         RecentActivityKind::ClipboardCommitted { .. } => "Clipboard",
+        RecentActivityKind::ClipboardAdoptFailed { .. } => "Clipboard Warning",
         RecentActivityKind::IncomingTransferOffered { .. } => "Incoming Transfer",
         RecentActivityKind::TransferCompleted { .. } => "Transfer Complete",
         RecentActivityKind::PeerConnectionError { .. } => "Peer Error",
@@ -56,6 +58,9 @@ pub(crate) fn activity_title(item: &RecentActivityItem) -> String {
     match &item.kind {
         RecentActivityKind::ClipboardCommitted { source, .. } => {
             format!("clipboard record committed from {:?}", source)
+        }
+        RecentActivityKind::ClipboardAdoptFailed { event_id, message } => {
+            format!("clipboard record {event_id} was saved, but local adopt failed: {message}")
         }
         RecentActivityKind::IncomingTransferOffered { transfer_id } => {
             format!("incoming transfer {transfer_id} is awaiting a decision")

@@ -8,17 +8,15 @@ mod sidebar;
 mod transfer_rail;
 mod transfers;
 
-use std::sync::Arc;
-
 use gpui::{
-    Context, Div, Entity, InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle,
-    StatefulInteractiveElement, Styled, Window, div, px,
+    AnyWindowHandle, Context, Div, Entity, InteractiveElement, IntoElement, ParentElement, Render,
+    ScrollHandle, StatefulInteractiveElement, Styled, Window, div, px,
 };
 use gpui_component::scroll::ScrollableElement;
-use gpui_component::{StyledExt, TitleBar};
+use gpui_component::{Root, StyledExt, TitleBar};
 
 use crate::state::{
-    SharedState, WorkspaceRoute,
+    WorkspaceRoute,
     live_app::{DesktopLiveApp, LiveAppStore},
 };
 use crate::ui::theme;
@@ -31,8 +29,8 @@ use self::shared::MAIN_CANVAS_MIN_WIDTH;
 use self::transfers::TransfersPageState;
 
 pub struct WorkspaceView {
-    state: Arc<SharedState>,
     live_store: Entity<LiveAppStore>,
+    window_handle: AnyWindowHandle,
     route: WorkspaceRoute,
     main_y_scroll: ScrollHandle,
     clipboard_page: ClipboardPageState,
@@ -44,15 +42,26 @@ pub struct WorkspaceView {
 }
 
 impl WorkspaceView {
-    pub fn new(window: &mut Window, state: Arc<SharedState>, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let live_store = cx.global::<DesktopLiveApp>().store();
         cx.observe(&live_store, |this, _, cx| {
             this.sync_settings_page_state(cx);
+            this.sync_clipboard_page_state(cx);
             cx.notify();
         })
         .detach();
 
-        let clipboard_page = ClipboardPageState::new(&state.app.clipboard);
+        let clipboard_page = {
+            let store = live_store.read(cx);
+            ClipboardPageState::new(
+                store.latest_committed_record().cloned(),
+                store.app_state().clipboard.latest_committed_event_id,
+                window,
+                cx,
+            )
+        };
+        let edit_input = clipboard_page.edit_input();
+        cx.observe(&edit_input, |_, _, cx| cx.notify()).detach();
         let peers_page_state = PeersPageState::new();
         let settings_snapshot = {
             let store = live_store.read(cx);
@@ -61,9 +70,9 @@ impl WorkspaceView {
         let settings_page_state = SettingsPageState::new(settings_snapshot, window, cx);
         let transfers_page_state = TransfersPageState::new();
 
-        Self {
-            state,
+        let mut view = Self {
             live_store,
+            window_handle: window.window_handle(),
             route: WorkspaceRoute::Home,
             main_y_scroll: ScrollHandle::default(),
             clipboard_page,
@@ -72,7 +81,10 @@ impl WorkspaceView {
             transfers_page_state,
             transfer_rail_expanded: true,
             transfer_rail_has_toggled: false,
-        }
+        };
+        view.sync_clipboard_page_state(cx);
+        view.bootstrap_clipboard_page(cx);
+        view
     }
 
     fn main_viewport(&self, main: Div) -> Div {
@@ -129,7 +141,7 @@ impl WorkspaceView {
 }
 
 impl Render for WorkspaceView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let app_state = self.live_store.read(cx).app_state().clone();
         let main = match self.route {
             WorkspaceRoute::Home => self.home_page(cx),
@@ -139,8 +151,9 @@ impl Render for WorkspaceView {
             WorkspaceRoute::Settings => self.settings_page(cx),
         };
 
-        div()
+        let mut root = div()
             .v_flex()
+            .relative()
             .size_full()
             .bg(theme::bg_app())
             .text_color(theme::fg_primary())
@@ -173,6 +186,18 @@ impl Render for WorkspaceView {
                         ),
                 ),
             )
-            .child(self.workspace_shell(main, cx))
+            .child(self.workspace_shell(main, cx));
+
+        if let Some(layer) = Root::render_notification_layer(window, cx) {
+            root = root.child(layer);
+        }
+        if let Some(layer) = Root::render_sheet_layer(window, cx) {
+            root = root.child(layer);
+        }
+        if let Some(layer) = Root::render_dialog_layer(window, cx) {
+            root = root.child(layer);
+        }
+
+        root
     }
 }

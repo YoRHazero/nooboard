@@ -128,7 +128,12 @@ impl WorkspaceView {
                         "Only staged files live here. Active transfer progress comes from the app.",
                     ),
             )
-            .child(div().h_flex().gap(px(8.0)).child(self.transfer_browse_files_chip(cx)))
+            .child(
+                div()
+                    .h_flex()
+                    .gap(px(8.0))
+                    .child(self.transfer_browse_files_chip(cx)),
+            )
     }
 
     fn transfer_browse_files_chip(&self, cx: &mut Context<Self>) -> impl IntoElement {

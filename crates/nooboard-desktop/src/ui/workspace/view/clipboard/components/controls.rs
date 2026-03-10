@@ -1,13 +1,10 @@
-use gpui::{
-    AnyElement, App, Hsla, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, div, px,
-};
+use gpui::{App, Hsla, ParentElement, Styled, div, px};
+use gpui_component::Disableable;
+use gpui_component::Sizable;
 use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
-use gpui_component::{Disableable, StyledExt};
+use gpui_component::{Icon, IconName, StyledExt};
 
 use crate::ui::theme;
-
-use super::chrome::clipboard_themed_tooltip;
 
 pub(in crate::ui::workspace::view::clipboard) fn clipboard_metric_chip(
     label: &str,
@@ -40,9 +37,10 @@ pub(in crate::ui::workspace::view::clipboard) fn clipboard_metric_chip(
         )
 }
 
-pub(in crate::ui::workspace::view::clipboard) fn clipboard_action_button(
+pub(in crate::ui::workspace::view::clipboard) fn clipboard_icon_action_button(
     id: impl Into<gpui::ElementId>,
-    label: &str,
+    icon: IconName,
+    tooltip: impl Into<gpui::SharedString>,
     accent: Hsla,
     disabled: bool,
     cx: &App,
@@ -50,35 +48,51 @@ pub(in crate::ui::workspace::view::clipboard) fn clipboard_action_button(
     let variant = ButtonCustomVariant::new(cx)
         .color(accent.opacity(0.10))
         .foreground(theme::fg_primary())
-        .hover(accent.opacity(0.34))
-        .active(accent.opacity(0.48))
+        .hover(accent.opacity(0.20))
+        .active(accent.opacity(0.28))
         .shadow(false);
 
     Button::new(id)
         .custom(variant)
+        .small()
+        .compact()
         .rounded(px(999.0))
         .border_1()
-        .border_color(accent.opacity(0.38))
+        .border_color(accent.opacity(0.28))
         .disabled(disabled)
-        .child(
-            div()
-                .text_color(theme::fg_primary())
-                .font_semibold()
-                .child(label.to_string()),
-        )
+        .tooltip(tooltip)
+        .icon(Icon::new(icon).size(px(16.0)))
 }
 
-pub(in crate::ui::workspace::view::clipboard) fn clipboard_action_with_tooltip(
-    id: &'static str,
-    button: Button,
-    tooltip: Option<String>,
-) -> AnyElement {
-    match tooltip {
-        Some(text) => div()
-            .id(id)
-            .tooltip(move |window, cx| clipboard_themed_tooltip(text.clone(), window, cx))
-            .child(button)
-            .into_any_element(),
-        None => button.into_any_element(),
-    }
+pub(in crate::ui::workspace::view::clipboard) fn clipboard_mode_tab(
+    label: &str,
+    selected: bool,
+    accent: Hsla,
+) -> gpui::Div {
+    div()
+        .px(px(12.0))
+        .py(px(8.0))
+        .rounded(px(999.0))
+        .bg(if selected {
+            accent.opacity(0.16)
+        } else {
+            theme::bg_console()
+        })
+        .border_1()
+        .border_color(if selected {
+            accent.opacity(0.34)
+        } else {
+            theme::border_soft()
+        })
+        .child(
+            div()
+                .text_size(px(11.0))
+                .font_semibold()
+                .text_color(if selected {
+                    accent
+                } else {
+                    theme::fg_secondary()
+                })
+                .child(label.to_string()),
+        )
 }

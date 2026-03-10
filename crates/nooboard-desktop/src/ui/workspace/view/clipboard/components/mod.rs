@@ -9,5 +9,5 @@ pub(super) use chrome::{
     clipboard_badge, clipboard_panel_header, clipboard_panel_shell, clipboard_themed_tooltip,
 };
 pub(super) use controls::{
-    clipboard_action_button, clipboard_action_with_tooltip, clipboard_metric_chip,
+    clipboard_icon_action_button, clipboard_metric_chip, clipboard_mode_tab,
 };

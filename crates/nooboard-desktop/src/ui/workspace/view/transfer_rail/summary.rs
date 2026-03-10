@@ -77,7 +77,7 @@ impl WorkspaceView {
         div()
             .id(("transfer-summary", id))
             .cursor_pointer()
-            .on_click(cx.listener(|this, _, _, cx| this.open_transfers(cx)))
+            .on_click(cx.listener(|this, _, window, cx| this.open_transfers(window, cx)))
             .v_flex()
             .gap(px(8.0))
             .p(px(12.0))
