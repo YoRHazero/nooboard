@@ -40,7 +40,6 @@ pub(in crate::ui::workspace::view::clipboard) fn clipboard_metric_chip(
 pub(in crate::ui::workspace::view::clipboard) fn clipboard_icon_action_button(
     id: impl Into<gpui::ElementId>,
     icon: IconName,
-    tooltip: impl Into<gpui::SharedString>,
     accent: Hsla,
     disabled: bool,
     cx: &App,
@@ -48,8 +47,8 @@ pub(in crate::ui::workspace::view::clipboard) fn clipboard_icon_action_button(
     let variant = ButtonCustomVariant::new(cx)
         .color(accent.opacity(0.10))
         .foreground(theme::fg_primary())
-        .hover(accent.opacity(0.20))
-        .active(accent.opacity(0.28))
+        .hover(accent.opacity(0.22))
+        .active(accent.opacity(0.30))
         .shadow(false);
 
     Button::new(id)
@@ -60,8 +59,11 @@ pub(in crate::ui::workspace::view::clipboard) fn clipboard_icon_action_button(
         .border_1()
         .border_color(accent.opacity(0.28))
         .disabled(disabled)
-        .tooltip(tooltip)
-        .icon(Icon::new(icon).size(px(16.0)))
+        .icon(
+            Icon::new(icon)
+                .size(px(17.0))
+                .text_color(theme::fg_primary()),
+        )
 }
 
 pub(in crate::ui::workspace::view::clipboard) fn clipboard_mode_tab(

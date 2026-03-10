@@ -8,7 +8,7 @@ mod page_state;
 mod snapshot;
 mod targets;
 
-use gpui::{Context, Div, Hsla, IntoElement, ParentElement, Styled, div, px};
+use gpui::{Context, Div, Hsla, IntoElement, ParentElement, Styled, Window, div, px};
 use gpui_component::StyledExt;
 use gpui_component::scroll::ScrollableElement;
 use nooboard_app::{ClipboardRecord, ClipboardRecordSource};
@@ -24,22 +24,32 @@ use self::components::{
 use self::snapshot::{ClipboardSnapshot, build_clipboard_snapshot, clipboard_source_label};
 
 use super::WorkspaceView;
+use super::shared::{SIDEBAR_WIDTH, TRANSFER_RAIL_COLLAPSED_WIDTH, TRANSFER_RAIL_WIDTH};
 
 const CLIPBOARD_HISTORY_WIDTH: f32 = 306.0;
+const CLIPBOARD_DETAIL_MIN_WIDTH: f32 = 420.0;
 const CLIPBOARD_TEXT_PANEL_MIN_HEIGHT: f32 = 376.0;
+const CLIPBOARD_PAGE_MIN_WIDTH: f32 = CLIPBOARD_HISTORY_WIDTH + 18.0 + CLIPBOARD_DETAIL_MIN_WIDTH;
+const WORKSPACE_SHELL_HORIZONTAL_PADDING: f32 = 36.0;
+const WORKSPACE_SHELL_HORIZONTAL_GAPS: f32 = 36.0;
+const MAIN_VIEWPORT_HORIZONTAL_PADDING: f32 = 44.0;
 
 impl WorkspaceView {
-    pub(super) fn clipboard_page(&self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn clipboard_page(&self, window: &Window, cx: &mut Context<Self>) -> Div {
         let snapshot = self.clipboard_snapshot(cx);
+        let page_width = self.clipboard_page_width(window);
 
         div()
-            .w_full()
+            .w(page_width)
+            .min_w(px(CLIPBOARD_PAGE_MIN_WIDTH))
+            .flex_shrink_0()
             .v_flex()
             .gap(px(18.0))
             .child(self.clipboard_header(&snapshot))
             .child(self.clipboard_targets_panel(&snapshot, cx))
             .child(
                 div()
+                    .w_full()
                     .flex()
                     .min_h(px(640.0))
                     .gap(px(18.0))
@@ -47,6 +57,26 @@ impl WorkspaceView {
                     .child(self.clipboard_history_panel(&snapshot, cx))
                     .child(self.clipboard_detail_panel(&snapshot, cx)),
             )
+    }
+
+    fn clipboard_page_width(&self, window: &Window) -> gpui::Pixels {
+        let rail_width = if self.transfer_rail_expanded {
+            TRANSFER_RAIL_WIDTH
+        } else {
+            TRANSFER_RAIL_COLLAPSED_WIDTH
+        };
+        let available_width = window.viewport_size().width
+            - px(WORKSPACE_SHELL_HORIZONTAL_PADDING
+                + WORKSPACE_SHELL_HORIZONTAL_GAPS
+                + SIDEBAR_WIDTH
+                + rail_width
+                + MAIN_VIEWPORT_HORIZONTAL_PADDING);
+
+        if available_width < px(CLIPBOARD_PAGE_MIN_WIDTH) {
+            px(CLIPBOARD_PAGE_MIN_WIDTH)
+        } else {
+            available_width
+        }
     }
 
     fn clipboard_snapshot(&self, cx: &mut Context<Self>) -> ClipboardSnapshot {

@@ -60,6 +60,8 @@ pub(crate) struct ClipboardPageState {
     pub(super) latest_seen_committed_event_id: Option<EventId>,
     pub(super) selected_target_noob_ids: BTreeSet<NoobId>,
     pub(super) feedback: Option<String>,
+    pub(super) read_input: Entity<InputState>,
+    pub(super) read_event_id: Option<EventId>,
     pub(super) edit_input: Entity<InputState>,
     pub(super) edit_event_id: Option<EventId>,
     pub(super) edit_base_content: String,
@@ -76,6 +78,12 @@ impl ClipboardPageState {
         window: &mut Window,
         cx: &mut Context<super::WorkspaceView>,
     ) -> Self {
+        let read_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line(true)
+                .rows(14)
+                .placeholder("Selected committed clipboard content will appear here.")
+        });
         let edit_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .multi_line(true)
@@ -102,6 +110,8 @@ impl ClipboardPageState {
             latest_seen_committed_event_id: latest_committed_event_id,
             selected_target_noob_ids: BTreeSet::new(),
             feedback: None,
+            read_input,
+            read_event_id: None,
             edit_input,
             edit_event_id: None,
             edit_base_content: String::new(),
@@ -118,6 +128,26 @@ impl ClipboardPageState {
 
     pub(crate) fn edit_input(&self) -> Entity<InputState> {
         self.edit_input.clone()
+    }
+
+    pub(super) fn sync_read_record(
+        &mut self,
+        record: Option<&ClipboardRecord>,
+        window: &mut Window,
+        cx: &mut Context<super::WorkspaceView>,
+    ) {
+        let next_event_id = record.map(|record| record.event_id);
+        if self.read_event_id == next_event_id {
+            return;
+        }
+
+        let next_content = record
+            .map(|record| record.content.clone())
+            .unwrap_or_default();
+        self.read_event_id = next_event_id;
+        self.read_input.update(cx, |input, cx| {
+            input.set_value(next_content, window, cx);
+        });
     }
 
     pub(super) fn is_edit_dirty(&self, cx: &gpui::App) -> bool {

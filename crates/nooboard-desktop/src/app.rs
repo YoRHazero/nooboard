@@ -5,7 +5,7 @@ use gpui::{
     App, AppContext, AssetSource, AsyncApp, Bounds, SharedString, WindowBounds, WindowOptions, px,
     size,
 };
-use gpui_component::{Root, TitleBar};
+use gpui_component::{Root, Theme, ThemeMode, TitleBar};
 use gpui_component_assets::Assets as ComponentAssets;
 use gpui_platform::application;
 
@@ -93,6 +93,7 @@ impl AssetSource for DesktopAssets {
 pub fn run() {
     application().with_assets(DesktopAssets::new()).run(|cx| {
         gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
         install_desktop_live_app(desktop_config_path(), cx)
             .expect("desktop live app bootstrap must succeed");
 

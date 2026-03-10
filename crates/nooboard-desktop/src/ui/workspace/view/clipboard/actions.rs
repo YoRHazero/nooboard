@@ -1,15 +1,17 @@
 use std::collections::HashSet;
 
 use anyhow::Error;
-use gpui::{AppContext, Context};
+use gpui::{AppContext, Context, Styled};
 use gpui_component::WindowExt;
 use gpui_component::notification::Notification;
+use gpui_component::{Icon, IconName};
 use nooboard_app::{
     ClipboardBroadcastTargets, ListClipboardHistoryRequest, RebroadcastClipboardRequest,
     SubmitTextRequest,
 };
 
 use crate::state::live_commands;
+use crate::ui::theme;
 
 use super::WorkspaceView;
 use super::page_state::{ClipboardBroadcastScope, ClipboardHistoryLoadState, ClipboardSelection};
@@ -54,6 +56,16 @@ impl WorkspaceView {
 
         self.clipboard_page.latest_seen_committed_event_id =
             store.app_state().clipboard.latest_committed_event_id;
+    }
+
+    pub(crate) fn sync_clipboard_read_input(
+        &mut self,
+        window: &mut gpui::Window,
+        cx: &mut Context<Self>,
+    ) {
+        let selected_record = self.selected_clipboard_record(cx);
+        self.clipboard_page
+            .sync_read_record(selected_record.as_ref(), window, cx);
     }
 
     pub(super) fn set_clipboard_feedback(&mut self, message: impl Into<String>) {
@@ -283,6 +295,13 @@ impl WorkspaceView {
                                     "Edited clipboard record was saved, but local adopt failed.",
                                 )
                                 .title("Clipboard saved, local adopt failed")
+                                .icon(
+                                    Icon::new(IconName::TriangleAlert)
+                                        .text_color(theme::accent_amber()),
+                                )
+                                .bg(theme::bg_panel())
+                                .border_color(theme::border_base())
+                                .text_color(theme::fg_primary())
                                 .id1::<ClipboardAdoptFailureNotification>(new_event_id.to_string()),
                                 cx,
                             );

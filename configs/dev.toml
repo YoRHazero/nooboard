@@ -8,9 +8,11 @@ device_id = "dev-mac"
 
 [app.clipboard]
 recent_event_lookup_limit = 50
+local_capture_enabled = true
 
 [storage]
 db_root = "/Users/zero/study/rust/nooboard/.dev-data"
+max_text_bytes = 1048576
 retain_old_versions = 0
 
 [storage.lifecycle]

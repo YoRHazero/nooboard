@@ -6,6 +6,7 @@ use nooboard_app::{
 };
 
 use crate::state::live_app::LiveAppStore;
+use crate::ui::workspace::view::shared::clock_label_from_millis;
 
 #[derive(Clone)]
 pub(in crate::ui::workspace::view) struct TransfersSnapshot {
@@ -335,14 +336,6 @@ fn duration_label(duration_ms: i64) -> String {
     } else {
         format!("{seconds}s")
     }
-}
-
-fn clock_label_from_millis(timestamp_ms: i64) -> String {
-    let seconds = timestamp_ms.div_euclid(1_000).rem_euclid(86_400);
-    let hour = seconds / 3_600;
-    let minute = (seconds % 3_600) / 60;
-    let second = seconds % 60;
-    format!("{hour:02}:{minute:02}:{second:02}")
 }
 
 fn now_millis() -> i64 {

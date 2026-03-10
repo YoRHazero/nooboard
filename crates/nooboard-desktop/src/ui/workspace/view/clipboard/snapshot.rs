@@ -1,6 +1,7 @@
 use nooboard_app::{ClipboardRecord, ClipboardRecordSource, EventId, NoobId};
 
 use crate::state::live_app::LiveAppStore;
+use crate::ui::workspace::view::shared::clock_label_from_millis;
 
 use super::page_state::{
     ClipboardBroadcastScope, ClipboardDetailTab, ClipboardHistoryLoadState, ClipboardPageState,
@@ -133,11 +134,7 @@ pub(super) fn clipboard_record_preview(content: &str, max_chars: usize) -> Strin
 }
 
 pub(super) fn clipboard_record_time_label(record: &ClipboardRecord) -> String {
-    let seconds = record.created_at_ms.div_euclid(1000).rem_euclid(86_400);
-    let hour = seconds / 3_600;
-    let minute = (seconds % 3_600) / 60;
-    let second = seconds % 60;
-    format!("{hour:02}:{minute:02}:{second:02}")
+    clock_label_from_millis(record.created_at_ms)
 }
 
 fn selected_record(

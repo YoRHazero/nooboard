@@ -1,6 +1,7 @@
 use nooboard_app::{ClipboardRecordSource, ConnectedPeer, EventId, SyncActualStatus};
 
 use crate::state::live_app::{LiveAppStore, RecentActivityItem};
+use crate::ui::workspace::view::shared::clock_label_from_millis;
 
 #[derive(Clone)]
 pub(super) struct HomeSnapshot {
@@ -164,14 +165,6 @@ fn clipboard_snapshot(store: &LiveAppStore) -> HomeClipboardSnapshot {
         latest_record: Some(latest_record),
         adopt_event_id: manual_adopt_remote.then_some(record.event_id),
     }
-}
-
-fn clock_label_from_millis(timestamp_ms: i64) -> String {
-    let seconds = timestamp_ms.div_euclid(1000).rem_euclid(86_400);
-    let hour = seconds / 3_600;
-    let minute = (seconds % 3_600) / 60;
-    let second = seconds % 60;
-    format!("{hour:02}:{minute:02}:{second:02}")
 }
 
 #[cfg(test)]

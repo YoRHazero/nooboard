@@ -4,6 +4,8 @@ use gpui_component::IconName;
 use crate::state::live_app::{RecentActivityItem, RecentActivityKind, RecentActivitySeverity};
 use crate::ui::theme;
 
+use super::clock_label_from_millis;
+
 pub(crate) fn activity_kind_icon(item: &RecentActivityItem) -> IconName {
     match item.kind {
         RecentActivityKind::ClipboardCommitted { .. } => IconName::Copy,
@@ -94,9 +96,5 @@ pub(crate) fn activity_title(item: &RecentActivityItem) -> String {
 }
 
 pub(crate) fn activity_time_label(item: &RecentActivityItem) -> String {
-    let seconds = item.observed_at_ms.div_euclid(1000).rem_euclid(86_400);
-    let hour = seconds / 3_600;
-    let minute = (seconds % 3_600) / 60;
-    let second = seconds % 60;
-    format!("{hour:02}:{minute:02}:{second:02}")
+    clock_label_from_millis(item.observed_at_ms)
 }

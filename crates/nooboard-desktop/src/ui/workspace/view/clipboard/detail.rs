@@ -3,9 +3,10 @@ use gpui::{AnyElement, Hsla, InteractiveElement, StatefulInteractiveElement};
 use gpui_component::IconName;
 use gpui_component::input::Input;
 use gpui_component::{Sizable, StyledExt};
-use nooboard_app::ClipboardRecord;
 
-use super::components::{clipboard_icon_action_button, clipboard_mode_tab};
+use super::components::{
+    clipboard_icon_action_button, clipboard_mode_tab, clipboard_themed_tooltip,
+};
 use super::page_state::{ClipboardBroadcastScope, ClipboardDetailTab};
 use super::snapshot::{clipboard_record_time_label, clipboard_source_label};
 use super::*;
@@ -18,7 +19,8 @@ impl WorkspaceView {
     ) -> Div {
         div()
             .flex_1()
-            .min_w(px(0.0))
+            .flex_shrink_0()
+            .min_w(px(CLIPBOARD_DETAIL_MIN_WIDTH))
             .v_flex()
             .gap(px(16.0))
             .child(self.clipboard_info_panel(snapshot, cx))
@@ -168,7 +170,7 @@ impl WorkspaceView {
     }
 
     fn clipboard_content_panel(&self, snapshot: &ClipboardSnapshot, cx: &mut Context<Self>) -> Div {
-        let Some(record) = snapshot.selected_record.clone() else {
+        let Some(_record) = snapshot.selected_record.clone() else {
             return clipboard_panel_shell()
                 .rounded(px(24.0))
                 .flex_1()
@@ -231,30 +233,45 @@ impl WorkspaceView {
                     }),
             )
             .child(match snapshot.detail_tab {
-                ClipboardDetailTab::Read => self.clipboard_read_content(record).into_any_element(),
+                ClipboardDetailTab::Read => self.clipboard_read_content().into_any_element(),
                 ClipboardDetailTab::Edit => {
                     self.clipboard_edit_content(snapshot).into_any_element()
                 }
             })
     }
 
-    fn clipboard_read_content(&self, record: ClipboardRecord) -> AnyElement {
+    fn clipboard_read_content(&self) -> AnyElement {
         div()
             .flex_1()
+            .w_full()
+            .min_w(px(0.0))
             .min_h(px(0.0))
-            .overflow_y_scrollbar()
+            .v_flex()
             .child(
                 div()
+                    .flex_1()
                     .w_full()
-                    .p(px(18.0))
+                    .min_w(px(0.0))
+                    .min_h(px(0.0))
+                    .px(px(14.0))
+                    .py(px(12.0))
                     .bg(theme::bg_console())
                     .border_1()
                     .border_color(theme::border_soft())
                     .rounded(px(18.0))
-                    .text_size(px(14.0))
-                    .text_color(theme::fg_primary())
-                    .whitespace_normal()
-                    .child(record.content),
+                    .overflow_hidden()
+                    .child(
+                        Input::new(&self.clipboard_page.read_input)
+                            .small()
+                            .h_full()
+                            .w_full()
+                            .appearance(false)
+                            .bordered(false)
+                            .focus_bordered(false)
+                            .disabled(true)
+                            .text_color(theme::fg_primary())
+                            .flex_1(),
+                    ),
             )
             .into_any_element()
     }
@@ -262,14 +279,35 @@ impl WorkspaceView {
     fn clipboard_edit_content(&self, snapshot: &ClipboardSnapshot) -> Div {
         div()
             .flex_1()
+            .w_full()
+            .min_w(px(0.0))
             .min_h(px(0.0))
             .v_flex()
             .gap(px(10.0))
             .child(
-                Input::new(&self.clipboard_page.edit_input)
-                    .small()
+                div()
+                    .flex_1()
                     .w_full()
-                    .flex_1(),
+                    .min_w(px(0.0))
+                    .min_h(px(0.0))
+                    .px(px(14.0))
+                    .py(px(12.0))
+                    .bg(theme::bg_console())
+                    .border_1()
+                    .border_color(theme::border_soft())
+                    .rounded(px(18.0))
+                    .overflow_hidden()
+                    .child(
+                        Input::new(&self.clipboard_page.edit_input)
+                            .small()
+                            .h_full()
+                            .w_full()
+                            .appearance(false)
+                            .bordered(false)
+                            .focus_bordered(false)
+                            .text_color(theme::fg_primary())
+                            .flex_1(),
+                    ),
             )
             .child(
                 div()
@@ -314,32 +352,52 @@ impl WorkspaceView {
             .h_flex()
             .gap(px(8.0))
             .child(
-                clipboard_icon_action_button(
-                    "clipboard-action-adopt",
-                    IconName::Copy,
-                    "Adopt this committed record locally through app",
-                    theme::accent_blue(),
-                    snapshot.adopt_in_flight,
-                    cx,
-                )
-                .loading(snapshot.adopt_in_flight)
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.request_clipboard_adopt_locally(cx);
-                })),
+                div()
+                    .id("clipboard-action-adopt-tooltip")
+                    .tooltip(|window, cx| {
+                        clipboard_themed_tooltip(
+                            "Adopt this committed record locally through app".to_string(),
+                            window,
+                            cx,
+                        )
+                    })
+                    .child(
+                        clipboard_icon_action_button(
+                            "clipboard-action-adopt",
+                            IconName::Copy,
+                            theme::accent_blue(),
+                            snapshot.adopt_in_flight,
+                            cx,
+                        )
+                        .loading(snapshot.adopt_in_flight)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.request_clipboard_adopt_locally(cx);
+                        })),
+                    ),
             )
             .child(
-                clipboard_icon_action_button(
-                    "clipboard-action-rebroadcast",
-                    IconName::ArrowUp,
-                    "Rebroadcast this committed record to connected peers",
-                    theme::accent_cyan(),
-                    snapshot.rebroadcast_in_flight || !can_rebroadcast,
-                    cx,
-                )
-                .loading(snapshot.rebroadcast_in_flight)
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.request_clipboard_rebroadcast(cx);
-                })),
+                div()
+                    .id("clipboard-action-rebroadcast-tooltip")
+                    .tooltip(|window, cx| {
+                        clipboard_themed_tooltip(
+                            "Rebroadcast this committed record to connected peers".to_string(),
+                            window,
+                            cx,
+                        )
+                    })
+                    .child(
+                        clipboard_icon_action_button(
+                            "clipboard-action-rebroadcast",
+                            IconName::ArrowUp,
+                            theme::accent_cyan(),
+                            snapshot.rebroadcast_in_flight || !can_rebroadcast,
+                            cx,
+                        )
+                        .loading(snapshot.rebroadcast_in_flight)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.request_clipboard_rebroadcast(cx);
+                        })),
+                    ),
             )
     }
 
@@ -348,31 +406,52 @@ impl WorkspaceView {
             .h_flex()
             .gap(px(8.0))
             .child(
-                clipboard_icon_action_button(
-                    "clipboard-action-submit-edit",
-                    IconName::Check,
-                    "Save the edited content as a new record and adopt it locally",
-                    theme::accent_cyan(),
-                    !snapshot.can_submit_edit,
-                    cx,
-                )
-                .loading(snapshot.submit_in_flight)
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.submit_clipboard_edit(cx);
-                })),
+                div()
+                    .id("clipboard-action-submit-edit-tooltip")
+                    .tooltip(|window, cx| {
+                        clipboard_themed_tooltip(
+                            "Save the edited content as a new record and adopt it locally"
+                                .to_string(),
+                            window,
+                            cx,
+                        )
+                    })
+                    .child(
+                        clipboard_icon_action_button(
+                            "clipboard-action-submit-edit",
+                            IconName::Check,
+                            theme::accent_cyan(),
+                            !snapshot.can_submit_edit,
+                            cx,
+                        )
+                        .loading(snapshot.submit_in_flight)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.submit_clipboard_edit(cx);
+                        })),
+                    ),
             )
             .child(
-                clipboard_icon_action_button(
-                    "clipboard-action-cancel-edit",
-                    IconName::Close,
-                    "Leave Edit and return to Read",
-                    theme::accent_rose(),
-                    snapshot.submit_in_flight,
-                    cx,
-                )
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.request_clipboard_detail_tab(ClipboardDetailTab::Read, window, cx);
-                })),
+                div()
+                    .id("clipboard-action-cancel-edit-tooltip")
+                    .tooltip(|window, cx| {
+                        clipboard_themed_tooltip(
+                            "Leave Edit and return to Read".to_string(),
+                            window,
+                            cx,
+                        )
+                    })
+                    .child(
+                        clipboard_icon_action_button(
+                            "clipboard-action-cancel-edit",
+                            IconName::Close,
+                            theme::accent_rose(),
+                            snapshot.submit_in_flight,
+                            cx,
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.request_clipboard_detail_tab(ClipboardDetailTab::Read, window, cx);
+                        })),
+                    ),
             )
     }
 }

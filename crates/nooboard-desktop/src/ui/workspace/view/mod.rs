@@ -145,7 +145,10 @@ impl Render for WorkspaceView {
         let app_state = self.live_store.read(cx).app_state().clone();
         let main = match self.route {
             WorkspaceRoute::Home => self.home_page(cx),
-            WorkspaceRoute::Clipboard => self.clipboard_page(cx),
+            WorkspaceRoute::Clipboard => {
+                self.sync_clipboard_read_input(window, cx);
+                self.clipboard_page(window, cx)
+            }
             WorkspaceRoute::Peers => self.peers_page(cx),
             WorkspaceRoute::Transfers => self.transfers_page(cx),
             WorkspaceRoute::Settings => self.settings_page(cx),

@@ -201,9 +201,22 @@ impl WorkspaceView {
                     .items_center()
                     .gap(px(8.0))
                     .child(
-                        Input::new(&self.settings_page_state.manual_peer_input)
-                            .small()
-                            .flex_1(),
+                        div()
+                            .flex_1()
+                            .h(px(34.0))
+                            .px(px(10.0))
+                            .bg(theme::bg_console())
+                            .border_1()
+                            .border_color(theme::border_soft())
+                            .rounded(px(12.0))
+                            .child(
+                                Input::new(&self.settings_page_state.manual_peer_input)
+                                    .small()
+                                    .appearance(false)
+                                    .bordered(false)
+                                    .focus_bordered(false)
+                                    .w_full(),
+                            ),
                     )
                     .child(
                         settings_action_button(

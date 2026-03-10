@@ -59,7 +59,7 @@ pub(in crate::ui::workspace::view::clipboard) fn clipboard_themed_tooltip(
     cx: &mut App,
 ) -> AnyView {
     Tooltip::new(text)
-        .bg(theme::bg_panel())
+        .bg(theme::bg_console())
         .text_color(theme::fg_primary())
         .border_color(theme::border_base())
         .build(window, cx)

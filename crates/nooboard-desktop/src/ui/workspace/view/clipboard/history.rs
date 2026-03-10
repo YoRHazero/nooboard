@@ -4,7 +4,7 @@ use gpui_component::IconName;
 use gpui_component::StyledExt;
 use nooboard_app::ClipboardRecord;
 
-use super::components::clipboard_icon_action_button;
+use super::components::{clipboard_icon_action_button, clipboard_themed_tooltip};
 use super::snapshot::{
     ClipboardHistoryRowSnapshot, clipboard_record_preview, clipboard_record_time_label,
 };
@@ -76,21 +76,31 @@ impl WorkspaceView {
             ))
             .child(
                 div().h_flex().justify_end().child(
-                    clipboard_icon_action_button(
-                        "clipboard-history-load-more",
-                        IconName::ChevronDown,
-                        "Load more committed clipboard records",
-                        theme::accent_amber(),
-                        !snapshot.can_load_more,
-                        cx,
-                    )
-                    .loading(
-                        snapshot.history_load_state
-                            == page_state::ClipboardHistoryLoadState::LoadingMore,
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.load_more_clipboard_history(cx);
-                    })),
+                    div()
+                        .id("clipboard-history-load-more-tooltip")
+                        .tooltip(|window, cx| {
+                            clipboard_themed_tooltip(
+                                "Load more committed clipboard records".to_string(),
+                                window,
+                                cx,
+                            )
+                        })
+                        .child(
+                            clipboard_icon_action_button(
+                                "clipboard-history-load-more",
+                                IconName::ChevronDown,
+                                theme::accent_amber(),
+                                !snapshot.can_load_more,
+                                cx,
+                            )
+                            .loading(
+                                snapshot.history_load_state
+                                    == page_state::ClipboardHistoryLoadState::LoadingMore,
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.load_more_clipboard_history(cx);
+                            })),
+                        ),
                 ),
             )
     }
