@@ -1,11 +1,9 @@
-use gpui::{Context, ParentElement, Styled, Window, div, px};
-use gpui_component::StyledExt;
+use gpui::{Context, Window};
 use gpui_component::WindowExt;
 use gpui_component::button::ButtonVariant;
 use gpui_component::dialog::DialogButtonProps;
 
 use crate::state::WorkspaceRoute;
-use crate::ui::theme;
 
 use super::WorkspaceView;
 use super::page_state::{ClipboardDetailTab, ClipboardExitIntent, ClipboardSelection};
@@ -119,39 +117,20 @@ impl WorkspaceView {
         self.clipboard_page.discard_confirm_open = true;
         let view = cx.entity().downgrade();
         let cancel_view = view.clone();
-        window.open_dialog(cx, move |dialog, _, _| {
+        window.open_alert_dialog(cx, move |alert, _, _| {
             let ok_view = view.clone();
             let cancel_view = cancel_view.clone();
-            dialog
+            alert
                 .title("Discard edited clipboard draft?")
+                .description(
+                    "You have unsaved changes in the Edit tab. Discard the current edits and continue?",
+                )
                 .button_props(
                     DialogButtonProps::default()
                         .show_cancel(true)
                         .ok_text("Discard")
                         .ok_variant(ButtonVariant::Warning)
                         .cancel_text("Stay"),
-                )
-                .overlay_closable(false)
-                .close_button(false)
-                .child(
-                    div()
-                        .v_flex()
-                        .gap(px(10.0))
-                        .child(
-                            div()
-                                .text_size(px(14.0))
-                                .text_color(theme::fg_primary())
-                                .child(
-                                    "You have unsaved changes in the Edit tab. Leaving this context will discard them."
-                                        .to_string(),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(12.0))
-                                .text_color(theme::fg_muted())
-                                .child("Discard the current edits and continue?".to_string()),
-                        ),
                 )
                 .on_ok(move |_, window, cx| {
                     if let Some(view) = ok_view.upgrade() {
