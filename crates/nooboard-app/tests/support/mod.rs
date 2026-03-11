@@ -11,6 +11,7 @@ use nooboard_app::{
     DesktopAppServiceImpl, EventId, EventSubscription, NoobId, StateSubscription, SyncActualStatus,
     SyncDesiredState,
 };
+use nooboard_config::DEFAULT_CONFIG_FILE_NAME;
 use nooboard_platform::{ClipboardEvent, ClipboardEventSender};
 use tempfile::TempDir;
 use tokio::time::{Duration, Instant, sleep, timeout};
@@ -95,7 +96,7 @@ fn write_test_config(
     manual_peers: &[SocketAddr],
     mdns_enabled: bool,
 ) -> Result<PathBuf, TestError> {
-    let config_path = dir.path().join("app.toml");
+    let config_path = dir.path().join(DEFAULT_CONFIG_FILE_NAME);
     let noob_id_file = dir.path().join("noob_id");
     let db_root = dir.path().join("db");
     let download_dir = dir.path().join("downloads");

@@ -24,7 +24,7 @@ pub struct AppConfig {
     pub storage: StorageSection,
     pub sync: SyncSection,
     #[serde(skip)]
-    pub(super) noob_id: Option<String>,
+    pub noob_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

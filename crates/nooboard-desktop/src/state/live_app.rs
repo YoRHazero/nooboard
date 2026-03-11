@@ -11,6 +11,7 @@ use nooboard_app::{
     DesktopAppServiceImpl, EventId, EventSubscription, NoobId, StateSubscription, SyncActualStatus,
     TransferId, TransferOutcome,
 };
+use nooboard_config::{BootstrapLaunch, BootstrapMode};
 use tokio::runtime::{Builder, Runtime};
 
 use super::transfer_telemetry::TransferTelemetryCache;
@@ -22,6 +23,7 @@ pub struct DesktopLiveApp {
     runtime: Arc<Runtime>,
     service: Arc<DesktopAppServiceImpl>,
     store: Entity<LiveAppStore>,
+    bootstrap_mode: BootstrapMode,
     config_path: PathBuf,
 }
 
@@ -39,6 +41,10 @@ impl DesktopLiveApp {
 
     pub fn store(&self) -> Entity<LiveAppStore> {
         self.store.clone()
+    }
+
+    pub fn bootstrap_mode(&self) -> BootstrapMode {
+        self.bootstrap_mode
     }
 
     pub fn config_path(&self) -> &Path {
@@ -130,6 +136,7 @@ impl Default for DesktopLiveBridgeState {
 }
 
 pub struct LiveAppStore {
+    bootstrap_mode: BootstrapMode,
     config_path: PathBuf,
     app_state: AppState,
     latest_committed_record: Option<ClipboardRecord>,
@@ -142,6 +149,7 @@ pub struct LiveAppStore {
 #[allow(dead_code)]
 impl LiveAppStore {
     pub(crate) fn new(
+        bootstrap_mode: BootstrapMode,
         config_path: PathBuf,
         app_state: AppState,
         latest_committed_record: Option<ClipboardRecord>,
@@ -149,6 +157,7 @@ impl LiveAppStore {
         let mut transfer_telemetry = TransferTelemetryCache::default();
         transfer_telemetry.observe_active_transfers(&app_state.transfers.active);
         Self {
+            bootstrap_mode,
             config_path,
             app_state,
             latest_committed_record,
@@ -161,6 +170,10 @@ impl LiveAppStore {
 
     pub fn config_path(&self) -> &Path {
         self.config_path.as_path()
+    }
+
+    pub fn bootstrap_mode(&self) -> BootstrapMode {
+        self.bootstrap_mode
     }
 
     pub fn app_state(&self) -> &AppState {
@@ -257,16 +270,13 @@ impl LiveAppStore {
     }
 }
 
-pub fn install_desktop_live_app(
-    config_path: impl AsRef<Path>,
-    cx: &mut App,
-) -> Result<DesktopLiveApp> {
-    let config_path = config_path.as_ref().to_path_buf();
+pub fn install_desktop_live_app(launch: BootstrapLaunch, cx: &mut App) -> Result<DesktopLiveApp> {
+    let config_path = launch.config_path.clone();
     let runtime = Arc::new(build_runtime()?);
     let service = {
         let _guard = runtime.enter();
         Arc::new(
-            DesktopAppServiceImpl::new(&config_path)
+            DesktopAppServiceImpl::new_with_launch(&launch)
                 .with_context(|| format!("bootstrap app service from {}", config_path.display()))?,
         )
     };
@@ -285,11 +295,19 @@ pub fn install_desktop_live_app(
             ))
         })?;
 
-    let store = cx.new(|_| LiveAppStore::new(config_path.clone(), initial_state, initial_record));
+    let store = cx.new(|_| {
+        LiveAppStore::new(
+            launch.mode,
+            config_path.clone(),
+            initial_state,
+            initial_record,
+        )
+    });
     let live_app = DesktopLiveApp {
         runtime,
         service: service.clone(),
         store: store.clone(),
+        bootstrap_mode: launch.mode,
         config_path,
     };
 
@@ -538,7 +556,12 @@ mod tests {
 
     #[test]
     fn recent_activity_keeps_newest_entries_with_fixed_capacity() {
-        let mut store = LiveAppStore::new(PathBuf::from("config.toml"), sample_state(), None);
+        let mut store = LiveAppStore::new(
+            BootstrapMode::UserDefault,
+            PathBuf::from("config.toml"),
+            sample_state(),
+            None,
+        );
 
         for index in 0..(RECENT_ACTIVITY_CAPACITY + 4) {
             store.push_recent_activity(RecentActivityItem {
@@ -572,7 +595,12 @@ mod tests {
 
     #[test]
     fn bridge_error_state_tracks_closed_streams() {
-        let mut store = LiveAppStore::new(PathBuf::from("config.toml"), sample_state(), None);
+        let mut store = LiveAppStore::new(
+            BootstrapMode::UserDefault,
+            PathBuf::from("config.toml"),
+            sample_state(),
+            None,
+        );
 
         store.mark_state_stream_closed("state closed".to_string());
         assert!(!store.bridge().state_stream_open);

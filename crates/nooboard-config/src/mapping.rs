@@ -2,7 +2,7 @@ use nooboard_sync::SyncConfig;
 use nooboard_sync::protocol::PROTOCOL_VERSION;
 
 use super::schema::AppConfig;
-use crate::{AppError, AppResult};
+use crate::{ConfigError, ConfigResult};
 
 impl AppConfig {
     pub fn to_storage_config(&self) -> nooboard_storage::AppConfig {
@@ -20,12 +20,12 @@ impl AppConfig {
         }
     }
 
-    pub fn to_sync_config(&self) -> AppResult<SyncConfig> {
+    pub fn to_sync_config(&self) -> ConfigResult<SyncConfig> {
         let noob_id = self.noob_id.clone().ok_or_else(|| {
-            AppError::InvalidConfig("identity.noob_id was not initialized".to_string())
+            ConfigError::InvalidConfig("identity.noob_id was not initialized".to_string())
         })?;
         if noob_id.trim().is_empty() {
-            return Err(AppError::InvalidConfig(
+            return Err(ConfigError::InvalidConfig(
                 "identity.noob_id_file produced empty noob_id".to_string(),
             ));
         }
@@ -48,12 +48,12 @@ impl AppConfig {
             download_dir: self.sync.file.download_dir.clone(),
             max_file_size: self.sync.file.max_file_size,
             active_downloads: self.sync.file.active_downloads,
-            noob_id: noob_id,
+            noob_id,
             device_id: self.identity.device_id.clone(),
         };
 
         sync_config.validate().map_err(|message| {
-            AppError::InvalidConfig(format!("sync config invalid: {message}"))
+            ConfigError::InvalidConfig(format!("sync config invalid: {message}"))
         })?;
         Ok(sync_config)
     }

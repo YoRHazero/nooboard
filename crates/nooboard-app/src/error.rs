@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use nooboard_config::ConfigError;
 use nooboard_platform::NooboardError;
 use nooboard_storage::StorageError;
 use nooboard_sync::SyncError;
@@ -60,4 +61,17 @@ pub enum AppError {
         restart_error: String,
         rollback_error: String,
     },
+}
+
+impl From<ConfigError> for AppError {
+    fn from(value: ConfigError) -> Self {
+        match value {
+            ConfigError::Io(error) => Self::Io(error),
+            ConfigError::Parse { path, source } => Self::ConfigParse { path, source },
+            ConfigError::Serialize(error) => Self::ConfigSerialize(error),
+            ConfigError::InvalidConfig(message) | ConfigError::InvalidBootstrap(message) => {
+                Self::InvalidConfig(message)
+            }
+        }
+    }
 }

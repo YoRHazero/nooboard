@@ -169,7 +169,12 @@ mod tests {
                 },
             },
         };
-        let store = LiveAppStore::new(PathBuf::from("config.toml"), app_state, None);
+        let store = LiveAppStore::new(
+            nooboard_config::BootstrapMode::UserDefault,
+            PathBuf::from("config.toml"),
+            app_state,
+            None,
+        );
 
         let snapshot = build_settings_snapshot(&store);
 

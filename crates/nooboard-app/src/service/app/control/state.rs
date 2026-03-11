@@ -2,11 +2,11 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use nooboard_config::AppConfig;
 use nooboard_sync::ConnectedPeerInfo;
 
 use crate::AppResult;
 use crate::clipboard_runtime::ClipboardRuntime;
-use crate::config::AppConfig;
 use crate::service::events::EventHub;
 use crate::service::mappers::map_connected_peer;
 use crate::service::state::StateHub;

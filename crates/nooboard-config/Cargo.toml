@@ -1,23 +1,17 @@
 [package]
-name = "nooboard-app"
+name = "nooboard-config"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
 [dependencies]
-nooboard-config = { path = "../nooboard-config" }
-nooboard-platform = { path = "../nooboard-platform" }
 nooboard-storage = { path = "../nooboard-storage" }
 nooboard-sync = { path = "../nooboard-sync" }
-if-addrs.workspace = true
+serde.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
 toml.workspace = true
 uuid.workspace = true
-
-[target.'cfg(target_os = "macos")'.dependencies]
-nooboard-platform-macos = { path = "../nooboard-platform-macos" }
 
 [dev-dependencies]
 tempfile.workspace = true

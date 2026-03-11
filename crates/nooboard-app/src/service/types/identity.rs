@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 
 use uuid::Uuid;
 
@@ -35,10 +36,10 @@ impl From<Uuid> for EventId {
     }
 }
 
-impl TryFrom<&str> for EventId {
-    type Error = AppError;
+impl FromStr for EventId {
+    type Err = AppError;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         Uuid::parse_str(value)
             .map(Self)
             .map_err(|_| AppError::InvalidEventId {

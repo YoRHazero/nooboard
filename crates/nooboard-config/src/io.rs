@@ -5,13 +5,13 @@ use super::noob_id::{
     absolutize_if_relative, regenerate_noob_id as regenerate_noob_id_file, resolve_or_init_noob_id,
 };
 use super::schema::AppConfig;
-use crate::{AppError, AppResult};
+use crate::{ConfigError, ConfigResult};
 
 impl AppConfig {
-    pub fn load(path: impl AsRef<Path>) -> AppResult<Self> {
+    pub fn load(path: impl AsRef<Path>) -> ConfigResult<Self> {
         let path = path.as_ref();
         let raw = fs::read_to_string(path)?;
-        let mut config: Self = toml::from_str(&raw).map_err(|source| AppError::ConfigParse {
+        let mut config: Self = toml::from_str(&raw).map_err(|source| ConfigError::Parse {
             path: path.to_path_buf(),
             source,
         })?;
@@ -23,10 +23,10 @@ impl AppConfig {
         Ok(config)
     }
 
-    pub fn save_atomically(&self, path: impl AsRef<Path>) -> AppResult<()> {
+    pub fn save_atomically(&self, path: impl AsRef<Path>) -> ConfigResult<()> {
         let path = path.as_ref();
         let parent = path.parent().ok_or_else(|| {
-            AppError::InvalidConfig(format!("config path `{}` has no parent", path.display()))
+            ConfigError::InvalidConfig(format!("config path `{}` has no parent", path.display()))
         })?;
         fs::create_dir_all(parent)?;
 
@@ -44,10 +44,10 @@ impl AppConfig {
         Ok(())
     }
 
-    pub fn regenerate_noob_id(config_path: impl AsRef<Path>) -> AppResult<String> {
+    pub fn regenerate_noob_id(config_path: impl AsRef<Path>) -> ConfigResult<String> {
         let config_path = config_path.as_ref();
         let raw = fs::read_to_string(config_path)?;
-        let mut config: Self = toml::from_str(&raw).map_err(|source| AppError::ConfigParse {
+        let mut config: Self = toml::from_str(&raw).map_err(|source| ConfigError::Parse {
             path: config_path.to_path_buf(),
             source,
         })?;
@@ -64,7 +64,7 @@ impl AppConfig {
         absolutize_if_relative(&mut self.sync.file.download_dir, base_dir);
     }
 
-    fn ensure_noob_id_loaded(&mut self) -> AppResult<()> {
+    fn ensure_noob_id_loaded(&mut self) -> ConfigResult<()> {
         let noob_id = resolve_or_init_noob_id(&self.identity.noob_id_file)?;
         self.noob_id = Some(noob_id);
         Ok(())

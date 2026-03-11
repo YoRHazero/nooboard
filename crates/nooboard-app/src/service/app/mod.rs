@@ -1,10 +1,10 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use nooboard_config::{AppConfig, BootstrapLaunch, BootstrapRequest, resolve_bootstrap};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::clipboard_runtime::{ClipboardPort, ClipboardRuntime};
-use crate::config::AppConfig;
 use crate::storage_runtime::StorageRuntime;
 use crate::sync_runtime::SyncRuntime;
 use crate::{AppError, AppResult};
@@ -49,6 +49,22 @@ pub struct DesktopAppServiceImpl {
 }
 
 impl DesktopAppServiceImpl {
+    pub fn new_default() -> AppResult<Self> {
+        match resolve_bootstrap(&BootstrapRequest::default())? {
+            nooboard_config::BootstrapDecision::Launch(launch) => Self::new_with_launch(&launch),
+            nooboard_config::BootstrapDecision::NeedsChooser(context) => {
+                Err(AppError::InvalidConfig(format!(
+                    "bootstrap chooser required before startup for {}",
+                    context.default_config_path.display()
+                )))
+            }
+        }
+    }
+
+    pub fn new_with_launch(launch: &BootstrapLaunch) -> AppResult<Self> {
+        Self::new(&launch.config_path)
+    }
+
     pub fn new(config_path: impl AsRef<Path>) -> AppResult<Self> {
         Self::new_with_clipboard(config_path, default_clipboard_port()?)
     }

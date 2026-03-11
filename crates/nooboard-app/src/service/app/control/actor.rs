@@ -135,7 +135,7 @@ async fn handle_control_command(
                     noob_id,
                     device_id,
                 } => {
-                    if let Ok(parsed_event_id) = EventId::try_from(event_id.as_str()) {
+                    if let Ok(parsed_event_id) = event_id.parse::<EventId>() {
                         let _ = clipboard_history::commit_remote_sync(
                             state,
                             parsed_event_id,

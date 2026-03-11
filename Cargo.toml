@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "crates/nooboard-config",
   "crates/nooboard-app",
   "crates/nooboard-desktop",
   "crates/nooboard-platform",

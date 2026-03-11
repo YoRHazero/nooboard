@@ -1,9 +1,9 @@
-use crate::config::AppConfig;
 use crate::service::types::{
     ClipboardSettingsPatch, ConnectionIdentitySettingsPatch, NetworkSettingsPatch, SettingsPatch,
     StorageSettingsPatch, TransferSettingsPatch,
 };
 use crate::{AppError, AppResult};
+use nooboard_config::AppConfig;
 
 use super::engine_reconcile::reconcile_engine_state;
 use super::state::ControlState;

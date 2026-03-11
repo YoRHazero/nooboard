@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 
 use uuid::Uuid;
 
-use crate::{AppError, AppResult};
+use crate::{ConfigError, ConfigResult};
 
-pub(super) fn resolve_or_init_noob_id(path: &Path) -> AppResult<String> {
+pub(crate) fn resolve_or_init_noob_id(path: &Path) -> ConfigResult<String> {
     match fs::read_to_string(path) {
         Ok(raw) => {
             let noob_id = raw.trim();
@@ -20,9 +20,9 @@ pub(super) fn resolve_or_init_noob_id(path: &Path) -> AppResult<String> {
     regenerate_noob_id(path)
 }
 
-pub(super) fn regenerate_noob_id(path: &Path) -> AppResult<String> {
+pub(crate) fn regenerate_noob_id(path: &Path) -> ConfigResult<String> {
     let parent = path.parent().ok_or_else(|| {
-        AppError::InvalidConfig(format!(
+        ConfigError::InvalidConfig(format!(
             "identity.noob_id_file `{}` has no parent",
             path.display()
         ))
@@ -34,7 +34,7 @@ pub(super) fn regenerate_noob_id(path: &Path) -> AppResult<String> {
     Ok(generated)
 }
 
-pub(super) fn absolutize_if_relative(path: &mut PathBuf, base_dir: &Path) {
+pub(crate) fn absolutize_if_relative(path: &mut PathBuf, base_dir: &Path) {
     if path.is_relative() {
         *path = base_dir.join(path.clone());
     }

@@ -2,8 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::{AppConfig, DEFAULT_RECENT_EVENT_LOOKUP_LIMIT};
-use crate::{AppError, AppResult};
+use super::{
+    AppConfig, ConfigError, ConfigTemplate, DEFAULT_CONFIG_FILE_NAME,
+    DEFAULT_RECENT_EVENT_LOOKUP_LIMIT, write_config_template,
+};
 
 fn temp_dir(name: &str) -> PathBuf {
     let millis = SystemTime::now()
@@ -11,14 +13,14 @@ fn temp_dir(name: &str) -> PathBuf {
         .map(|duration| duration.as_millis())
         .unwrap_or(0);
     std::env::temp_dir().join(format!(
-        "nooboard-app-config-{name}-{}-{millis}",
+        "nooboard-config-{name}-{}-{millis}",
         std::process::id()
     ))
 }
 
-fn write_base_config(dir: &Path, include_app_clipboard: bool) -> AppResult<PathBuf> {
+fn write_base_config(dir: &Path, include_app_clipboard: bool) -> Result<PathBuf, ConfigError> {
     fs::create_dir_all(dir)?;
-    let config_path = dir.join("app.toml");
+    let config_path = dir.join(DEFAULT_CONFIG_FILE_NAME);
     let db_root = dir.join("db");
     let noob_id_file = dir.join("noob_id");
     let download_dir = dir.join("downloads");
@@ -86,7 +88,7 @@ recent_event_lookup_limit = 25
 }
 
 #[test]
-fn load_initializes_noob_id_file_when_missing() -> AppResult<()> {
+fn load_initializes_noob_id_file_when_missing() -> Result<(), ConfigError> {
     let dir = temp_dir("node-id-init");
     let config_path = write_base_config(&dir, true)?;
 
@@ -102,7 +104,7 @@ fn load_initializes_noob_id_file_when_missing() -> AppResult<()> {
 }
 
 #[test]
-fn load_uses_default_recent_lookup_limit_when_omitted() -> AppResult<()> {
+fn load_uses_default_recent_lookup_limit_when_omitted() -> Result<(), ConfigError> {
     let dir = temp_dir("recent-default");
     let config_path = write_base_config(&dir, false)?;
 
@@ -117,14 +119,14 @@ fn load_uses_default_recent_lookup_limit_when_omitted() -> AppResult<()> {
 }
 
 #[test]
-fn load_fails_when_existing_noob_id_file_is_not_readable_text() -> AppResult<()> {
+fn load_fails_when_existing_noob_id_file_is_not_readable_text() -> Result<(), ConfigError> {
     let dir = temp_dir("node-id-invalid-utf8");
     let config_path = write_base_config(&dir, true)?;
     let noob_id_path = dir.join("noob_id");
     fs::write(&noob_id_path, [0xFF_u8, 0xFE_u8])?;
 
     let result = AppConfig::load(&config_path);
-    assert!(matches!(result, Err(AppError::Io(_))));
+    assert!(matches!(result, Err(ConfigError::Io(_))));
 
     let written = fs::read(&noob_id_path)?;
     assert_eq!(written, vec![0xFF_u8, 0xFE_u8]);
@@ -134,7 +136,7 @@ fn load_fails_when_existing_noob_id_file_is_not_readable_text() -> AppResult<()>
 }
 
 #[test]
-fn regenerate_noob_id_recovers_from_corrupted_noob_id_file() -> AppResult<()> {
+fn regenerate_noob_id_recovers_from_corrupted_noob_id_file() -> Result<(), ConfigError> {
     let dir = temp_dir("node-id-recover");
     let config_path = write_base_config(&dir, true)?;
     let noob_id_path = dir.join("noob_id");
@@ -149,6 +151,23 @@ fn regenerate_noob_id_recovers_from_corrupted_noob_id_file() -> AppResult<()> {
 
     let loaded = AppConfig::load(&config_path)?;
     assert_eq!(loaded.noob_id(), Some(regenerated.as_str()));
+
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}
+
+#[test]
+fn write_production_template_creates_valid_config() -> Result<(), ConfigError> {
+    let dir = temp_dir("production-template");
+    fs::create_dir_all(&dir)?;
+    let config_path = dir.join(DEFAULT_CONFIG_FILE_NAME);
+
+    write_config_template(&config_path, ConfigTemplate::Production)?;
+    let loaded = AppConfig::load(&config_path)?;
+
+    assert_eq!(loaded.meta.profile, "production");
+    assert_eq!(loaded.identity.noob_id_file, dir.join("noob_id"));
+    assert_eq!(loaded.storage.db_root, dir.join("data"));
 
     let _ = fs::remove_dir_all(dir);
     Ok(())

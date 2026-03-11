@@ -303,6 +303,11 @@ mod tests {
             },
         };
 
-        LiveAppStore::new(PathBuf::from("config.toml"), app_state, None)
+        LiveAppStore::new(
+            nooboard_config::BootstrapMode::UserDefault,
+            PathBuf::from("config.toml"),
+            app_state,
+            None,
+        )
     }
 }

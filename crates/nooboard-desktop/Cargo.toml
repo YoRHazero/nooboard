@@ -7,11 +7,13 @@ authors.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+clap.workspace = true
 gpui.workspace = true
 gpui-platform.workspace = true
 gpui-component.workspace = true
 gpui-component-assets.workspace = true
 nooboard-app = { path = "../nooboard-app" }
+nooboard-config = { path = "../nooboard-config" }
 tokio.workspace = true
 time.workspace = true
 uuid.workspace = true
