@@ -21,6 +21,8 @@ use crate::ui::{BootstrapChooserView, WorkspaceView};
 #[command(name = "nooboard-desktop")]
 pub struct DesktopCli {
     #[arg(long)]
+    pub choose_config: bool,
+    #[arg(long)]
     pub config: Option<PathBuf>,
     #[arg(long)]
     pub dev: bool,
@@ -29,6 +31,7 @@ pub struct DesktopCli {
 impl DesktopCli {
     fn bootstrap_request(&self) -> BootstrapRequest {
         BootstrapRequest {
+            cli_choose_config: self.choose_config,
             cli_config_path: self.config.clone(),
             cli_use_repo_dev: self.dev,
         }

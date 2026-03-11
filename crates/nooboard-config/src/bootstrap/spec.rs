@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Default)]
 pub struct BootstrapRequest {
+    pub cli_choose_config: bool,
     pub cli_config_path: Option<PathBuf>,
     pub cli_use_repo_dev: bool,
 }

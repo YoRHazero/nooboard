@@ -16,10 +16,23 @@ fn resolve_bootstrap_with_override(
     request: &BootstrapRequest,
     env_override: Option<std::path::PathBuf>,
 ) -> ConfigResult<BootstrapDecision> {
+    if request.cli_choose_config && (request.cli_config_path.is_some() || request.cli_use_repo_dev)
+    {
+        return Err(ConfigError::InvalidBootstrap(
+            "--choose-config cannot be used together with --config or --dev".to_string(),
+        ));
+    }
+
     if request.cli_config_path.is_some() && request.cli_use_repo_dev {
         return Err(ConfigError::InvalidBootstrap(
             "--config and --dev cannot be used together".to_string(),
         ));
+    }
+
+    if request.cli_choose_config {
+        return Ok(BootstrapDecision::NeedsChooser(BootstrapChooserContext {
+            default_config_path: default_config_path()?,
+        }));
     }
 
     if let Some(config_path) = request.cli_config_path.clone() {
@@ -90,6 +103,7 @@ mod tests {
     #[test]
     fn cli_config_and_dev_conflict() {
         let request = BootstrapRequest {
+            cli_choose_config: false,
             cli_config_path: Some(PathBuf::from("/tmp/nooboard.toml")),
             cli_use_repo_dev: true,
         };
@@ -101,6 +115,7 @@ mod tests {
     #[test]
     fn explicit_cli_config_must_exist() {
         let request = BootstrapRequest {
+            cli_choose_config: false,
             cli_config_path: Some(PathBuf::from("/tmp/does-not-exist.toml")),
             cli_use_repo_dev: false,
         };
@@ -125,6 +140,34 @@ mod tests {
                 config_path,
             })
         );
+        Ok(())
+    }
+
+    #[test]
+    fn choose_config_conflicts_with_other_cli_bootstrap_flags() {
+        let request = BootstrapRequest {
+            cli_choose_config: true,
+            cli_config_path: Some(PathBuf::from("/tmp/nooboard.toml")),
+            cli_use_repo_dev: false,
+        };
+
+        let result = resolve_bootstrap_with_override(&request, None);
+        assert!(matches!(result, Err(ConfigError::InvalidBootstrap(_))));
+    }
+
+    #[test]
+    fn choose_config_forces_chooser_even_when_env_override_exists() -> Result<(), ConfigError> {
+        let temp = tempdir()?;
+        let config_path = temp.path().join("nooboard.toml");
+        fs::write(&config_path, "")?;
+
+        let request = BootstrapRequest {
+            cli_choose_config: true,
+            ..BootstrapRequest::default()
+        };
+        let decision = resolve_bootstrap_with_override(&request, Some(config_path))?;
+
+        assert!(matches!(decision, BootstrapDecision::NeedsChooser(_)));
         Ok(())
     }
 }
