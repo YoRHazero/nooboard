@@ -32,7 +32,7 @@ impl WorkspaceView {
 
         settings_section_shell(
             "Network",
-            "Control sync networking, mDNS discovery, and manual peer endpoints.",
+            "Control sync networking, local discovery, connection sharing, and manual peer endpoints.",
             status,
         )
         .child(self.network_toggle_row(
@@ -51,6 +51,7 @@ impl WorkspaceView {
             ToggleKind::MdnsEnabled,
             cx,
         ))
+        .child(self.connection_info_panel(cx))
         .child(self.manual_peer_editor(cx))
         .child(settings_section_footer(
             if !issues.is_empty() {
@@ -98,6 +99,142 @@ impl WorkspaceView {
                 .into_any_element(),
             ]),
         ))
+    }
+
+    fn connection_info_panel(&self, cx: &mut Context<Self>) -> Div {
+        let draft = self.network_settings_draft();
+        let confirmed = self.network_settings_confirmed();
+        let device_ip = self.network_device_ip_label();
+        let device_endpoint_display = self.network_device_endpoint_display();
+        let can_copy_endpoint = self.network_device_endpoint_preview().is_some();
+
+        div()
+            .v_flex()
+            .gap(px(12.0))
+            .py(px(4.0))
+            .child(
+                div()
+                    .v_flex()
+                    .gap(px(4.0))
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme::fg_secondary())
+                            .child("Connection Info"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme::fg_muted())
+                            .line_clamp(2)
+                            .text_ellipsis()
+                            .child(
+                                "Share these values when another device needs to connect manually.",
+                            ),
+                    ),
+            )
+            .child(connection_readonly_row(
+                "Device IP",
+                "Automatically detected local IPv4 address for this machine.",
+                device_ip,
+            ))
+            .child(connection_input_row(
+                "Port",
+                "Edit the listen port this device shares with other peers.",
+                confirmed.listen_port_text.clone(),
+                draft.listen_port_text != confirmed.listen_port_text,
+                Input::new(&self.settings_page_state.listen_port_input)
+                    .small()
+                    .appearance(false)
+                    .bordered(false)
+                    .focus_bordered(false)
+                    .w_full(),
+            ))
+            .child(connection_input_row(
+                "Device ID",
+                "Human-readable label shown to other devices across the desktop.",
+                confirmed.device_id.clone(),
+                draft.device_id != confirmed.device_id,
+                Input::new(&self.settings_page_state.device_id_input)
+                    .small()
+                    .appearance(false)
+                    .bordered(false)
+                    .focus_bordered(false)
+                    .w_full(),
+            ))
+            .child(
+                div()
+                    .v_flex()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .v_flex()
+                            .gap(px(4.0))
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme::fg_secondary())
+                                    .child("Device IP + Port"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme::fg_muted())
+                                    .line_clamp(2)
+                                    .text_ellipsis()
+                                    .child("Preview of the endpoint another device should dial."),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme::fg_muted())
+                                    .line_clamp(1)
+                                    .text_ellipsis()
+                                    .child("Uses the live Device IP with the current draft port."),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .h_flex()
+                            .items_center()
+                            .gap(px(10.0))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w(px(0.0))
+                                    .px(px(12.0))
+                                    .py(px(10.0))
+                                    .bg(theme::bg_console())
+                                    .border_1()
+                                    .border_color(theme::border_soft())
+                                    .rounded(px(12.0))
+                                    .text_size(px(12.0))
+                                    .font_semibold()
+                                    .text_color(if can_copy_endpoint {
+                                        theme::fg_primary()
+                                    } else {
+                                        theme::fg_muted()
+                                    })
+                                    .line_clamp(1)
+                                    .text_ellipsis()
+                                    .child(device_endpoint_display),
+                            )
+                            .child(
+                                settings_action_button(
+                                    "settings-copy-device-endpoint",
+                                    "Copy endpoint",
+                                    theme::accent_cyan(),
+                                    cx,
+                                )
+                                .disabled(!can_copy_endpoint)
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
+                                        this.copy_settings_device_endpoint(cx);
+                                    },
+                                )),
+                            ),
+                    ),
+            )
     }
 
     fn manual_peer_editor(&self, cx: &mut Context<Self>) -> Div {
@@ -345,4 +482,105 @@ impl WorkspaceView {
                     .child(if enabled { "on" } else { "off" }),
             )
     }
+}
+
+fn connection_input_row(
+    label: &str,
+    hint: &str,
+    current_value: String,
+    dirty: bool,
+    input: impl IntoElement,
+) -> Div {
+    div()
+        .v_flex()
+        .gap(px(8.0))
+        .child(
+            div()
+                .v_flex()
+                .gap(px(4.0))
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(theme::fg_secondary())
+                        .child(label.to_string()),
+                )
+                .child(
+                    div()
+                        .text_size(px(10.0))
+                        .text_color(theme::fg_muted())
+                        .line_clamp(2)
+                        .text_ellipsis()
+                        .child(hint.to_string()),
+                )
+                .child(
+                    div()
+                        .text_size(px(10.0))
+                        .text_color(if dirty {
+                            theme::accent_amber()
+                        } else {
+                            theme::fg_muted()
+                        })
+                        .line_clamp(1)
+                        .text_ellipsis()
+                        .child(if dirty {
+                            format!("Current value: {current_value}")
+                        } else {
+                            "Matches the current value".to_string()
+                        }),
+                ),
+        )
+        .child(
+            div()
+                .h(px(34.0))
+                .px(px(10.0))
+                .bg(theme::bg_console())
+                .border_1()
+                .border_color(theme::border_soft())
+                .rounded(px(12.0))
+                .child(input),
+        )
+}
+
+fn connection_readonly_row(label: &str, hint: &str, value: String) -> Div {
+    div()
+        .v_flex()
+        .gap(px(8.0))
+        .child(
+            div()
+                .v_flex()
+                .gap(px(4.0))
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(theme::fg_secondary())
+                        .child(label.to_string()),
+                )
+                .child(
+                    div()
+                        .text_size(px(10.0))
+                        .text_color(theme::fg_muted())
+                        .line_clamp(2)
+                        .text_ellipsis()
+                        .child(hint.to_string()),
+                ),
+        )
+        .child(
+            div()
+                .px(px(12.0))
+                .py(px(10.0))
+                .bg(theme::bg_console())
+                .border_1()
+                .border_color(theme::border_soft())
+                .rounded(px(12.0))
+                .text_size(px(12.0))
+                .font_semibold()
+                .text_color(if value == "Unavailable" {
+                    theme::fg_muted()
+                } else {
+                    theme::fg_primary()
+                })
+                .line_clamp(1)
+                .text_ellipsis()
+                .child(value),
+        )
 }

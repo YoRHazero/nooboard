@@ -9,6 +9,7 @@ use super::{EventId, LocalIdentity, TransfersState};
 pub struct AppState {
     pub revision: u64,
     pub identity: LocalIdentity,
+    pub local_connection: LocalConnectionInfo,
     pub sync: SyncState,
     pub peers: PeersState,
     pub clipboard: ClipboardState,
@@ -65,8 +66,14 @@ pub struct ClipboardState {
     pub latest_committed_event_id: Option<EventId>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LocalConnectionInfo {
+    pub device_endpoint: Option<SocketAddr>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsState {
+    pub identity: IdentitySettings,
     pub network: NetworkSettings,
     pub storage: StorageSettings,
     pub clipboard: ClipboardSettings,
@@ -74,7 +81,13 @@ pub struct SettingsState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdentitySettings {
+    pub device_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NetworkSettings {
+    pub listen_port: u16,
     pub network_enabled: bool,
     pub mdns_enabled: bool,
     pub manual_peers: Vec<SocketAddr>,
@@ -101,6 +114,7 @@ pub struct TransferSettings {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsPatch {
+    Identity(IdentitySettingsPatch),
     Network(NetworkSettingsPatch),
     Storage(StorageSettingsPatch),
     Clipboard(ClipboardSettingsPatch),
@@ -108,7 +122,13 @@ pub enum SettingsPatch {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdentitySettingsPatch {
+    SetDeviceId(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NetworkSettingsPatch {
+    SetListenPort(u16),
     SetNetworkEnabled(bool),
     SetMdnsEnabled(bool),
     SetManualPeers(Vec<SocketAddr>),

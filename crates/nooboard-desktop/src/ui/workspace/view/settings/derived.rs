@@ -1,11 +1,13 @@
 use gpui::Context;
 
 use super::patches::{
-    clipboard_patch_labels, network_patch_labels, network_validation_issues, storage_patch_labels,
-    storage_validation_issues, transfer_patch_labels, transfer_validation_issues,
+    clipboard_patch_labels, network_patch_labels, network_validation_issues,
+    normalized_listen_port, storage_patch_labels, storage_validation_issues, transfer_patch_labels,
+    transfer_validation_issues,
 };
 use super::snapshot::{
-    ClipboardSettingsValue, NetworkSettingsValue, StorageSettingsValue, TransferSettingsValue,
+    ClipboardSettingsValue, LocalConnectionInfoValue, NetworkPanelValue, StorageSettingsValue,
+    TransferSettingsValue,
 };
 use super::{
     SettingsSectionPhase, SettingsStatus, WorkspaceView, build_settings_snapshot,
@@ -123,12 +125,35 @@ impl WorkspaceView {
         }
     }
 
-    pub(super) fn network_settings_draft(&self) -> &NetworkSettingsValue {
+    pub(super) fn network_settings_draft(&self) -> &NetworkPanelValue {
         &self.settings_page_state.network.draft
     }
 
-    pub(super) fn network_settings_confirmed(&self) -> &NetworkSettingsValue {
+    pub(super) fn network_settings_confirmed(&self) -> &NetworkPanelValue {
         &self.settings_page_state.network.baseline
+    }
+
+    pub(super) fn local_connection_info(&self) -> &LocalConnectionInfoValue {
+        &self.settings_page_state.local_connection
+    }
+
+    pub(super) fn network_device_ip_label(&self) -> String {
+        self.local_connection_info()
+            .device_endpoint
+            .map(|endpoint| endpoint.ip().to_string())
+            .unwrap_or_else(|| "Unavailable".to_string())
+    }
+
+    pub(super) fn network_device_endpoint_preview(&self) -> Option<String> {
+        let ip = self.local_connection_info().device_endpoint?.ip();
+        let port = normalized_listen_port(&self.network_settings_draft().listen_port_text)?;
+
+        Some(format!("{ip}:{port}"))
+    }
+
+    pub(super) fn network_device_endpoint_display(&self) -> String {
+        self.network_device_endpoint_preview()
+            .unwrap_or_else(|| "Unavailable".to_string())
     }
 
     pub(super) fn storage_settings_draft(&self) -> &StorageSettingsValue {

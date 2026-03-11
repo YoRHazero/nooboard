@@ -12,7 +12,7 @@ mod snapshot;
 mod storage;
 mod transfers;
 
-use gpui::{Context, Div, ParentElement, Styled, div, px};
+use gpui::{Context, Div, ParentElement, Styled, Window, div, px};
 use gpui_component::StyledExt;
 
 use self::components::settings_feedback_banner;
@@ -39,7 +39,8 @@ pub(super) fn settings_status_tokens(status: SettingsStatus) -> (&'static str, g
 }
 
 impl WorkspaceView {
-    pub(super) fn settings_page(&self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn settings_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        self.settings_page_state.sync_network_inputs(window, cx);
         let (label, accent) = settings_status_tokens(self.settings_status());
 
         div()

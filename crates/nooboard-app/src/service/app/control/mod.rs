@@ -4,6 +4,7 @@ mod command;
 mod config_patch;
 mod engine_reconcile;
 mod files;
+mod local_connection;
 mod state;
 mod subscriptions;
 

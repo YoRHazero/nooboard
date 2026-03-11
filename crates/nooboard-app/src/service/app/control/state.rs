@@ -11,12 +11,15 @@ use crate::service::events::EventHub;
 use crate::service::mappers::map_connected_peer;
 use crate::service::state::StateHub;
 use crate::service::types::{
-    AppEvent, AppState, ClipboardSettings, ClipboardState, ConnectedPeer, EventId, LocalIdentity,
-    NetworkSettings, NoobId, PeerTransport, PeersState, SettingsState, StorageSettings,
-    SyncActualStatus, SyncDesiredState, SyncState, TransferSettings, TransfersState,
+    AppEvent, AppState, ClipboardSettings, ClipboardState, ConnectedPeer, EventId,
+    IdentitySettings, LocalConnectionInfo, LocalIdentity, NetworkSettings, NoobId, PeerTransport,
+    PeersState, SettingsState, StorageSettings, SyncActualStatus, SyncDesiredState, SyncState,
+    TransferSettings, TransfersState,
 };
 use crate::storage_runtime::StorageRuntime;
 use crate::sync_runtime::SyncRuntime;
+
+use super::local_connection::detect_device_endpoint;
 
 const RECENT_COMPLETED_LIMIT: usize = 64;
 
@@ -45,14 +48,12 @@ impl ControlState {
             sync_runtime.mark_disabled();
         }
 
-        let identity = LocalIdentity {
-            noob_id: NoobId::new(config.noob_id().unwrap_or_default().to_string()),
-            device_id: config.identity.device_id.clone(),
-        };
+        let identity = identity_state(&config);
         let peers = map_connected_peers(&config, sync_runtime.connected_peers());
         let app_state = AppState {
             revision: 0,
             identity,
+            local_connection: local_connection_state(&config),
             sync: SyncState {
                 desired: SyncDesiredState::Stopped,
                 actual: SyncActualStatus::from(sync_runtime.status()),
@@ -115,6 +116,18 @@ impl ControlState {
         self.sync_runtime.status().into()
     }
 
+    pub(super) fn identity_state(&self) -> LocalIdentity {
+        identity_state(&self.config)
+    }
+
+    pub(super) fn local_connection_state(&self) -> LocalConnectionInfo {
+        local_connection_state(&self.config)
+    }
+
+    pub(super) fn settings_state(&self) -> SettingsState {
+        settings_state(&self.config)
+    }
+
     pub(super) fn connected_peers_state(&self) -> Vec<ConnectedPeer> {
         map_connected_peers(&self.config, self.sync_runtime.connected_peers())
     }
@@ -162,7 +175,11 @@ fn peer_transport(config: &AppConfig, addr: SocketAddr) -> PeerTransport {
 
 pub(super) fn settings_state(config: &AppConfig) -> SettingsState {
     SettingsState {
+        identity: IdentitySettings {
+            device_id: config.identity.device_id.clone(),
+        },
         network: NetworkSettings {
+            listen_port: config.sync.network.listen_addr.port(),
             network_enabled: config.sync.network.enabled,
             mdns_enabled: config.sync.network.mdns_enabled,
             manual_peers: config.sync.network.manual_peers.clone(),
@@ -180,6 +197,19 @@ pub(super) fn settings_state(config: &AppConfig) -> SettingsState {
         transfers: TransferSettings {
             download_dir: config.sync.file.download_dir.clone(),
         },
+    }
+}
+
+fn identity_state(config: &AppConfig) -> LocalIdentity {
+    LocalIdentity {
+        noob_id: NoobId::new(config.noob_id().unwrap_or_default().to_string()),
+        device_id: config.identity.device_id.clone(),
+    }
+}
+
+fn local_connection_state(config: &AppConfig) -> LocalConnectionInfo {
+    LocalConnectionInfo {
+        device_endpoint: detect_device_endpoint(config.sync.network.listen_addr.port()),
     }
 }
 

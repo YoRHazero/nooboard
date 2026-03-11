@@ -249,6 +249,7 @@ pub struct EventSubscription {
 pub struct AppState {
     pub revision: u64,
     pub identity: LocalIdentity,
+    pub local_connection: LocalConnectionInfo,
     pub sync: SyncState,
     pub peers: PeersState,
     pub clipboard: ClipboardState,
@@ -279,7 +280,27 @@ pub struct LocalIdentity {
 - 不存在 identity draft。
 - 如果未来允许 identity 变化，变化必须通过 `AppState` 完整体现。
 
-### 7.3 Sync
+### 7.3 Local Connection
+
+```rust
+pub struct LocalConnectionInfo {
+    pub device_endpoint: Option<std::net::SocketAddr>,
+}
+```
+
+强约束：
+
+- `device_endpoint` 是 app 当前推荐 desktop 分享给其它设备的连接地址。
+- 它是只读运行时信息，不属于 `SettingsPatch`。
+- 当监听 host 是 `0.0.0.0` 这类 unspecified 地址时，app 必须自动检测本机 IPv4，并拼出可分享的 `ip:port`。
+- 地址选择规则固定为：
+  - 首个非 loopback 的私有 IPv4。
+  - 否则首个非 loopback IPv4。
+  - 否则 loopback IPv4。
+  - 否则 `None`。
+- `device_endpoint.port` 必须始终使用当前生效的 `listen_port`。
+
+### 7.4 Sync
 
 ```rust
 pub struct SyncState {
@@ -312,7 +333,7 @@ pub enum SyncActualStatus {
 - 当 `network_enabled=false` 时，`set_sync_desired_state(Running)` 必须返回 `AppError::SyncDisabled`。
 - network setting 重新开启后，不允许隐式恢复之前的 `Running` 意图；需要 desktop 再次显式调用 `set_sync_desired_state(Running)`。
 
-### 7.4 Peers
+### 7.5 Peers
 
 ```rust
 pub struct PeersState {
@@ -458,28 +479,34 @@ pub enum TransferOutcome {
 - `Rejected`、`Cancelled`、`Failed` 都必须有明确 outcome。
 - 如果有可展示的错误文本，放在 `message`。
 
-### 7.7 Settings
+### 7.8 Settings
 
 ```rust
 pub struct SettingsState {
+    pub identity: IdentitySettings,
     pub network: NetworkSettings,
     pub storage: StorageSettings,
     pub clipboard: ClipboardSettings,
     pub transfers: TransferSettings,
 }
+
+pub struct IdentitySettings {
+    pub device_id: String,
+}
 ```
 
-#### 7.7.1 Network
+#### 7.8.1 Network
 
 ```rust
 pub struct NetworkSettings {
+    pub listen_port: u16,
     pub network_enabled: bool,
     pub mdns_enabled: bool,
     pub manual_peers: Vec<std::net::SocketAddr>,
 }
 ```
 
-#### 7.7.2 Storage
+#### 7.8.2 Storage
 
 ```rust
 pub struct StorageSettings {
@@ -491,7 +518,7 @@ pub struct StorageSettings {
 }
 ```
 
-#### 7.7.3 Clipboard
+#### 7.8.3 Clipboard
 
 ```rust
 pub struct ClipboardSettings {
@@ -499,7 +526,7 @@ pub struct ClipboardSettings {
 }
 ```
 
-#### 7.7.4 Transfers
+#### 7.8.4 Transfers
 
 ```rust
 pub struct TransferSettings {
@@ -511,6 +538,9 @@ pub struct TransferSettings {
 
 - `SettingsState` 只表示当前生效值。
 - 不包含 dirty/draft/review/reset 语义。
+- `identity.device_id` 是当前生效的人类可读设备标签。
+- `network.listen_port` 是当前生效的监听端口；desktop 只开放端口编辑，不开放 host 编辑。
+- `device_id` 继续属于 identity，不并入 network settings。
 - `download_dir` 是正式 app setting，不再作为 desktop 本地假设置。
 - `local_capture_enabled` 是正式 app setting，不再暴露单独 raw watch 开关接口。
 
@@ -777,6 +807,7 @@ async fn cancel_transfer(
 
 ```rust
 pub enum SettingsPatch {
+    Identity(IdentitySettingsPatch),
     Network(NetworkSettingsPatch),
     Storage(StorageSettingsPatch),
     Clipboard(ClipboardSettingsPatch),
@@ -785,7 +816,12 @@ pub enum SettingsPatch {
 ```
 
 ```rust
+pub enum IdentitySettingsPatch {
+    SetDeviceId(String),
+}
+
 pub enum NetworkSettingsPatch {
+    SetListenPort(u16),
     SetNetworkEnabled(bool),
     SetMdnsEnabled(bool),
     SetManualPeers(Vec<std::net::SocketAddr>),
@@ -814,6 +850,9 @@ pub enum TransferSettingsPatch {
 - patch 成功后，新的 `SettingsState` 必须反映生效值。
 - patch 失败时不得部分提交。
 - validation 失败必须明确返回。
+- `IdentitySettingsPatch::SetDeviceId` 修改 `identity.device_id`。
+- `NetworkSettingsPatch::SetListenPort` 只修改监听端口，不开放 host 编辑。
+- `IdentitySettingsPatch`、`NetworkSettingsPatch`、`SetDownloadDir` 在 `sync.desired=Running` 时都必须触发 engine reconcile/restart。
 
 ### 11.3 Validation
 
@@ -829,6 +868,8 @@ app 至少必须保证：
 - `gc_batch_size` 合法
 - `download_dir` 合法
 - manual peer 地址格式合法
+- `identity.device_id` 非空
+- `listen_port` 在 `1..=65535`
 
 ### 11.4 明确不属于 app patch 的内容
 

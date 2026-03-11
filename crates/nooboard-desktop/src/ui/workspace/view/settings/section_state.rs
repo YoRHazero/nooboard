@@ -123,20 +123,24 @@ pub(in crate::ui::workspace::view) fn settings_section_status<T: Clone + Partial
 #[cfg(test)]
 mod tests {
     use super::super::snapshot::{
-        ClipboardSettingsValue, NetworkSettingsValue, StorageSettingsValue, TransferSettingsValue,
+        ClipboardSettingsValue, NetworkPanelValue, StorageSettingsValue, TransferSettingsValue,
     };
     use super::*;
 
     #[test]
     fn sync_from_live_marks_dirty_section_stale_when_baseline_changes() {
-        let mut section = SettingsSection::new(NetworkSettingsValue {
+        let mut section = SettingsSection::new(NetworkPanelValue {
+            device_id: "desk-01".to_string(),
+            listen_port_text: "17890".to_string(),
             network_enabled: true,
             mdns_enabled: true,
             manual_peers: vec![],
         });
         section.draft.network_enabled = false;
 
-        section.sync_from_live(NetworkSettingsValue {
+        section.sync_from_live(NetworkPanelValue {
+            device_id: "desk-01".to_string(),
+            listen_port_text: "17890".to_string(),
             network_enabled: true,
             mdns_enabled: false,
             manual_peers: vec![],
@@ -165,19 +169,25 @@ mod tests {
 
     #[test]
     fn sync_from_live_keeps_apply_phase_during_partial_network_updates() {
-        let mut section = SettingsSection::new(NetworkSettingsValue {
+        let mut section = SettingsSection::new(NetworkPanelValue {
+            device_id: "desk-01".to_string(),
+            listen_port_text: "17890".to_string(),
             network_enabled: true,
             mdns_enabled: true,
             manual_peers: vec![],
         });
-        section.draft = NetworkSettingsValue {
+        section.draft = NetworkPanelValue {
+            device_id: "desk-02".to_string(),
+            listen_port_text: "24001".to_string(),
             network_enabled: false,
             mdns_enabled: false,
             manual_peers: vec!["127.0.0.1:24001".parse().unwrap()],
         };
         section.begin_apply();
 
-        section.sync_from_live(NetworkSettingsValue {
+        section.sync_from_live(NetworkPanelValue {
+            device_id: "desk-01".to_string(),
+            listen_port_text: "17890".to_string(),
             network_enabled: true,
             mdns_enabled: false,
             manual_peers: vec![],

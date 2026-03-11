@@ -137,6 +137,7 @@ pub struct EventSubscription {
 pub struct AppState {
     pub revision: u64,
     pub identity: LocalIdentity,
+    pub local_connection: LocalConnectionInfo,
     pub sync: SyncState,
     pub peers: PeersState,
     pub clipboard: ClipboardState,
@@ -162,7 +163,26 @@ pub struct LocalIdentity {
 - `noob_id` 来自配置中的 `identity.noob_id_file`
 - `device_id` 来自配置中的 `identity.device_id`
 
-### 5.3 `sync`
+### 5.3 `local_connection`
+
+```rust
+pub struct LocalConnectionInfo {
+    pub device_endpoint: Option<std::net::SocketAddr>,
+}
+```
+
+说明：
+- `device_endpoint` 是 app 当前推荐 desktop 展示给其它设备的连接地址
+- 它是只读运行时信息，不属于 `SettingsPatch`
+- 当监听 host 是 `0.0.0.0` 这类 unspecified 地址时，app 会自动枚举本机 IPv4，并拼出可分享的 `ip:port`
+- 选择规则固定为：
+  - 首个非 loopback 的私有 IPv4
+  - 否则首个非 loopback IPv4
+  - 否则 loopback IPv4
+  - 否则 `None`
+- `device_endpoint.port` 始终使用当前生效 `listen_port`
+
+### 5.4 `sync`
 
 ```rust
 pub struct SyncState {
@@ -192,7 +212,7 @@ pub enum SyncActualStatus {
 - 当 `network_enabled=false` 时，`set_sync_desired_state(Running)` 返回 `AppError::SyncDisabled`
 - 重新开启 network setting 不会自动恢复到 `Running`；desktop 需要再次显式调用 `set_sync_desired_state(Running)`
 
-### 5.4 `peers`
+### 5.5 `peers`
 
 ```rust
 pub struct PeersState {
@@ -222,7 +242,7 @@ pub enum PeerTransport {
 - `device_id` 不保证唯一；desktop 可以对重复标签做高亮或告警，但所有业务逻辑仍必须以 `noob_id` 为准
 - `transport` 是基于当前配置对连接来源的解释，不是独立发现目录
 
-### 5.5 `clipboard`
+### 5.6 `clipboard`
 
 ```rust
 pub struct ClipboardState {
@@ -235,7 +255,7 @@ pub struct ClipboardState {
 - 不暴露 raw local clipboard 文本
 - 不暴露未提交中间态
 
-### 5.6 `transfers`
+### 5.7 `transfers`
 
 ```rust
 pub struct TransfersState {
@@ -276,18 +296,33 @@ pub struct Transfer {
 - 当前实现的 completed 缓冲上限为 64 条
 - transfer 状态目前不跨重启持久化
 
-### 5.7 `settings`
+### 5.8 `settings`
 
 ```rust
 pub struct SettingsState {
+    pub identity: IdentitySettings,
     pub network: NetworkSettings,
     pub storage: StorageSettings,
     pub clipboard: ClipboardSettings,
     pub transfers: TransferSettings,
 }
+
+pub struct IdentitySettings {
+    pub device_id: String,
+}
+
+pub struct NetworkSettings {
+    pub listen_port: u16,
+    pub network_enabled: bool,
+    pub mdns_enabled: bool,
+    pub manual_peers: Vec<std::net::SocketAddr>,
+}
 ```
 
 这些值都是当前生效值，不是 desktop draft。
+- `identity.device_id` 是当前生效的人类可读设备标签
+- `network.listen_port` 是当前生效的监听端口；desktop 只开放端口编辑，不开放 host 编辑
+- `device_id` 继续属于 identity，不并入 network settings
 
 ---
 
@@ -578,13 +613,19 @@ pub struct TransferSettings {
 
 ```rust
 pub enum SettingsPatch {
+    Identity(IdentitySettingsPatch),
     Network(NetworkSettingsPatch),
     Storage(StorageSettingsPatch),
     Clipboard(ClipboardSettingsPatch),
     Transfers(TransferSettingsPatch),
 }
 
+pub enum IdentitySettingsPatch {
+    SetDeviceId(String),
+}
+
 pub enum NetworkSettingsPatch {
+    SetListenPort(u16),
     SetNetworkEnabled(bool),
     SetMdnsEnabled(bool),
     SetManualPeers(Vec<std::net::SocketAddr>),
@@ -625,11 +666,15 @@ pub enum TransferSettingsPatch {
 运行时语义：
 - `SetLocalCaptureEnabled` 会立刻启动或停止本地 clipboard watch
 - `StorageSettingsPatch` 会立刻重配 storage runtime；如果 `db_root` 改了，history 读取会切到新数据库
+- `IdentitySettingsPatch` 在 `sync.desired=Running` 时会触发 engine reconcile/restart
 - `NetworkSettingsPatch` 和 `SetDownloadDir` 在 `sync.desired=Running` 时会触发 engine reconcile/restart
+- `SetListenPort` 只修改监听端口，不开放 host 编辑
 
 ### 10.4 当前主要校验约束
 
 当前 `patch_settings()` 会继承配置校验规则，常见约束包括：
+- `identity.device_id` 不能为空
+- `listen_port` 必须在 `1..=65535`
 - `max_text_bytes > 0`
 - `history_window_days >= 1`
 - `dedup_window_days >= history_window_days`

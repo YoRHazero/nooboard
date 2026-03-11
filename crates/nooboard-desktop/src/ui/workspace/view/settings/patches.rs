@@ -2,20 +2,28 @@ use std::collections::BTreeSet;
 use std::net::SocketAddr;
 
 use nooboard_app::{
-    ClipboardSettingsPatch, NetworkSettingsPatch, SettingsPatch, StorageSettingsPatch,
-    TransferSettingsPatch,
+    ClipboardSettingsPatch, IdentitySettingsPatch, NetworkSettingsPatch, SettingsPatch,
+    StorageSettingsPatch, TransferSettingsPatch,
 };
 
 use super::snapshot::{
-    ClipboardSettingsValue, NetworkSettingsValue, StorageSettingsValue, TransferSettingsValue,
+    ClipboardSettingsValue, NetworkPanelValue, StorageSettingsValue, TransferSettingsValue,
 };
 
 pub(super) fn network_patch_labels(
-    current: &NetworkSettingsValue,
-    draft: &NetworkSettingsValue,
+    current: &NetworkPanelValue,
+    draft: &NetworkPanelValue,
 ) -> Vec<&'static str> {
     let mut labels = Vec::new();
 
+    if current.device_id != draft.device_id {
+        labels.push("Device ID");
+    }
+    if normalized_listen_port(&current.listen_port_text)
+        != normalized_listen_port(&draft.listen_port_text)
+    {
+        labels.push("Port");
+    }
     if current.network_enabled != draft.network_enabled {
         labels.push("Network service");
     }
@@ -77,11 +85,25 @@ pub(super) fn transfer_patch_labels(
 }
 
 pub(super) fn build_network_patches(
-    current: &NetworkSettingsValue,
-    draft: &NetworkSettingsValue,
+    current: &NetworkPanelValue,
+    draft: &NetworkPanelValue,
 ) -> Vec<SettingsPatch> {
     let mut patches = Vec::new();
 
+    if current.device_id != draft.device_id {
+        patches.push(SettingsPatch::Identity(IdentitySettingsPatch::SetDeviceId(
+            draft.device_id.clone(),
+        )));
+    }
+    if let (Some(current_port), Some(draft_port)) = (
+        normalized_listen_port(&current.listen_port_text),
+        normalized_listen_port(&draft.listen_port_text),
+    ) && current_port != draft_port
+    {
+        patches.push(SettingsPatch::Network(NetworkSettingsPatch::SetListenPort(
+            draft_port,
+        )));
+    }
     if current.mdns_enabled != draft.mdns_enabled {
         patches.push(SettingsPatch::Network(
             NetworkSettingsPatch::SetMdnsEnabled(draft.mdns_enabled),
@@ -152,7 +174,23 @@ pub(super) fn build_transfer_patch(
     ))
 }
 
-pub(super) fn network_validation_issues(value: &NetworkSettingsValue) -> Vec<String> {
+pub(super) fn network_validation_issues(value: &NetworkPanelValue) -> Vec<String> {
+    let mut issues = Vec::new();
+
+    if value.device_id.trim().is_empty() {
+        issues.push("Device ID cannot be empty".to_string());
+    }
+
+    match normalized_listen_port(&value.listen_port_text) {
+        Some(_) => {}
+        None if value.listen_port_text.trim().is_empty() => {
+            issues.push("Port cannot be empty".to_string());
+        }
+        None => {
+            issues.push("Port must be a number between 1 and 65535".to_string());
+        }
+    }
+
     let mut seen = BTreeSet::new();
     let mut duplicates = BTreeSet::new();
 
@@ -162,10 +200,23 @@ pub(super) fn network_validation_issues(value: &NetworkSettingsValue) -> Vec<Str
         }
     }
 
-    duplicates
-        .into_iter()
-        .map(|addr| format!("Manual peer {addr} appears more than once"))
-        .collect()
+    issues.extend(
+        duplicates
+            .into_iter()
+            .map(|addr| format!("Manual peer {addr} appears more than once")),
+    );
+
+    issues
+}
+
+pub(super) fn normalized_listen_port(value: &str) -> Option<u16> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let port = trimmed.parse::<u16>().ok()?;
+    (port > 0).then_some(port)
 }
 
 pub(super) fn storage_validation_issues(value: &StorageSettingsValue) -> Vec<String> {
@@ -229,12 +280,16 @@ mod tests {
     use std::net::SocketAddr;
     use std::path::PathBuf;
 
-    use nooboard_app::{ClipboardSettingsPatch, NetworkSettingsPatch, StorageSettingsPatch};
+    use nooboard_app::{
+        ClipboardSettingsPatch, IdentitySettingsPatch, NetworkSettingsPatch, StorageSettingsPatch,
+    };
 
     use super::*;
 
-    fn network_value() -> NetworkSettingsValue {
-        NetworkSettingsValue {
+    fn network_value() -> NetworkPanelValue {
+        NetworkPanelValue {
+            device_id: "desk-01".to_string(),
+            listen_port_text: "17890".to_string(),
             network_enabled: true,
             mdns_enabled: true,
             manual_peers: vec![],
@@ -254,7 +309,9 @@ mod tests {
     #[test]
     fn network_patches_follow_stable_apply_order() {
         let current = network_value();
-        let draft = NetworkSettingsValue {
+        let draft = NetworkPanelValue {
+            device_id: "desk-02".to_string(),
+            listen_port_text: "24001".to_string(),
             network_enabled: false,
             mdns_enabled: false,
             manual_peers: vec!["127.0.0.1:24001".parse().unwrap()],
@@ -265,6 +322,8 @@ mod tests {
         assert_eq!(
             patches,
             vec![
+                SettingsPatch::Identity(IdentitySettingsPatch::SetDeviceId("desk-02".to_string())),
+                SettingsPatch::Network(NetworkSettingsPatch::SetListenPort(24001)),
                 SettingsPatch::Network(NetworkSettingsPatch::SetMdnsEnabled(false)),
                 SettingsPatch::Network(NetworkSettingsPatch::SetManualPeers(vec![
                     "127.0.0.1:24001".parse().unwrap()
@@ -376,7 +435,9 @@ mod tests {
     #[test]
     fn network_validation_reports_duplicate_manual_peers() {
         let addr: SocketAddr = "127.0.0.1:24001".parse().unwrap();
-        let issues = network_validation_issues(&NetworkSettingsValue {
+        let issues = network_validation_issues(&NetworkPanelValue {
+            device_id: "desk-01".to_string(),
+            listen_port_text: "17890".to_string(),
             network_enabled: true,
             mdns_enabled: true,
             manual_peers: vec![addr, addr],
@@ -385,6 +446,28 @@ mod tests {
         assert_eq!(
             issues,
             vec!["Manual peer 127.0.0.1:24001 appears more than once"]
+        );
+    }
+
+    #[test]
+    fn network_validation_reports_invalid_port_and_empty_device_id() {
+        let issues = network_validation_issues(&NetworkPanelValue {
+            device_id: "   ".to_string(),
+            listen_port_text: "70000".to_string(),
+            network_enabled: true,
+            mdns_enabled: true,
+            manual_peers: Vec::new(),
+        });
+
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.contains("Device ID cannot be empty"))
+        );
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.contains("Port must be a number"))
         );
     }
 }

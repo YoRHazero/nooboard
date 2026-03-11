@@ -151,7 +151,7 @@ impl Render for WorkspaceView {
             }
             WorkspaceRoute::Peers => self.peers_page(cx),
             WorkspaceRoute::Transfers => self.transfers_page(cx),
-            WorkspaceRoute::Settings => self.settings_page(cx),
+            WorkspaceRoute::Settings => self.settings_page(window, cx),
         };
 
         let mut root = div()

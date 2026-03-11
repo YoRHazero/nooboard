@@ -26,10 +26,12 @@ pub(super) async fn reconcile_engine_state(
         state.sync_runtime.mark_disabled();
 
         let actual = state.sync_actual_status();
+        let local_connection = state.local_connection_state();
         let peers = state.connected_peers_state();
         state.update_state(|app_state| {
             app_state.sync.desired = SyncDesiredState::Stopped;
             app_state.sync.actual = actual;
+            app_state.local_connection = local_connection;
             app_state.peers.connected = peers;
         });
         return Ok(());
@@ -54,9 +56,11 @@ pub(super) async fn reconcile_engine_state(
     }
 
     let actual = state.sync_actual_status();
+    let local_connection = state.local_connection_state();
     let peers = state.connected_peers_state();
     state.update_state(|app_state| {
         app_state.sync.actual = actual;
+        app_state.local_connection = local_connection;
         app_state.peers.connected = peers;
     });
     Ok(())

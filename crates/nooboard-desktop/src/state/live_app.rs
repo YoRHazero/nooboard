@@ -596,6 +596,9 @@ mod tests {
                 noob_id: NoobId::new("local"),
                 device_id: "desk".to_string(),
             },
+            local_connection: nooboard_app::LocalConnectionInfo {
+                device_endpoint: Some("192.168.1.50:17890".parse().unwrap()),
+            },
             sync: SyncState {
                 desired: SyncDesiredState::Stopped,
                 actual: SyncActualStatus::Stopped,
@@ -604,7 +607,11 @@ mod tests {
             clipboard: ClipboardState::default(),
             transfers: TransfersState::default(),
             settings: SettingsState {
+                identity: nooboard_app::IdentitySettings {
+                    device_id: "desk".to_string(),
+                },
                 network: NetworkSettings {
+                    listen_port: 17890,
                     network_enabled: true,
                     mdns_enabled: true,
                     manual_peers: Vec::new(),

@@ -9,6 +9,7 @@ authors.workspace = true
 nooboard-platform = { path = "../nooboard-platform" }
 nooboard-storage = { path = "../nooboard-storage" }
 nooboard-sync = { path = "../nooboard-sync" }
+if-addrs.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

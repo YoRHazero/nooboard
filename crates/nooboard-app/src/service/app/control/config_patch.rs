@@ -1,12 +1,12 @@
 use crate::config::AppConfig;
 use crate::service::types::{
-    ClipboardSettingsPatch, NetworkSettingsPatch, SettingsPatch, StorageSettingsPatch,
-    TransferSettingsPatch,
+    ClipboardSettingsPatch, IdentitySettingsPatch, NetworkSettingsPatch, SettingsPatch,
+    StorageSettingsPatch, TransferSettingsPatch,
 };
 use crate::{AppError, AppResult};
 
 use super::engine_reconcile::reconcile_engine_state;
-use super::state::{ControlState, settings_state};
+use super::state::ControlState;
 
 #[derive(Default)]
 struct PatchEffect {
@@ -38,8 +38,12 @@ pub(super) async fn patch_settings(
 
     if apply_error.is_none() {
         state.config = updated_config;
-        let settings = settings_state(&state.config);
+        let identity = state.identity_state();
+        let local_connection = state.local_connection_state();
+        let settings = state.settings_state();
         state.update_state(|app_state| {
+            app_state.identity = identity;
+            app_state.local_connection = local_connection;
             app_state.settings = settings;
         });
 
@@ -84,6 +88,7 @@ fn apply_patch_to_config(
     patch: SettingsPatch,
 ) -> PatchEffect {
     match patch {
+        SettingsPatch::Identity(patch) => apply_identity_patch(config, patch),
         SettingsPatch::Network(patch) => apply_network_patch(config, patch),
         SettingsPatch::Storage(patch) => {
             apply_storage_patch(config, state.config_base_dir(), patch)
@@ -95,8 +100,24 @@ fn apply_patch_to_config(
     }
 }
 
+fn apply_identity_patch(config: &mut AppConfig, patch: IdentitySettingsPatch) -> PatchEffect {
+    match patch {
+        IdentitySettingsPatch::SetDeviceId(device_id) => {
+            config.identity.device_id = device_id;
+        }
+    }
+
+    PatchEffect {
+        sync_reconcile_required: true,
+        ..PatchEffect::default()
+    }
+}
+
 fn apply_network_patch(config: &mut AppConfig, patch: NetworkSettingsPatch) -> PatchEffect {
     match patch {
+        NetworkSettingsPatch::SetListenPort(port) => {
+            config.sync.network.listen_addr.set_port(port);
+        }
         NetworkSettingsPatch::SetNetworkEnabled(enabled) => {
             config.sync.network.enabled = enabled;
         }
@@ -201,8 +222,12 @@ async fn rollback_patch_failure(
     }
 
     state.config = old_config.clone();
-    let settings = settings_state(&state.config);
+    let identity = state.identity_state();
+    let local_connection = state.local_connection_state();
+    let settings = state.settings_state();
     state.update_state(|app_state| {
+        app_state.identity = identity;
+        app_state.local_connection = local_connection;
         app_state.settings = settings;
     });
 

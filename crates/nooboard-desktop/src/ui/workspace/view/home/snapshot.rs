@@ -192,6 +192,7 @@ mod tests {
             },
             settings: SettingsState {
                 network: NetworkSettings {
+                    listen_port: 17890,
                     network_enabled: false,
                     mdns_enabled: true,
                     manual_peers: Vec::new(),
@@ -242,6 +243,9 @@ mod tests {
                 noob_id: NoobId::new("local-node"),
                 device_id: "desk-01".to_string(),
             },
+            local_connection: nooboard_app::LocalConnectionInfo {
+                device_endpoint: Some("192.168.1.50:17890".parse().unwrap()),
+            },
             sync: SyncState {
                 desired: SyncDesiredState::Running,
                 actual: SyncActualStatus::Running,
@@ -273,7 +277,11 @@ mod tests {
                 recent_completed: Vec::new(),
             },
             settings: SettingsState {
+                identity: nooboard_app::IdentitySettings {
+                    device_id: "desk-01".to_string(),
+                },
                 network: NetworkSettings {
+                    listen_port: 17890,
                     network_enabled: true,
                     mdns_enabled: true,
                     manual_peers: Vec::new(),

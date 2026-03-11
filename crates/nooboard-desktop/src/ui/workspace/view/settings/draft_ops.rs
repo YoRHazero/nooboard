@@ -1,4 +1,4 @@
-use gpui::{Context, PathPromptOptions, Window};
+use gpui::{ClipboardItem, Context, PathPromptOptions, Window};
 
 use super::patches::{add_manual_peer, parse_manual_peer_input};
 use super::{StorageSettingField, WorkspaceView};
@@ -230,5 +230,19 @@ impl WorkspaceView {
             self.clear_settings_feedback();
             cx.notify();
         }
+    }
+
+    pub(super) fn copy_settings_device_endpoint(&mut self, cx: &mut Context<Self>) {
+        let Some(endpoint) = self.network_device_endpoint_preview() else {
+            self.set_settings_feedback(
+                "No shareable device endpoint is available until app detects a local IPv4 and a valid port.",
+            );
+            cx.notify();
+            return;
+        };
+
+        cx.write_to_clipboard(ClipboardItem::new_string(endpoint.clone()));
+        self.set_settings_feedback(format!("Copied {endpoint}."));
+        cx.notify();
     }
 }

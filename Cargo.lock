@@ -3810,6 +3810,7 @@ dependencies = [
 name = "nooboard-app"
 version = "0.1.0"
 dependencies = [
+ "if-addrs",
  "nooboard-platform",
  "nooboard-platform-macos",
  "nooboard-storage",

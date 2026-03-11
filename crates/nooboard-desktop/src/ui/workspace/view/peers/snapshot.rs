@@ -179,10 +179,10 @@ mod tests {
     use std::path::PathBuf;
 
     use nooboard_app::{
-        AppState, ClipboardSettings, ClipboardState, ConnectedPeer, LocalIdentity, NetworkSettings,
-        NoobId, PeerTransport, PeersState, SettingsState, StorageSettings, SyncActualStatus,
-        SyncDesiredState, SyncState, Transfer, TransferDirection, TransferId, TransferSettings,
-        TransferState, TransfersState,
+        AppState, ClipboardSettings, ClipboardState, ConnectedPeer, IdentitySettings,
+        LocalConnectionInfo, LocalIdentity, NetworkSettings, NoobId, PeerTransport, PeersState,
+        SettingsState, StorageSettings, SyncActualStatus, SyncDesiredState, SyncState, Transfer,
+        TransferDirection, TransferId, TransferSettings, TransferState, TransfersState,
     };
 
     use super::*;
@@ -193,6 +193,9 @@ mod tests {
             identity: LocalIdentity {
                 noob_id: NoobId::new("local-node"),
                 device_id: local_device_id.to_string(),
+            },
+            local_connection: LocalConnectionInfo {
+                device_endpoint: Some("192.168.1.50:17890".parse().unwrap()),
             },
             sync: SyncState {
                 desired: SyncDesiredState::Running,
@@ -241,7 +244,11 @@ mod tests {
                 recent_completed: Vec::new(),
             },
             settings: SettingsState {
+                identity: IdentitySettings {
+                    device_id: local_device_id.to_string(),
+                },
                 network: NetworkSettings {
+                    listen_port: 17890,
                     network_enabled: true,
                     mdns_enabled: true,
                     manual_peers: Vec::new(),
