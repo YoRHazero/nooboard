@@ -483,15 +483,16 @@ pub enum TransferOutcome {
 
 ```rust
 pub struct SettingsState {
-    pub identity: IdentitySettings,
+    pub connection_identity: ConnectionIdentitySettings,
     pub network: NetworkSettings,
     pub storage: StorageSettings,
     pub clipboard: ClipboardSettings,
     pub transfers: TransferSettings,
 }
 
-pub struct IdentitySettings {
+pub struct ConnectionIdentitySettings {
     pub device_id: String,
+    pub token: String,
 }
 ```
 
@@ -538,9 +539,10 @@ pub struct TransferSettings {
 
 - `SettingsState` 只表示当前生效值。
 - 不包含 dirty/draft/review/reset 语义。
-- `identity.device_id` 是当前生效的人类可读设备标签。
+- `connection_identity.device_id` 是当前生效的人类可读设备标签。
+- `connection_identity.token` 是当前生效的局域网连接域 token；只有 token 一致的设备才会建立连接。
 - `network.listen_port` 是当前生效的监听端口；desktop 只开放端口编辑，不开放 host 编辑。
-- `device_id` 继续属于 identity，不并入 network settings。
+- `device_id` 和 `token` 在 settings 里作为同一个 `connection_identity` 组暴露；desktop 应整体编辑并整体 apply。
 - `download_dir` 是正式 app setting，不再作为 desktop 本地假设置。
 - `local_capture_enabled` 是正式 app setting，不再暴露单独 raw watch 开关接口。
 
@@ -807,7 +809,7 @@ async fn cancel_transfer(
 
 ```rust
 pub enum SettingsPatch {
-    Identity(IdentitySettingsPatch),
+    ConnectionIdentity(ConnectionIdentitySettingsPatch),
     Network(NetworkSettingsPatch),
     Storage(StorageSettingsPatch),
     Clipboard(ClipboardSettingsPatch),
@@ -816,8 +818,8 @@ pub enum SettingsPatch {
 ```
 
 ```rust
-pub enum IdentitySettingsPatch {
-    SetDeviceId(String),
+pub enum ConnectionIdentitySettingsPatch {
+    Replace(ConnectionIdentitySettings),
 }
 
 pub enum NetworkSettingsPatch {
@@ -850,9 +852,9 @@ pub enum TransferSettingsPatch {
 - patch 成功后，新的 `SettingsState` 必须反映生效值。
 - patch 失败时不得部分提交。
 - validation 失败必须明确返回。
-- `IdentitySettingsPatch::SetDeviceId` 修改 `identity.device_id`。
+- `ConnectionIdentitySettingsPatch::Replace` 同时修改 `identity.device_id` 和 `sync.auth.token`。
 - `NetworkSettingsPatch::SetListenPort` 只修改监听端口，不开放 host 编辑。
-- `IdentitySettingsPatch`、`NetworkSettingsPatch`、`SetDownloadDir` 在 `sync.desired=Running` 时都必须触发 engine reconcile/restart。
+- `ConnectionIdentitySettingsPatch`、`NetworkSettingsPatch`、`SetDownloadDir` 在 `sync.desired=Running` 时都必须触发 engine reconcile/restart。
 
 ### 11.3 Validation
 
@@ -868,7 +870,8 @@ app 至少必须保证：
 - `gc_batch_size` 合法
 - `download_dir` 合法
 - manual peer 地址格式合法
-- `identity.device_id` 非空
+- `connection_identity.device_id` 非空
+- `connection_identity.token` 非空
 - `listen_port` 在 `1..=65535`
 
 ### 11.4 明确不属于 app patch 的内容

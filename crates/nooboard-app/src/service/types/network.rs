@@ -73,7 +73,7 @@ pub struct LocalConnectionInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsState {
-    pub identity: IdentitySettings,
+    pub connection_identity: ConnectionIdentitySettings,
     pub network: NetworkSettings,
     pub storage: StorageSettings,
     pub clipboard: ClipboardSettings,
@@ -81,8 +81,9 @@ pub struct SettingsState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IdentitySettings {
+pub struct ConnectionIdentitySettings {
     pub device_id: String,
+    pub token: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,7 +115,7 @@ pub struct TransferSettings {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsPatch {
-    Identity(IdentitySettingsPatch),
+    ConnectionIdentity(ConnectionIdentitySettingsPatch),
     Network(NetworkSettingsPatch),
     Storage(StorageSettingsPatch),
     Clipboard(ClipboardSettingsPatch),
@@ -122,8 +123,8 @@ pub enum SettingsPatch {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IdentitySettingsPatch {
-    SetDeviceId(String),
+pub enum ConnectionIdentitySettingsPatch {
+    Replace(ConnectionIdentitySettings),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

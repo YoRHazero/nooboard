@@ -3,8 +3,9 @@ use gpui::{
     Styled, div, px,
 };
 use gpui_component::Disableable;
+use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
-use gpui_component::{Sizable, StyledExt};
+use gpui_component::{IconName, Sizable, StyledExt};
 
 use crate::ui::theme;
 
@@ -105,8 +106,20 @@ impl WorkspaceView {
         let draft = self.network_settings_draft();
         let confirmed = self.network_settings_confirmed();
         let device_ip = self.network_device_ip_label();
-        let device_endpoint_display = self.network_device_endpoint_display();
         let can_copy_endpoint = self.network_device_endpoint_preview().is_some();
+        let show_token = self.settings_page_state.token_visible;
+        let token_toggle_tooltip = if show_token {
+            "Hide token"
+        } else {
+            "Show token"
+        }
+        .to_string();
+        let copy_tooltip = if can_copy_endpoint {
+            "Copy endpoint"
+        } else {
+            "Endpoint unavailable"
+        }
+        .to_string();
 
         div()
             .v_flex()
@@ -114,124 +127,137 @@ impl WorkspaceView {
             .py(px(4.0))
             .child(
                 div()
-                    .v_flex()
-                    .gap(px(4.0))
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(theme::fg_secondary())
-                            .child("Connection Info"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(10.0))
-                            .text_color(theme::fg_muted())
-                            .line_clamp(2)
-                            .text_ellipsis()
-                            .child(
-                                "Share these values when another device needs to connect manually.",
-                            ),
-                    ),
+                    .text_size(px(11.0))
+                    .text_color(theme::fg_secondary())
+                    .child("Device Information"),
             )
-            .child(connection_readonly_row(
-                "Device IP",
-                "Automatically detected local IPv4 address for this machine.",
-                device_ip,
-            ))
-            .child(connection_input_row(
-                "Port",
-                "Edit the listen port this device shares with other peers.",
-                confirmed.listen_port_text.clone(),
-                draft.listen_port_text != confirmed.listen_port_text,
-                Input::new(&self.settings_page_state.listen_port_input)
-                    .small()
-                    .appearance(false)
-                    .bordered(false)
-                    .focus_bordered(false)
-                    .w_full(),
-            ))
-            .child(connection_input_row(
-                "Device ID",
-                "Human-readable label shown to other devices across the desktop.",
-                confirmed.device_id.clone(),
-                draft.device_id != confirmed.device_id,
-                Input::new(&self.settings_page_state.device_id_input)
-                    .small()
-                    .appearance(false)
-                    .bordered(false)
-                    .focus_bordered(false)
-                    .w_full(),
-            ))
             .child(
                 div()
+                    .w(px(560.0))
+                    .max_w_full()
                     .v_flex()
-                    .gap(px(8.0))
-                    .child(
-                        div()
-                            .v_flex()
-                            .gap(px(4.0))
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .text_color(theme::fg_secondary())
-                                    .child("Device IP + Port"),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(10.0))
-                                    .text_color(theme::fg_muted())
-                                    .line_clamp(2)
-                                    .text_ellipsis()
-                                    .child("Preview of the endpoint another device should dial."),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(10.0))
-                                    .text_color(theme::fg_muted())
-                                    .line_clamp(1)
-                                    .text_ellipsis()
-                                    .child("Uses the live Device IP with the current draft port."),
-                            ),
-                    )
+                    .gap(px(14.0))
+                    .px(px(14.0))
+                    .py(px(14.0))
+                    .bg(theme::bg_console())
+                    .border_1()
+                    .border_color(theme::border_soft())
+                    .rounded(px(18.0))
                     .child(
                         div()
                             .h_flex()
-                            .items_center()
-                            .gap(px(10.0))
+                            .flex_wrap()
+                            .gap(px(14.0))
+                            .child(device_information_field(
+                                "ID",
+                                px(248.0),
+                                draft.device_id != confirmed.device_id,
+                                Input::new(&self.settings_page_state.device_id_input)
+                                    .small()
+                                    .appearance(false)
+                                    .bordered(false)
+                                    .focus_bordered(false)
+                                    .w_full(),
+                            ))
+                            .child(device_information_field(
+                                "Token",
+                                px(248.0),
+                                draft.token != confirmed.token,
+                                div()
+                                    .h_flex()
+                                    .w_full()
+                                    .min_w(px(0.0))
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    .child(
+                                        Input::new(&self.settings_page_state.token_input)
+                                            .small()
+                                            .appearance(false)
+                                            .bordered(false)
+                                            .focus_bordered(false)
+                                            .flex_1()
+                                            .min_w(px(0.0))
+                                            .w_full(),
+                                    )
+                                    .child(
+                                        Button::new("settings-toggle-token-visibility")
+                                            .ghost()
+                                            .xsmall()
+                                            .icon(if show_token {
+                                                IconName::EyeOff
+                                            } else {
+                                                IconName::Eye
+                                            })
+                                            .tooltip(token_toggle_tooltip.clone())
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.toggle_settings_token_visibility(window, cx);
+                                            })),
+                                    ),
+                            )),
+                    )
+                    .child(
+                        div()
+                            .v_flex()
+                            .gap(px(6.0))
                             .child(
                                 div()
-                                    .flex_1()
-                                    .min_w(px(0.0))
-                                    .px(px(12.0))
-                                    .py(px(10.0))
-                                    .bg(theme::bg_console())
-                                    .border_1()
-                                    .border_color(theme::border_soft())
-                                    .rounded(px(12.0))
-                                    .text_size(px(12.0))
-                                    .font_semibold()
-                                    .text_color(if can_copy_endpoint {
-                                        theme::fg_primary()
-                                    } else {
-                                        theme::fg_muted()
-                                    })
-                                    .line_clamp(1)
-                                    .text_ellipsis()
-                                    .child(device_endpoint_display),
+                                    .h_flex()
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .text_color(theme::fg_secondary())
+                                            .child("Endpoint"),
+                                    )
+                                    .child(
+                                        Button::new("settings-copy-device-endpoint")
+                                            .ghost()
+                                            .xsmall()
+                                            .icon(IconName::Copy)
+                                            .disabled(!can_copy_endpoint)
+                                            .tooltip(copy_tooltip.clone())
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.copy_settings_device_endpoint(cx);
+                                            })),
+                                    ),
                             )
                             .child(
-                                settings_action_button(
-                                    "settings-copy-device-endpoint",
-                                    "Copy endpoint",
-                                    theme::accent_cyan(),
-                                    cx,
-                                )
-                                .disabled(!can_copy_endpoint)
-                                .on_click(cx.listener(
-                                    |this, _, _, cx| {
-                                        this.copy_settings_device_endpoint(cx);
-                                    },
-                                )),
+                                div()
+                                    .h_flex()
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    .child(
+                                        div()
+                                            .min_w(px(148.0))
+                                            .text_size(px(13.0))
+                                            .font_semibold()
+                                            .text_color(if can_copy_endpoint {
+                                                theme::fg_primary()
+                                            } else {
+                                                theme::fg_muted()
+                                            })
+                                            .line_clamp(1)
+                                            .text_ellipsis()
+                                            .child(device_ip),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(13.0))
+                                            .font_semibold()
+                                            .text_color(theme::fg_secondary())
+                                            .child(":"),
+                                    )
+                                    .child(device_information_field_frame(
+                                        px(96.0),
+                                        draft.listen_port_text != confirmed.listen_port_text,
+                                        Input::new(&self.settings_page_state.listen_port_input)
+                                            .small()
+                                            .appearance(false)
+                                            .bordered(false)
+                                            .focus_bordered(false)
+                                            .w_full(),
+                                    )),
                             ),
                     ),
             )
@@ -484,103 +510,43 @@ impl WorkspaceView {
     }
 }
 
-fn connection_input_row(
+fn device_information_field(
     label: &str,
-    hint: &str,
-    current_value: String,
+    width: gpui::Pixels,
     dirty: bool,
-    input: impl IntoElement,
+    field: impl IntoElement,
 ) -> Div {
     div()
         .v_flex()
-        .gap(px(8.0))
+        .gap(px(6.0))
+        .w(width)
         .child(
             div()
-                .v_flex()
-                .gap(px(4.0))
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .text_color(theme::fg_secondary())
-                        .child(label.to_string()),
-                )
-                .child(
-                    div()
-                        .text_size(px(10.0))
-                        .text_color(theme::fg_muted())
-                        .line_clamp(2)
-                        .text_ellipsis()
-                        .child(hint.to_string()),
-                )
-                .child(
-                    div()
-                        .text_size(px(10.0))
-                        .text_color(if dirty {
-                            theme::accent_amber()
-                        } else {
-                            theme::fg_muted()
-                        })
-                        .line_clamp(1)
-                        .text_ellipsis()
-                        .child(if dirty {
-                            format!("Current value: {current_value}")
-                        } else {
-                            "Matches the current value".to_string()
-                        }),
-                ),
+                .text_size(px(11.0))
+                .text_color(theme::fg_secondary())
+                .child(label.to_string()),
         )
-        .child(
-            div()
-                .h(px(34.0))
-                .px(px(10.0))
-                .bg(theme::bg_console())
-                .border_1()
-                .border_color(theme::border_soft())
-                .rounded(px(12.0))
-                .child(input),
-        )
+        .child(device_information_field_frame(width, dirty, field))
 }
 
-fn connection_readonly_row(label: &str, hint: &str, value: String) -> Div {
+fn device_information_field_frame(
+    width: gpui::Pixels,
+    dirty: bool,
+    field: impl IntoElement,
+) -> Div {
     div()
-        .v_flex()
-        .gap(px(8.0))
-        .child(
-            div()
-                .v_flex()
-                .gap(px(4.0))
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .text_color(theme::fg_secondary())
-                        .child(label.to_string()),
-                )
-                .child(
-                    div()
-                        .text_size(px(10.0))
-                        .text_color(theme::fg_muted())
-                        .line_clamp(2)
-                        .text_ellipsis()
-                        .child(hint.to_string()),
-                ),
-        )
-        .child(
-            div()
-                .px(px(12.0))
-                .py(px(10.0))
-                .bg(theme::bg_console())
-                .border_1()
-                .border_color(theme::border_soft())
-                .rounded(px(12.0))
-                .text_size(px(12.0))
-                .font_semibold()
-                .text_color(if value == "Unavailable" {
-                    theme::fg_muted()
-                } else {
-                    theme::fg_primary()
-                })
-                .line_clamp(1)
-                .text_ellipsis()
-                .child(value),
-        )
+        .w(width)
+        .h(px(36.0))
+        .h_flex()
+        .items_center()
+        .px(px(10.0))
+        .bg(theme::bg_panel())
+        .border_1()
+        .border_color(if dirty {
+            theme::accent_amber().opacity(0.32)
+        } else {
+            theme::border_soft()
+        })
+        .rounded(px(12.0))
+        .child(div().flex_1().min_w(px(0.0)).child(field))
 }

@@ -179,7 +179,7 @@ mod tests {
     use std::path::PathBuf;
 
     use nooboard_app::{
-        AppState, ClipboardSettings, ClipboardState, ConnectedPeer, IdentitySettings,
+        AppState, ClipboardSettings, ClipboardState, ConnectedPeer, ConnectionIdentitySettings,
         LocalConnectionInfo, LocalIdentity, NetworkSettings, NoobId, PeerTransport, PeersState,
         SettingsState, StorageSettings, SyncActualStatus, SyncDesiredState, SyncState, Transfer,
         TransferDirection, TransferId, TransferSettings, TransferState, TransfersState,
@@ -244,8 +244,9 @@ mod tests {
                 recent_completed: Vec::new(),
             },
             settings: SettingsState {
-                identity: IdentitySettings {
+                connection_identity: ConnectionIdentitySettings {
                     device_id: local_device_id.to_string(),
+                    token: "dev-sync-token".to_string(),
                 },
                 network: NetworkSettings {
                     listen_port: 17890,

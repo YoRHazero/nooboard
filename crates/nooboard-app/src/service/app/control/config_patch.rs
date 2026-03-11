@@ -1,6 +1,6 @@
 use crate::config::AppConfig;
 use crate::service::types::{
-    ClipboardSettingsPatch, IdentitySettingsPatch, NetworkSettingsPatch, SettingsPatch,
+    ClipboardSettingsPatch, ConnectionIdentitySettingsPatch, NetworkSettingsPatch, SettingsPatch,
     StorageSettingsPatch, TransferSettingsPatch,
 };
 use crate::{AppError, AppResult};
@@ -88,7 +88,7 @@ fn apply_patch_to_config(
     patch: SettingsPatch,
 ) -> PatchEffect {
     match patch {
-        SettingsPatch::Identity(patch) => apply_identity_patch(config, patch),
+        SettingsPatch::ConnectionIdentity(patch) => apply_connection_identity_patch(config, patch),
         SettingsPatch::Network(patch) => apply_network_patch(config, patch),
         SettingsPatch::Storage(patch) => {
             apply_storage_patch(config, state.config_base_dir(), patch)
@@ -100,10 +100,14 @@ fn apply_patch_to_config(
     }
 }
 
-fn apply_identity_patch(config: &mut AppConfig, patch: IdentitySettingsPatch) -> PatchEffect {
+fn apply_connection_identity_patch(
+    config: &mut AppConfig,
+    patch: ConnectionIdentitySettingsPatch,
+) -> PatchEffect {
     match patch {
-        IdentitySettingsPatch::SetDeviceId(device_id) => {
-            config.identity.device_id = device_id;
+        ConnectionIdentitySettingsPatch::Replace(connection_identity) => {
+            config.identity.device_id = connection_identity.device_id;
+            config.sync.auth.token = connection_identity.token;
         }
     }
 

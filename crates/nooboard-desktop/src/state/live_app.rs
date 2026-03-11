@@ -607,8 +607,9 @@ mod tests {
             clipboard: ClipboardState::default(),
             transfers: TransfersState::default(),
             settings: SettingsState {
-                identity: nooboard_app::IdentitySettings {
+                connection_identity: nooboard_app::ConnectionIdentitySettings {
                     device_id: "desk".to_string(),
+                    token: "dev-sync-token".to_string(),
                 },
                 network: NetworkSettings {
                     listen_port: 17890,

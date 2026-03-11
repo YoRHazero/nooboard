@@ -5,7 +5,7 @@ use crate::state::live_app::LiveAppStore;
 
 #[derive(Clone, PartialEq, Eq)]
 pub(in crate::ui::workspace::view) struct SettingsSnapshot {
-    pub identity: IdentitySettingsValue,
+    pub connection_identity: ConnectionIdentitySettingsValue,
     pub network: NetworkSettingsValue,
     pub local_connection: LocalConnectionInfoValue,
     pub storage: StorageSettingsValue,
@@ -14,8 +14,9 @@ pub(in crate::ui::workspace::view) struct SettingsSnapshot {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub(in crate::ui::workspace::view) struct IdentitySettingsValue {
+pub(in crate::ui::workspace::view) struct ConnectionIdentitySettingsValue {
     pub device_id: String,
+    pub token: String,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -34,6 +35,7 @@ pub(in crate::ui::workspace::view) struct LocalConnectionInfoValue {
 #[derive(Clone, PartialEq, Eq)]
 pub(in crate::ui::workspace::view) struct NetworkPanelValue {
     pub device_id: String,
+    pub token: String,
     pub listen_port_text: String,
     pub network_enabled: bool,
     pub mdns_enabled: bool,
@@ -43,7 +45,8 @@ pub(in crate::ui::workspace::view) struct NetworkPanelValue {
 impl NetworkPanelValue {
     pub(super) fn from_snapshot(snapshot: &SettingsSnapshot) -> Self {
         Self {
-            device_id: snapshot.identity.device_id.clone(),
+            device_id: snapshot.connection_identity.device_id.clone(),
+            token: snapshot.connection_identity.token.clone(),
             listen_port_text: snapshot.network.listen_port.to_string(),
             network_enabled: snapshot.network.network_enabled,
             mdns_enabled: snapshot.network.mdns_enabled,
@@ -78,8 +81,9 @@ pub(in crate::ui::workspace::view) fn build_settings_snapshot(
     let settings = &app_state.settings;
 
     SettingsSnapshot {
-        identity: IdentitySettingsValue {
-            device_id: settings.identity.device_id.clone(),
+        connection_identity: ConnectionIdentitySettingsValue {
+            device_id: settings.connection_identity.device_id.clone(),
+            token: settings.connection_identity.token.clone(),
         },
         network: NetworkSettingsValue {
             listen_port: settings.network.listen_port,
@@ -111,9 +115,10 @@ mod tests {
     use std::path::PathBuf;
 
     use nooboard_app::{
-        AppState, ClipboardSettings, ClipboardState, IdentitySettings, LocalConnectionInfo,
-        LocalIdentity, NetworkSettings, NoobId, PeersState, SettingsState, StorageSettings,
-        SyncActualStatus, SyncDesiredState, SyncState, TransferSettings, TransfersState,
+        AppState, ClipboardSettings, ClipboardState, ConnectionIdentitySettings,
+        LocalConnectionInfo, LocalIdentity, NetworkSettings, NoobId, PeersState, SettingsState,
+        StorageSettings, SyncActualStatus, SyncDesiredState, SyncState, TransferSettings,
+        TransfersState,
     };
 
     use crate::state::live_app::LiveAppStore;
@@ -139,8 +144,9 @@ mod tests {
             clipboard: ClipboardState::default(),
             transfers: TransfersState::default(),
             settings: SettingsState {
-                identity: IdentitySettings {
+                connection_identity: ConnectionIdentitySettings {
                     device_id: "desk-01".to_string(),
+                    token: "shared-token".to_string(),
                 },
                 network: NetworkSettings {
                     listen_port: 17890,
@@ -167,7 +173,8 @@ mod tests {
 
         let snapshot = build_settings_snapshot(&store);
 
-        assert_eq!(snapshot.identity.device_id, "desk-01");
+        assert_eq!(snapshot.connection_identity.device_id, "desk-01");
+        assert_eq!(snapshot.connection_identity.token, "shared-token");
         assert_eq!(snapshot.network.listen_port, 17890);
         assert!(snapshot.network.network_enabled);
         assert!(!snapshot.network.mdns_enabled);
@@ -187,8 +194,9 @@ mod tests {
     #[test]
     fn network_panel_value_combines_identity_and_network_settings() {
         let snapshot = SettingsSnapshot {
-            identity: IdentitySettingsValue {
+            connection_identity: ConnectionIdentitySettingsValue {
                 device_id: "desk-02".to_string(),
+                token: "team-token".to_string(),
             },
             network: NetworkSettingsValue {
                 listen_port: 24001,
@@ -217,6 +225,7 @@ mod tests {
         let panel = NetworkPanelValue::from_snapshot(&snapshot);
 
         assert_eq!(panel.device_id, "desk-02");
+        assert_eq!(panel.token, "team-token");
         assert_eq!(panel.listen_port_text, "24001");
         assert_eq!(panel.manual_peers.len(), 1);
     }

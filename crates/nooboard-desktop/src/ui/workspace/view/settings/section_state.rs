@@ -131,6 +131,7 @@ mod tests {
     fn sync_from_live_marks_dirty_section_stale_when_baseline_changes() {
         let mut section = SettingsSection::new(NetworkPanelValue {
             device_id: "desk-01".to_string(),
+            token: "shared-token".to_string(),
             listen_port_text: "17890".to_string(),
             network_enabled: true,
             mdns_enabled: true,
@@ -140,6 +141,7 @@ mod tests {
 
         section.sync_from_live(NetworkPanelValue {
             device_id: "desk-01".to_string(),
+            token: "shared-token".to_string(),
             listen_port_text: "17890".to_string(),
             network_enabled: true,
             mdns_enabled: false,
@@ -171,6 +173,7 @@ mod tests {
     fn sync_from_live_keeps_apply_phase_during_partial_network_updates() {
         let mut section = SettingsSection::new(NetworkPanelValue {
             device_id: "desk-01".to_string(),
+            token: "shared-token".to_string(),
             listen_port_text: "17890".to_string(),
             network_enabled: true,
             mdns_enabled: true,
@@ -178,6 +181,7 @@ mod tests {
         });
         section.draft = NetworkPanelValue {
             device_id: "desk-02".to_string(),
+            token: "team-token".to_string(),
             listen_port_text: "24001".to_string(),
             network_enabled: false,
             mdns_enabled: false,
@@ -187,6 +191,7 @@ mod tests {
 
         section.sync_from_live(NetworkPanelValue {
             device_id: "desk-01".to_string(),
+            token: "shared-token".to_string(),
             listen_port_text: "17890".to_string(),
             network_enabled: true,
             mdns_enabled: false,

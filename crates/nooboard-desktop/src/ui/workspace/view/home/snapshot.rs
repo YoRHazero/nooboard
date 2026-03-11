@@ -277,8 +277,9 @@ mod tests {
                 recent_completed: Vec::new(),
             },
             settings: SettingsState {
-                identity: nooboard_app::IdentitySettings {
+                connection_identity: nooboard_app::ConnectionIdentitySettings {
                     device_id: "desk-01".to_string(),
+                    token: "dev-sync-token".to_string(),
                 },
                 network: NetworkSettings {
                     listen_port: 17890,

@@ -19,9 +19,9 @@ pub use file_transfer::{
 pub use identity::{EventId, LocalIdentity, NoobId, TransferId};
 pub use network::{
     AppState, ClipboardSettings, ClipboardSettingsPatch, ClipboardState, ConnectedPeer,
-    IdentitySettings, IdentitySettingsPatch, LocalConnectionInfo, NetworkSettings,
-    NetworkSettingsPatch, PeerTransport, PeersState, SettingsPatch, SettingsState, StateRecvError,
-    StateSubscription, StorageSettings, StorageSettingsPatch, SyncActualStatus, SyncDesiredState,
-    SyncState, TransferSettings, TransferSettingsPatch,
+    ConnectionIdentitySettings, ConnectionIdentitySettingsPatch, LocalConnectionInfo,
+    NetworkSettings, NetworkSettingsPatch, PeerTransport, PeersState, SettingsPatch, SettingsState,
+    StateRecvError, StateSubscription, StorageSettings, StorageSettingsPatch, SyncActualStatus,
+    SyncDesiredState, SyncState, TransferSettings, TransferSettingsPatch,
 };
 pub(crate) use time::now_millis_i64;

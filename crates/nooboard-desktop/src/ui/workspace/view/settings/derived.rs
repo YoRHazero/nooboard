@@ -151,11 +151,6 @@ impl WorkspaceView {
         Some(format!("{ip}:{port}"))
     }
 
-    pub(super) fn network_device_endpoint_display(&self) -> String {
-        self.network_device_endpoint_preview()
-            .unwrap_or_else(|| "Unavailable".to_string())
-    }
-
     pub(super) fn storage_settings_draft(&self) -> &StorageSettingsValue {
         &self.settings_page_state.storage.draft
     }

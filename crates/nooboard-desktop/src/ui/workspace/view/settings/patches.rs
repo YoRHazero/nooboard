@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 use std::net::SocketAddr;
 
 use nooboard_app::{
-    ClipboardSettingsPatch, IdentitySettingsPatch, NetworkSettingsPatch, SettingsPatch,
-    StorageSettingsPatch, TransferSettingsPatch,
+    ClipboardSettingsPatch, ConnectionIdentitySettings, ConnectionIdentitySettingsPatch,
+    NetworkSettingsPatch, SettingsPatch, StorageSettingsPatch, TransferSettingsPatch,
 };
 
 use super::snapshot::{
@@ -18,6 +18,9 @@ pub(super) fn network_patch_labels(
 
     if current.device_id != draft.device_id {
         labels.push("Device ID");
+    }
+    if current.token != draft.token {
+        labels.push("Token");
     }
     if normalized_listen_port(&current.listen_port_text)
         != normalized_listen_port(&draft.listen_port_text)
@@ -90,10 +93,13 @@ pub(super) fn build_network_patches(
 ) -> Vec<SettingsPatch> {
     let mut patches = Vec::new();
 
-    if current.device_id != draft.device_id {
-        patches.push(SettingsPatch::Identity(IdentitySettingsPatch::SetDeviceId(
-            draft.device_id.clone(),
-        )));
+    if current.device_id != draft.device_id || current.token != draft.token {
+        patches.push(SettingsPatch::ConnectionIdentity(
+            ConnectionIdentitySettingsPatch::Replace(ConnectionIdentitySettings {
+                device_id: draft.device_id.clone(),
+                token: draft.token.clone(),
+            }),
+        ));
     }
     if let (Some(current_port), Some(draft_port)) = (
         normalized_listen_port(&current.listen_port_text),
@@ -179,6 +185,9 @@ pub(super) fn network_validation_issues(value: &NetworkPanelValue) -> Vec<String
 
     if value.device_id.trim().is_empty() {
         issues.push("Device ID cannot be empty".to_string());
+    }
+    if value.token.trim().is_empty() {
+        issues.push("Token cannot be empty".to_string());
     }
 
     match normalized_listen_port(&value.listen_port_text) {
@@ -281,7 +290,8 @@ mod tests {
     use std::path::PathBuf;
 
     use nooboard_app::{
-        ClipboardSettingsPatch, IdentitySettingsPatch, NetworkSettingsPatch, StorageSettingsPatch,
+        ClipboardSettingsPatch, ConnectionIdentitySettings, ConnectionIdentitySettingsPatch,
+        NetworkSettingsPatch, StorageSettingsPatch,
     };
 
     use super::*;
@@ -289,6 +299,7 @@ mod tests {
     fn network_value() -> NetworkPanelValue {
         NetworkPanelValue {
             device_id: "desk-01".to_string(),
+            token: "shared-token".to_string(),
             listen_port_text: "17890".to_string(),
             network_enabled: true,
             mdns_enabled: true,
@@ -311,6 +322,7 @@ mod tests {
         let current = network_value();
         let draft = NetworkPanelValue {
             device_id: "desk-02".to_string(),
+            token: "team-token".to_string(),
             listen_port_text: "24001".to_string(),
             network_enabled: false,
             mdns_enabled: false,
@@ -322,7 +334,12 @@ mod tests {
         assert_eq!(
             patches,
             vec![
-                SettingsPatch::Identity(IdentitySettingsPatch::SetDeviceId("desk-02".to_string())),
+                SettingsPatch::ConnectionIdentity(ConnectionIdentitySettingsPatch::Replace(
+                    ConnectionIdentitySettings {
+                        device_id: "desk-02".to_string(),
+                        token: "team-token".to_string(),
+                    }
+                )),
                 SettingsPatch::Network(NetworkSettingsPatch::SetListenPort(24001)),
                 SettingsPatch::Network(NetworkSettingsPatch::SetMdnsEnabled(false)),
                 SettingsPatch::Network(NetworkSettingsPatch::SetManualPeers(vec![
@@ -437,6 +454,7 @@ mod tests {
         let addr: SocketAddr = "127.0.0.1:24001".parse().unwrap();
         let issues = network_validation_issues(&NetworkPanelValue {
             device_id: "desk-01".to_string(),
+            token: "shared-token".to_string(),
             listen_port_text: "17890".to_string(),
             network_enabled: true,
             mdns_enabled: true,
@@ -453,6 +471,7 @@ mod tests {
     fn network_validation_reports_invalid_port_and_empty_device_id() {
         let issues = network_validation_issues(&NetworkPanelValue {
             device_id: "   ".to_string(),
+            token: "   ".to_string(),
             listen_port_text: "70000".to_string(),
             network_enabled: true,
             mdns_enabled: true,
@@ -463,6 +482,11 @@ mod tests {
             issues
                 .iter()
                 .any(|issue| issue.contains("Device ID cannot be empty"))
+        );
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.contains("Token cannot be empty"))
         );
         assert!(
             issues

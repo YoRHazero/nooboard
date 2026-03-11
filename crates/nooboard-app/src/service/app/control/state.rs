@@ -11,10 +11,10 @@ use crate::service::events::EventHub;
 use crate::service::mappers::map_connected_peer;
 use crate::service::state::StateHub;
 use crate::service::types::{
-    AppEvent, AppState, ClipboardSettings, ClipboardState, ConnectedPeer, EventId,
-    IdentitySettings, LocalConnectionInfo, LocalIdentity, NetworkSettings, NoobId, PeerTransport,
-    PeersState, SettingsState, StorageSettings, SyncActualStatus, SyncDesiredState, SyncState,
-    TransferSettings, TransfersState,
+    AppEvent, AppState, ClipboardSettings, ClipboardState, ConnectedPeer,
+    ConnectionIdentitySettings, EventId, LocalConnectionInfo, LocalIdentity, NetworkSettings,
+    NoobId, PeerTransport, PeersState, SettingsState, StorageSettings, SyncActualStatus,
+    SyncDesiredState, SyncState, TransferSettings, TransfersState,
 };
 use crate::storage_runtime::StorageRuntime;
 use crate::sync_runtime::SyncRuntime;
@@ -175,8 +175,9 @@ fn peer_transport(config: &AppConfig, addr: SocketAddr) -> PeerTransport {
 
 pub(super) fn settings_state(config: &AppConfig) -> SettingsState {
     SettingsState {
-        identity: IdentitySettings {
+        connection_identity: ConnectionIdentitySettings {
             device_id: config.identity.device_id.clone(),
+            token: config.sync.auth.token.clone(),
         },
         network: NetworkSettings {
             listen_port: config.sync.network.listen_addr.port(),

@@ -351,10 +351,10 @@ mod tests {
 
     use nooboard_app::{
         AppState, ClipboardSettings, ClipboardState, CompletedTransfer, ConnectedPeer,
-        IdentitySettings, IncomingTransfer, LocalConnectionInfo, LocalIdentity, NetworkSettings,
-        NoobId, PeerTransport, PeersState, SettingsState, StorageSettings, SyncActualStatus,
-        SyncDesiredState, SyncState, Transfer, TransferDirection, TransferOutcome,
-        TransferSettings, TransferState, TransfersState,
+        ConnectionIdentitySettings, IncomingTransfer, LocalConnectionInfo, LocalIdentity,
+        NetworkSettings, NoobId, PeerTransport, PeersState, SettingsState, StorageSettings,
+        SyncActualStatus, SyncDesiredState, SyncState, Transfer, TransferDirection,
+        TransferOutcome, TransferSettings, TransferState, TransfersState,
     };
 
     use crate::state::live_app::LiveAppStore;
@@ -445,8 +445,9 @@ mod tests {
                 }],
             },
             settings: SettingsState {
-                identity: IdentitySettings {
+                connection_identity: ConnectionIdentitySettings {
                     device_id: "desk-01".to_string(),
+                    token: "dev-sync-token".to_string(),
                 },
                 network: NetworkSettings {
                     listen_port: 17890,

@@ -5,11 +5,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use nooboard_app::{
-    AppError, ClipboardRecordSource, ClipboardSettingsPatch, DesktopAppService,
-    IdentitySettingsPatch, IncomingTransferDecision, IncomingTransferDisposition,
-    ListClipboardHistoryRequest, NetworkSettingsPatch, NoobId, SendFileItem, SendFilesRequest,
-    SettingsPatch, StorageSettingsPatch, SubmitTextRequest, SyncActualStatus, SyncDesiredState,
-    TransferSettingsPatch,
+    AppError, ClipboardRecordSource, ClipboardSettingsPatch, ConnectionIdentitySettings,
+    ConnectionIdentitySettingsPatch, DesktopAppService, IncomingTransferDecision,
+    IncomingTransferDisposition, ListClipboardHistoryRequest, NetworkSettingsPatch, NoobId,
+    SendFileItem, SendFilesRequest, SettingsPatch, StorageSettingsPatch, SubmitTextRequest,
+    SyncActualStatus, SyncDesiredState, TransferSettingsPatch,
 };
 use tokio::time::{Duration, timeout};
 
@@ -276,27 +276,35 @@ async fn network_settings_publish_to_state_subscription_and_persist_across_resta
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn identity_and_listen_port_publish_to_state_and_persist_across_restart()
+async fn connection_identity_and_listen_port_publish_to_state_and_persist_across_restart()
 -> Result<(), TestError> {
     let env = new_service()?;
     let service = &env.service;
     let mut state_subscription = service.subscribe_state().await?;
 
     service
-        .patch_settings(SettingsPatch::Identity(IdentitySettingsPatch::SetDeviceId(
-            "desk-renamed".to_string(),
-        )))
+        .patch_settings(SettingsPatch::ConnectionIdentity(
+            ConnectionIdentitySettingsPatch::Replace(ConnectionIdentitySettings {
+                device_id: "desk-renamed".to_string(),
+                token: "renamed-token".to_string(),
+            }),
+        ))
         .await?;
     let state_after_device_id =
         wait_for_state_update(&mut state_subscription, Duration::from_secs(2), |state| {
             state.identity.device_id == "desk-renamed"
-                && state.settings.identity.device_id == "desk-renamed"
+                && state.settings.connection_identity.device_id == "desk-renamed"
+                && state.settings.connection_identity.token == "renamed-token"
         })
         .await?;
     assert_eq!(state_after_device_id.identity.device_id, "desk-renamed");
     assert_eq!(
-        state_after_device_id.settings.identity.device_id,
+        state_after_device_id.settings.connection_identity.device_id,
         "desk-renamed"
+    );
+    assert_eq!(
+        state_after_device_id.settings.connection_identity.token,
+        "renamed-token"
     );
 
     service
@@ -329,7 +337,14 @@ async fn identity_and_listen_port_publish_to_state_and_persist_across_restart()
     let restarted = restart_service(&env.config_path, restarted_backend)?;
     let restarted_state = restarted.get_state().await?;
     assert_eq!(restarted_state.identity.device_id, "desk-renamed");
-    assert_eq!(restarted_state.settings.identity.device_id, "desk-renamed");
+    assert_eq!(
+        restarted_state.settings.connection_identity.device_id,
+        "desk-renamed"
+    );
+    assert_eq!(
+        restarted_state.settings.connection_identity.token,
+        "renamed-token"
+    );
     assert_eq!(restarted_state.settings.network.listen_port, 24001);
     assert_eq!(
         restarted_state
@@ -344,7 +359,8 @@ async fn identity_and_listen_port_publish_to_state_and_persist_across_restart()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn identity_and_listen_port_patch_keep_running_sync_alive() -> Result<(), TestError> {
+async fn connection_identity_and_listen_port_patch_keep_running_sync_alive() -> Result<(), TestError>
+{
     let env = new_service()?;
     let service = &env.service;
 
@@ -358,13 +374,17 @@ async fn identity_and_listen_port_patch_keep_running_sync_alive() -> Result<(), 
     .await?;
 
     service
-        .patch_settings(SettingsPatch::Identity(IdentitySettingsPatch::SetDeviceId(
-            "desk-live".to_string(),
-        )))
+        .patch_settings(SettingsPatch::ConnectionIdentity(
+            ConnectionIdentitySettingsPatch::Replace(ConnectionIdentitySettings {
+                device_id: "desk-live".to_string(),
+                token: "live-token".to_string(),
+            }),
+        ))
         .await?;
     let state_after_device_id = wait_for_service_state(service, Duration::from_secs(10), |state| {
         state.identity.device_id == "desk-live"
-            && state.settings.identity.device_id == "desk-live"
+            && state.settings.connection_identity.device_id == "desk-live"
+            && state.settings.connection_identity.token == "live-token"
             && state.sync.desired == SyncDesiredState::Running
             && state.sync.actual == SyncActualStatus::Running
     })

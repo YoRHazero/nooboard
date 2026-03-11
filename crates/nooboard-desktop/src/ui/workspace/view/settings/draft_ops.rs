@@ -44,6 +44,22 @@ impl WorkspaceView {
         cx.notify();
     }
 
+    pub(super) fn toggle_settings_token_visibility(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.settings_page_state.token_visible = !self.settings_page_state.token_visible;
+        let masked = !self.settings_page_state.token_visible;
+        let _ = self
+            .settings_page_state
+            .token_input
+            .update(cx, |input, cx| {
+                input.set_masked(masked, window, cx);
+            });
+        cx.notify();
+    }
+
     pub(super) fn toggle_settings_local_capture_enabled(&mut self, cx: &mut Context<Self>) {
         self.settings_page_state
             .clipboard

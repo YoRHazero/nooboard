@@ -300,15 +300,16 @@ pub struct Transfer {
 
 ```rust
 pub struct SettingsState {
-    pub identity: IdentitySettings,
+    pub connection_identity: ConnectionIdentitySettings,
     pub network: NetworkSettings,
     pub storage: StorageSettings,
     pub clipboard: ClipboardSettings,
     pub transfers: TransferSettings,
 }
 
-pub struct IdentitySettings {
+pub struct ConnectionIdentitySettings {
     pub device_id: String,
+    pub token: String,
 }
 
 pub struct NetworkSettings {
@@ -320,9 +321,10 @@ pub struct NetworkSettings {
 ```
 
 这些值都是当前生效值，不是 desktop draft。
-- `identity.device_id` 是当前生效的人类可读设备标签
+- `connection_identity.device_id` 是当前生效的人类可读设备标签
+- `connection_identity.token` 是当前生效的局域网连接域 token；只有 token 一致的设备才会建立连接
 - `network.listen_port` 是当前生效的监听端口；desktop 只开放端口编辑，不开放 host 编辑
-- `device_id` 继续属于 identity，不并入 network settings
+- `device_id` 和 `token` 在 settings 里作为同一个 `connection_identity` 组暴露，desktop 应整体编辑并整体 apply
 
 ---
 
@@ -613,15 +615,15 @@ pub struct TransferSettings {
 
 ```rust
 pub enum SettingsPatch {
-    Identity(IdentitySettingsPatch),
+    ConnectionIdentity(ConnectionIdentitySettingsPatch),
     Network(NetworkSettingsPatch),
     Storage(StorageSettingsPatch),
     Clipboard(ClipboardSettingsPatch),
     Transfers(TransferSettingsPatch),
 }
 
-pub enum IdentitySettingsPatch {
-    SetDeviceId(String),
+pub enum ConnectionIdentitySettingsPatch {
+    Replace(ConnectionIdentitySettings),
 }
 
 pub enum NetworkSettingsPatch {
@@ -666,14 +668,15 @@ pub enum TransferSettingsPatch {
 运行时语义：
 - `SetLocalCaptureEnabled` 会立刻启动或停止本地 clipboard watch
 - `StorageSettingsPatch` 会立刻重配 storage runtime；如果 `db_root` 改了，history 读取会切到新数据库
-- `IdentitySettingsPatch` 在 `sync.desired=Running` 时会触发 engine reconcile/restart
+- `ConnectionIdentitySettingsPatch` 在 `sync.desired=Running` 时会触发 engine reconcile/restart
 - `NetworkSettingsPatch` 和 `SetDownloadDir` 在 `sync.desired=Running` 时会触发 engine reconcile/restart
 - `SetListenPort` 只修改监听端口，不开放 host 编辑
 
 ### 10.4 当前主要校验约束
 
 当前 `patch_settings()` 会继承配置校验规则，常见约束包括：
-- `identity.device_id` 不能为空
+- `connection_identity.device_id` 不能为空
+- `connection_identity.token` 不能为空
 - `listen_port` 必须在 `1..=65535`
 - `max_text_bytes > 0`
 - `history_window_days >= 1`
