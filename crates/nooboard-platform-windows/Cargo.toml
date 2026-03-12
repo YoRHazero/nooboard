@@ -14,3 +14,6 @@ windows-sys = { workspace = true, features = [
   "Win32_System_Ole",
   "Win32_UI_WindowsAndMessaging",
 ] }
+
+[dev-dependencies]
+tokio.workspace = true

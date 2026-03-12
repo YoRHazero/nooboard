@@ -3980,6 +3980,7 @@ name = "nooboard-platform-windows"
 version = "0.1.0"
 dependencies = [
  "nooboard-platform",
+ "tokio",
  "windows-sys 0.61.2",
 ]
 
