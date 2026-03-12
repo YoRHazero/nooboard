@@ -29,7 +29,7 @@ pub fn write_config_template(path: impl AsRef<Path>, template: ConfigTemplate) -
 }
 
 fn production_template(path: &Path) -> ConfigResult<AppConfig> {
-    let _parent = path.parent().ok_or_else(|| {
+    let config_dir = path.parent().ok_or_else(|| {
         ConfigError::InvalidConfig(format!("config path `{}` has no parent", path.display()))
     })?;
 
@@ -39,7 +39,7 @@ fn production_template(path: &Path) -> ConfigResult<AppConfig> {
             profile: "production".to_string(),
         },
         identity: IdentityConfig {
-            noob_id_file: "noob_id".into(),
+            noob_id_file: config_dir.join("noob_id"),
             device_id: default_device_id(),
         },
         app: AppSection {
@@ -49,7 +49,7 @@ fn production_template(path: &Path) -> ConfigResult<AppConfig> {
             },
         },
         storage: StorageSection {
-            db_root: "data".into(),
+            db_root: config_dir.join("data"),
             max_text_bytes: default_max_text_bytes(),
             retain_old_versions: 0,
             lifecycle: StorageLifecycleConfig {
@@ -90,7 +90,7 @@ fn production_template(path: &Path) -> ConfigResult<AppConfig> {
 }
 
 fn development_template(path: &Path) -> ConfigResult<AppConfig> {
-    let _parent = path.parent().ok_or_else(|| {
+    let config_dir = path.parent().ok_or_else(|| {
         ConfigError::InvalidConfig(format!("config path `{}` has no parent", path.display()))
     })?;
 
@@ -100,8 +100,8 @@ fn development_template(path: &Path) -> ConfigResult<AppConfig> {
             profile: "dev".to_string(),
         },
         identity: IdentityConfig {
-            noob_id_file: ".dev-data/noob_id".into(),
-            device_id: "dev-device".to_string(),
+            noob_id_file: config_dir.join("noob_id"),
+            device_id: "nooboard-dev".to_string(),
         },
         app: AppSection {
             clipboard: ClipboardAppConfig {
@@ -110,7 +110,7 @@ fn development_template(path: &Path) -> ConfigResult<AppConfig> {
             },
         },
         storage: StorageSection {
-            db_root: ".dev-data".into(),
+            db_root: config_dir.join("data"),
             max_text_bytes: default_max_text_bytes(),
             retain_old_versions: 0,
             lifecycle: StorageLifecycleConfig {
@@ -128,10 +128,10 @@ fn development_template(path: &Path) -> ConfigResult<AppConfig> {
                 manual_peers: Vec::new(),
             },
             auth: SyncAuthConfig {
-                token: "dev-sync-token".to_string(),
+                token: "token-for-sync".to_string(),
             },
             file: SyncFileConfig {
-                download_dir: ".dev-data/downloads".into(),
+                download_dir: config_dir.join("downloads"),
                 max_file_size: default_max_file_size(),
                 chunk_size: default_chunk_size(),
                 active_downloads: default_active_downloads(),

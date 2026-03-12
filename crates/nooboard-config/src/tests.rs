@@ -172,3 +172,43 @@ fn write_production_template_creates_valid_config() -> Result<(), ConfigError> {
     let _ = fs::remove_dir_all(dir);
     Ok(())
 }
+
+#[test]
+fn write_development_template_creates_absolute_repo_local_paths() -> Result<(), ConfigError> {
+    let dir = temp_dir("development-template");
+    fs::create_dir_all(&dir)?;
+    let config_path = dir.join(DEFAULT_CONFIG_FILE_NAME);
+
+    write_config_template(&config_path, ConfigTemplate::Development)?;
+    let loaded = AppConfig::load(&config_path)?;
+
+    assert_eq!(loaded.meta.profile, "dev");
+    assert_eq!(loaded.identity.device_id, "nooboard-dev");
+    assert_eq!(loaded.sync.auth.token, "token-for-sync");
+    assert_eq!(loaded.identity.noob_id_file, dir.join("noob_id"));
+    assert_eq!(loaded.storage.db_root, dir.join("data"));
+    assert_eq!(loaded.sync.file.download_dir, dir.join("downloads"));
+
+    let raw = fs::read_to_string(&config_path)?;
+    assert!(
+        raw.contains(&format!(
+            "noob_id_file = \"{}\"",
+            dir.join("noob_id").display()
+        )),
+        "development template should serialize absolute noob_id_file"
+    );
+    assert!(
+        raw.contains(&format!("db_root = \"{}\"", dir.join("data").display())),
+        "development template should serialize absolute db_root"
+    );
+    assert!(
+        raw.contains(&format!(
+            "download_dir = \"{}\"",
+            dir.join("downloads").display()
+        )),
+        "development template should serialize absolute download_dir"
+    );
+
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}

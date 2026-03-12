@@ -3929,6 +3929,7 @@ dependencies = [
 name = "nooboard-config"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "nooboard-storage",
  "nooboard-sync",
  "serde",

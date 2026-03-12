@@ -8,6 +8,7 @@ authors.workspace = true
 [dependencies]
 nooboard-storage = { path = "../nooboard-storage" }
 nooboard-sync = { path = "../nooboard-sync" }
+clap.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 toml.workspace = true

@@ -45,7 +45,6 @@ fn resolve_bootstrap_with_override(
 
     if request.cli_use_repo_dev {
         let config_path = repo_development_config_path()?;
-        validate_existing_config_path(&config_path, "--dev")?;
         return Ok(BootstrapDecision::Launch(BootstrapLaunch {
             mode: BootstrapMode::RepoDevelopment,
             config_path,
@@ -168,6 +167,26 @@ mod tests {
         let decision = resolve_bootstrap_with_override(&request, Some(config_path))?;
 
         assert!(matches!(decision, BootstrapDecision::NeedsChooser(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn dev_mode_returns_repo_development_launch() -> Result<(), ConfigError> {
+        let decision = resolve_bootstrap_with_override(
+            &BootstrapRequest {
+                cli_use_repo_dev: true,
+                ..BootstrapRequest::default()
+            },
+            None,
+        )?;
+
+        assert!(matches!(
+            decision,
+            BootstrapDecision::Launch(BootstrapLaunch {
+                mode: BootstrapMode::RepoDevelopment,
+                ..
+            })
+        ));
         Ok(())
     }
 }

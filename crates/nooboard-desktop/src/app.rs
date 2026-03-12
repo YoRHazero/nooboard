@@ -9,8 +9,8 @@ use gpui_component::{Root, Theme, ThemeMode, TitleBar};
 use gpui_component_assets::Assets as ComponentAssets;
 use gpui_platform::application;
 use nooboard_config::{
-    BootstrapChooserContext, BootstrapDecision, BootstrapLaunch, BootstrapRequest,
-    repo_development_config_path, resolve_bootstrap,
+    BootstrapChooserContext, BootstrapDecision, BootstrapLaunch, BootstrapRequest, repo_root_path,
+    resolve_bootstrap,
 };
 use tokio::sync::oneshot;
 
@@ -147,10 +147,8 @@ fn start_workspace_launch(launch: BootstrapLaunch, cx: &mut App) -> anyhow::Resu
 
 fn open_bootstrap_window(context: BootstrapChooserContext, cx: &mut App) -> anyhow::Result<()> {
     let (launch_tx, launch_rx) = oneshot::channel::<BootstrapLaunch>();
-    let can_use_repo_development = cfg!(debug_assertions)
-        && repo_development_config_path()
-            .map(|path| path.exists())
-            .unwrap_or(false);
+    let can_use_repo_development =
+        cfg!(debug_assertions) && repo_root_path().map(|path| path.exists()).unwrap_or(false);
     let options = bootstrap_window_options(cx);
     let workspace_options = workspace_window_options(cx);
 

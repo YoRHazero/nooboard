@@ -8,7 +8,8 @@ use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::{Disableable, Icon, IconName, StyledExt, TITLE_BAR_HEIGHT};
 use nooboard_config::{
     AppConfig, BootstrapChooserContext, BootstrapLaunch, BootstrapMode, ConfigTemplate,
-    DEFAULT_CONFIG_FILE_NAME, repo_development_config_path, write_config_template,
+    DEFAULT_CONFIG_FILE_NAME, prepare_bootstrap_launch, repo_development_config_path,
+    write_config_template,
 };
 use tokio::sync::oneshot;
 
@@ -230,7 +231,7 @@ impl BootstrapChooserView {
             BootstrapPreset::DefaultConfig => self.start_default_configuration(window, cx),
             BootstrapPreset::ExistingConfig => self.confirm_existing_config(window, cx),
             BootstrapPreset::CustomLocation => self.confirm_custom_location(window, cx),
-            BootstrapPreset::RepoDevelopment => self.use_repo_development_config(window, cx),
+            BootstrapPreset::RepoDevelopment => self.use_local_development_setup(window, cx),
         }
     }
 
@@ -326,27 +327,23 @@ impl BootstrapChooserView {
         }
     }
 
-    fn use_repo_development_config(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn use_local_development_setup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.begin_action(cx) {
             return;
         }
 
         match repo_development_config_path() {
-            Ok(config_path) if config_path.exists() => self.finish_launch(
-                BootstrapLaunch {
+            Ok(config_path) => {
+                let launch = BootstrapLaunch {
                     mode: BootstrapMode::RepoDevelopment,
                     config_path,
-                },
-                window,
-                cx,
-            ),
-            Ok(config_path) => self.fail_action(
-                format!(
-                    "repository development config not found at {}",
-                    config_path.display()
-                ),
-                cx,
-            ),
+                };
+
+                match prepare_bootstrap_launch(&launch) {
+                    Ok(()) => self.finish_launch(launch, window, cx),
+                    Err(error) => self.fail_action(error.to_string(), cx),
+                }
+            }
             Err(error) => self.fail_action(error.to_string(), cx),
         }
     }

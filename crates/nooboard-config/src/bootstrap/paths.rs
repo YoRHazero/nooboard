@@ -12,12 +12,16 @@ pub fn default_config_path() -> ConfigResult<PathBuf> {
     Ok(default_config_root()?.join(DEFAULT_CONFIG_FILE_NAME))
 }
 
-pub fn repo_development_config_path() -> ConfigResult<PathBuf> {
+pub fn repo_root_path() -> ConfigResult<PathBuf> {
     Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
-        .join("..")
-        .join("configs")
-        .join("dev.toml"))
+        .join(".."))
+}
+
+pub fn repo_development_config_path() -> ConfigResult<PathBuf> {
+    Ok(repo_root_path()?
+        .join(".dev-data")
+        .join(DEFAULT_CONFIG_FILE_NAME))
 }
 
 pub(crate) fn default_download_dir() -> ConfigResult<PathBuf> {

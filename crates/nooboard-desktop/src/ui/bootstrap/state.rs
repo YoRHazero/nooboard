@@ -16,7 +16,7 @@ impl BootstrapPreset {
             Self::DefaultConfig => "Use default configuration",
             Self::ExistingConfig => "Use existing config",
             Self::CustomLocation => "Create config in custom location",
-            Self::RepoDevelopment => "Use repository development config",
+            Self::RepoDevelopment => "Use local development setup",
         }
     }
 }
@@ -205,7 +205,7 @@ impl BootstrapChooserState {
                 ),
             },
             BootstrapPreset::RepoDevelopment => {
-                "Start with the repository development config for this run.".to_string()
+                "Use the repository-local development setup for this run. A development config will be created in .dev-data if it does not exist.".to_string()
             }
         }
     }

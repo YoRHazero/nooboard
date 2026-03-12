@@ -1,7 +1,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use nooboard_config::{AppConfig, BootstrapLaunch, BootstrapRequest, resolve_bootstrap};
+use nooboard_config::{
+    AppConfig, BootstrapLaunch, BootstrapRequest, prepare_bootstrap_launch, resolve_bootstrap,
+};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::clipboard_runtime::{ClipboardPort, ClipboardRuntime};
@@ -62,6 +64,7 @@ impl DesktopAppServiceImpl {
     }
 
     pub fn new_with_launch(launch: &BootstrapLaunch) -> AppResult<Self> {
+        prepare_bootstrap_launch(launch)?;
         Self::new(&launch.config_path)
     }
 
