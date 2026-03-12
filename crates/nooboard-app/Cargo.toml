@@ -19,5 +19,8 @@ uuid.workspace = true
 [target.'cfg(target_os = "macos")'.dependencies]
 nooboard-platform-macos = { path = "../nooboard-platform-macos" }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+nooboard-platform-windows = { path = "../nooboard-platform-windows" }
+
 [dev-dependencies]
 tempfile.workspace = true

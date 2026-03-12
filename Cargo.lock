@@ -3916,6 +3916,7 @@ dependencies = [
  "nooboard-config",
  "nooboard-platform",
  "nooboard-platform-macos",
+ "nooboard-platform-windows",
  "nooboard-storage",
  "nooboard-sync",
  "tempfile",
@@ -3972,6 +3973,14 @@ dependencies = [
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
+]
+
+[[package]]
+name = "nooboard-platform-windows"
+version = "0.1.0"
+dependencies = [
+ "nooboard-platform",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

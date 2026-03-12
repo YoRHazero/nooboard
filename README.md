@@ -11,6 +11,8 @@ In the AI era, copy and paste are used more frequently than ever. Sometimes a lo
 
 Note: this project is developed with heavy AI assistance and supervised by a noob Rustacean. The GPUI part in particular is currently verified more by "does it work?" than by full source-level understanding.
 
+This project supports both macOS and Windows. Linux support is not planned for now, because it's hard for me to imagine a Linux user who needs this kind of app, but I might add it in the future if there is demand.
+
 The project is still under active development, but the current desktop app already exposes the main clipboard, peers, transfers, and settings flows through a unified backend contract. (I hope)
 
 ## Quick start
@@ -32,7 +34,7 @@ If the default config file does not exist yet, the app opens a bootstrap chooser
 
 Default config path:
 
-- macOS / Linux: `~/.nooboard/nooboard.toml`
+- macOS: `~/.nooboard/nooboard.toml`
 - Windows: `%USERPROFILE%\.nooboard\nooboard.toml`
 
 You can also launch with an explicit config file:

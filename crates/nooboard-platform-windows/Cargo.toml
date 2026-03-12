@@ -1,0 +1,16 @@
+[package]
+name = "nooboard-platform-windows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+nooboard-platform = { path = "../nooboard-platform" }
+windows-sys = { workspace = true, features = [
+  "Win32_Foundation",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+  "Win32_System_Ole",
+  "Win32_UI_WindowsAndMessaging",
+] }

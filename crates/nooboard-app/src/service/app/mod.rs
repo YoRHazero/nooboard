@@ -123,7 +123,13 @@ fn default_clipboard_port() -> AppResult<Arc<dyn ClipboardPort>> {
             nooboard_platform_macos::MacOsClipboardBackend::new(),
         ));
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        return Ok(Arc::new(
+            nooboard_platform_windows::WindowsClipboardBackend::new(),
+        ));
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         Err(AppError::Platform(
             nooboard_platform::NooboardError::UnsupportedPlatform,

@@ -5,6 +5,7 @@ members = [
   "crates/nooboard-desktop",
   "crates/nooboard-platform",
   "crates/nooboard-platform-macos",
+  "crates/nooboard-platform-windows",
   "crates/nooboard-storage",
   "crates/nooboard-sync",
 ]
@@ -30,6 +31,7 @@ gpui-component-assets = { git = "https://github.com/longbridge/gpui-component.gi
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
+windows-sys = "0.61.2"
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
 toml = "1.0.3"
