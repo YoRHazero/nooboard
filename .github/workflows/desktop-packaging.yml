@@ -6,6 +6,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 jobs:
   macos-package:
     runs-on: macos-latest
@@ -65,3 +68,50 @@ jobs:
           name: nooboard-windows-packages
           path: target/release/bundle
           if-no-files-found: error
+
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs:
+      - macos-package
+      - windows-package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download macOS packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nooboard-macos-packages
+          path: dist/macos
+
+      - name: Download Windows packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nooboard-windows-packages
+          path: dist/windows
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release create "$TAG_NAME" \
+              --verify-tag \
+              --generate-notes \
+              --title "$TAG_NAME"
+          fi
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          shopt -s nullglob
+          assets=(dist/macos/*.dmg dist/windows/*.exe dist/windows/*.msi)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "No release assets found"
+            exit 1
+          fi
+          gh release upload "$TAG_NAME" "${assets[@]}" --clobber

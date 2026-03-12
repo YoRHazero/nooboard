@@ -110,6 +110,7 @@ Notes:
 - `cargo packager` is wired to run `cargo build -p nooboard-desktop --release` before bundling, so the packaging command itself is the main entrypoint.
 - The generated packages are unsigned. For external distribution, macOS still needs Developer ID signing and notarization, and Windows should add code signing later.
 - GitHub Actions can build the same unsigned packages through [`desktop-packaging.yml`](./.github/workflows/desktop-packaging.yml).
+- Pushing a `v*` tag now also creates or updates the matching GitHub Release and uploads the generated `.dmg` and Windows installer assets.
 
 ## License
 
