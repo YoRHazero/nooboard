@@ -13,9 +13,16 @@ pub fn default_config_path() -> ConfigResult<PathBuf> {
 }
 
 pub fn repo_root_path() -> ConfigResult<PathBuf> {
-    Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
-        .join(".."))
+        .join("..");
+
+    std::fs::canonicalize(&repo_root).map_err(|error| {
+        ConfigError::InvalidBootstrap(format!(
+            "could not resolve repository root path {}: {error}",
+            repo_root.display()
+        ))
+    })
 }
 
 pub fn repo_development_config_path() -> ConfigResult<PathBuf> {

@@ -1,3 +1,4 @@
+mod advanced;
 mod apply;
 mod clipboard;
 mod components;
@@ -56,7 +57,8 @@ impl WorkspaceView {
                     .child(self.network_settings_panel(cx))
                     .child(self.clipboard_settings_panel(cx))
                     .child(self.transfer_settings_panel(cx))
-                    .child(self.storage_settings_panel(cx)),
+                    .child(self.storage_settings_panel(cx))
+                    .child(self.advanced_settings_panel(cx)),
             )
             .child(settings_feedback_banner(
                 label,

@@ -1,4 +1,5 @@
 use gpui::Context;
+use nooboard_config::BootstrapMode;
 
 use super::patches::{
     clipboard_patch_labels, network_patch_labels, network_validation_issues,
@@ -6,8 +7,8 @@ use super::patches::{
     transfer_validation_issues,
 };
 use super::snapshot::{
-    ClipboardSettingsValue, LocalConnectionInfoValue, NetworkPanelValue, StorageSettingsValue,
-    TransferSettingsValue,
+    AdvancedSettingsValue, ClipboardSettingsValue, LocalConnectionInfoValue, NetworkPanelValue,
+    StorageSettingsValue, TransferSettingsValue,
 };
 use super::{
     SettingsSectionPhase, SettingsStatus, WorkspaceView, build_settings_snapshot,
@@ -135,6 +136,18 @@ impl WorkspaceView {
 
     pub(super) fn local_connection_info(&self) -> &LocalConnectionInfoValue {
         &self.settings_page_state.local_connection
+    }
+
+    pub(super) fn advanced_settings(&self) -> &AdvancedSettingsValue {
+        &self.settings_page_state.advanced
+    }
+
+    pub(super) fn advanced_bootstrap_mode_label(&self) -> &'static str {
+        match self.advanced_settings().bootstrap_mode {
+            BootstrapMode::ExplicitPath => "Explicit path",
+            BootstrapMode::RepoDevelopment => "Local development",
+            BootstrapMode::UserDefault => "Default user config",
+        }
     }
 
     pub(super) fn network_device_ip_label(&self) -> String {

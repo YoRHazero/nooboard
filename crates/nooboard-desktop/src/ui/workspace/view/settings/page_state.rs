@@ -3,8 +3,8 @@ use gpui_component::input::{InputEvent, InputState};
 
 use super::WorkspaceView;
 use super::snapshot::{
-    ClipboardSettingsValue, LocalConnectionInfoValue, NetworkPanelValue, SettingsSnapshot,
-    StorageSettingsValue, TransferSettingsValue,
+    AdvancedSettingsValue, ClipboardSettingsValue, LocalConnectionInfoValue, NetworkPanelValue,
+    SettingsSnapshot, StorageSettingsValue, TransferSettingsValue,
 };
 use super::{SettingsSection, SettingsSectionPhase};
 
@@ -14,6 +14,7 @@ pub(in crate::ui::workspace::view) struct SettingsPageState {
     pub(super) storage: SettingsSection<StorageSettingsValue>,
     pub(super) clipboard: SettingsSection<ClipboardSettingsValue>,
     pub(super) transfers: SettingsSection<TransferSettingsValue>,
+    pub(super) advanced: AdvancedSettingsValue,
     pub(super) manual_peer_input: Entity<InputState>,
     pub(super) device_id_input: Entity<InputState>,
     pub(super) token_input: Entity<InputState>,
@@ -60,6 +61,7 @@ impl SettingsPageState {
             storage: SettingsSection::new(snapshot.storage),
             clipboard: SettingsSection::new(snapshot.clipboard),
             transfers: SettingsSection::new(snapshot.transfers),
+            advanced: snapshot.advanced,
             manual_peer_input,
             device_id_input,
             token_input,
@@ -80,6 +82,7 @@ impl SettingsPageState {
         self.storage.sync_from_live(snapshot.storage);
         self.clipboard.sync_from_live(snapshot.clipboard);
         self.transfers.sync_from_live(snapshot.transfers);
+        self.advanced = snapshot.advanced;
     }
 
     pub(super) fn sync_network_inputs(

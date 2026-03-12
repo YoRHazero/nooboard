@@ -1,6 +1,8 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use nooboard_config::BootstrapMode;
+
 use crate::state::live_app::LiveAppStore;
 
 #[derive(Clone, PartialEq, Eq)]
@@ -11,6 +13,7 @@ pub(in crate::ui::workspace::view) struct SettingsSnapshot {
     pub storage: StorageSettingsValue,
     pub clipboard: ClipboardSettingsValue,
     pub transfers: TransferSettingsValue,
+    pub advanced: AdvancedSettingsValue,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -74,6 +77,12 @@ pub(in crate::ui::workspace::view) struct TransferSettingsValue {
     pub download_dir: PathBuf,
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub(in crate::ui::workspace::view) struct AdvancedSettingsValue {
+    pub bootstrap_mode: BootstrapMode,
+    pub config_path: PathBuf,
+}
+
 pub(in crate::ui::workspace::view) fn build_settings_snapshot(
     store: &LiveAppStore,
 ) -> SettingsSnapshot {
@@ -106,6 +115,10 @@ pub(in crate::ui::workspace::view) fn build_settings_snapshot(
         },
         transfers: TransferSettingsValue {
             download_dir: settings.transfers.download_dir.clone(),
+        },
+        advanced: AdvancedSettingsValue {
+            bootstrap_mode: store.bootstrap_mode(),
+            config_path: store.config_path().to_path_buf(),
         },
     }
 }
@@ -194,6 +207,11 @@ mod tests {
             snapshot.transfers.download_dir,
             PathBuf::from("/tmp/downloads")
         );
+        assert_eq!(
+            snapshot.advanced.bootstrap_mode,
+            nooboard_config::BootstrapMode::UserDefault
+        );
+        assert_eq!(snapshot.advanced.config_path, PathBuf::from("config.toml"));
     }
 
     #[test]
@@ -224,6 +242,10 @@ mod tests {
             },
             transfers: TransferSettingsValue {
                 download_dir: PathBuf::from("/tmp/downloads"),
+            },
+            advanced: AdvancedSettingsValue {
+                bootstrap_mode: nooboard_config::BootstrapMode::UserDefault,
+                config_path: PathBuf::from("/tmp/nooboard.toml"),
             },
         };
 
