@@ -5,6 +5,21 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[package.metadata.packager]
+name = "nooboard-desktop"
+product-name = "nooboard"
+identifier = "io.github.yorhazero.nooboard"
+publisher = "YoRHazero"
+homepage = "https://github.com/YoRHazero/nooboard"
+license-file = "../../LICENSE"
+icons = ["../../icons/nooboard-no-bkg.png"]
+before-packaging-command = "cargo build -p nooboard-desktop --release"
+description = "Experimental local-first clipboard and transfer board for macOS and Windows."
+long-description = """
+nooboard is an experimental local-first clipboard and transfer board built in Rust.
+The desktop package ships as a self-contained app binary with embedded UI assets.
+"""
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true

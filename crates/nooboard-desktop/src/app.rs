@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fs, io::ErrorKind, path::PathBuf};
+use std::{borrow::Cow, path::PathBuf};
 
 use anyhow::Result;
 use clap::Parser;
@@ -43,9 +43,50 @@ struct DesktopAssets {
     local: LocalAssets,
 }
 
-struct LocalAssets {
-    base: PathBuf,
+struct LocalAssets {}
+
+struct LocalAsset {
+    path: &'static str,
+    bytes: &'static [u8],
 }
+
+const LOCAL_ASSETS: &[LocalAsset] = &[
+    LocalAsset {
+        path: "system_core/arc_port_signal.svg",
+        bytes: include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/system_core/arc_port_signal.svg"
+        )),
+    },
+    LocalAsset {
+        path: "system_core/arc_port_socket.svg",
+        bytes: include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/system_core/arc_port_socket.svg"
+        )),
+    },
+    LocalAsset {
+        path: "system_core/arc_port_track.svg",
+        bytes: include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/system_core/arc_port_track.svg"
+        )),
+    },
+    LocalAsset {
+        path: "system_core/power.svg",
+        bytes: include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/system_core/power.svg"
+        )),
+    },
+    LocalAsset {
+        path: "system_core/radar_scan_line.svg",
+        bytes: include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/system_core/radar_scan_line.svg"
+        )),
+    },
+];
 
 impl DesktopAssets {
     fn new() -> Self {
@@ -58,9 +99,7 @@ impl DesktopAssets {
 
 impl LocalAssets {
     fn new() -> Self {
-        Self {
-            base: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets"),
-        }
+        Self {}
     }
 }
 
@@ -70,32 +109,14 @@ impl AssetSource for LocalAssets {
             return Ok(None);
         }
 
-        match fs::read(self.base.join(path)) {
-            Ok(data) => Ok(Some(Cow::Owned(data))),
-            Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(error.into()),
-        }
+        Ok(LOCAL_ASSETS
+            .iter()
+            .find(|asset| asset.path == path)
+            .map(|asset| Cow::Borrowed(asset.bytes)))
     }
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
-        let base = self.base.join(path);
-        match fs::read_dir(base) {
-            Ok(entries) => Ok(entries
-                .filter_map(|entry| {
-                    entry.ok().and_then(|entry| {
-                        entry.file_name().into_string().ok().map(|name| {
-                            if path.is_empty() {
-                                SharedString::from(name)
-                            } else {
-                                SharedString::from(format!("{path}/{name}"))
-                            }
-                        })
-                    })
-                })
-                .collect()),
-            Err(error) if error.kind() == ErrorKind::NotFound => Ok(vec![]),
-            Err(error) => Err(error.into()),
-        }
+        Ok(list_local_assets(path))
     }
 }
 
@@ -212,6 +233,30 @@ fn workspace_window_options(cx: &mut App) -> WindowOptions {
     }
 }
 
+fn list_local_assets(path: &str) -> Vec<SharedString> {
+    let mut assets = LOCAL_ASSETS
+        .iter()
+        .filter_map(|asset| {
+            if path.is_empty() {
+                asset
+                    .path
+                    .split_once('/')
+                    .map(|(head, _)| SharedString::from(head))
+            } else {
+                let prefix = format!("{path}/");
+                asset
+                    .path
+                    .strip_prefix(prefix.as_str())
+                    .filter(|suffix| !suffix.contains('/'))
+                    .map(|suffix| SharedString::from(format!("{path}/{suffix}")))
+            }
+        })
+        .collect::<Vec<_>>();
+    assets.sort_by(|left, right| left.as_ref().cmp(right.as_ref()));
+    assets.dedup_by(|left, right| left.as_ref() == right.as_ref());
+    assets
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,6 +317,19 @@ mod tests {
                 .iter()
                 .any(|path| path.as_ref() == "system_core/radar_scan_line.svg"),
             "local asset should be present in listing"
+        );
+    }
+
+    #[test]
+    fn local_assets_list_embedded_root_directory() {
+        let assets = DesktopAssets::new();
+
+        let local_assets = assets.list("").expect("embedded local assets should list");
+        assert!(
+            local_assets
+                .iter()
+                .any(|path| path.as_ref() == "system_core"),
+            "embedded asset root should expose system_core directory"
         );
     }
 }

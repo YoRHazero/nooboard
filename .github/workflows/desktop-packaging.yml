@@ -1,0 +1,67 @@
+name: Desktop Packaging
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  macos-package:
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Build macOS app bundle and DMG
+        working-directory: crates/nooboard-desktop
+        run: cargo packager --release --formats app,dmg --out-dir ../../target/release/bundle --binaries-dir ../../target/release
+
+      - name: Upload macOS packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nooboard-macos-packages
+          path: target/release/bundle
+          if-no-files-found: error
+
+  windows-package:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install NSIS
+        run: choco install nsis --no-progress -y
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Build Windows installer
+        working-directory: crates/nooboard-desktop
+        run: cargo packager --release --formats nsis --out-dir ../../target/release/bundle --binaries-dir ../../target/release
+
+      - name: Upload Windows packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nooboard-windows-packages
+          path: target/release/bundle
+          if-no-files-found: error

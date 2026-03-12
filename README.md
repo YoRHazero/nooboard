@@ -30,6 +30,14 @@ cargo run -p nooboard-desktop
 
 If the default config file does not exist yet, the app opens a bootstrap chooser and helps you create or select one.
 
+Build a standalone release binary:
+
+```bash
+cargo build -p nooboard-desktop --release
+```
+
+The desktop assets are embedded into the binary, so `target/release/nooboard-desktop` can run without the source-tree `assets/` directory.
+
 ## Configuration
 
 Default config path:
@@ -65,6 +73,43 @@ cargo run -p nooboard-desktop -- --choose-config
 ## Development
 
 Development-specific commands, bootstrap modes, and config generation details live in [`DEVELOPMENT.md`](./DEVELOPMENT.md).
+
+## Packaging
+
+Local packaging uses [`cargo-packager`](https://docs.rs/cargo-packager/latest/cargo_packager/):
+
+```bash
+cargo install cargo-packager --locked
+```
+
+Build macOS packages:
+
+```bash
+cd crates/nooboard-desktop
+cargo packager \
+  --release \
+  --formats app,dmg \
+  --out-dir ../../target/release/bundle \
+  --binaries-dir ../../target/release
+```
+
+Build Windows installers:
+
+```bash
+cd crates/nooboard-desktop
+cargo packager \
+  --release \
+  --formats nsis \
+  --out-dir ../../target/release/bundle \
+  --binaries-dir ../../target/release
+```
+
+Notes:
+
+- Packaging is currently set up for macOS and Windows only.
+- `cargo packager` is wired to run `cargo build -p nooboard-desktop --release` before bundling, so the packaging command itself is the main entrypoint.
+- The generated packages are unsigned. For external distribution, macOS still needs Developer ID signing and notarization, and Windows should add code signing later.
+- GitHub Actions can build the same unsigned packages through [`desktop-packaging.yml`](./.github/workflows/desktop-packaging.yml).
 
 ## License
 
