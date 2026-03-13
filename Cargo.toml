@@ -7,6 +7,7 @@ members = [
   "crates/nooboard-platform-macos",
   "crates/nooboard-platform-windows",
   "crates/nooboard-storage",
+  "crates/nooboard-network",
   "crates/nooboard-sync",
 ]
 resolver = "2"

@@ -17,6 +17,14 @@ This file collects developer-oriented workflow notes that do not belong on the G
 - `crates/nooboard-platform`
   - platform integration abstractions
 
+## Network rewrite
+
+The authoritative implementation contract for the future `nooboard-network` crate lives in
+[`NOOBOARD_NETWORK_SPEC.md`](./NOOBOARD_NETWORK_SPEC.md).
+
+When implementing or reviewing the network rewrite, treat that document as the single source of
+truth. If code and spec differ, update the spec first or change the code.
+
 ## Desktop bootstrap
 
 Desktop bootstrap resolution currently follows this order:
