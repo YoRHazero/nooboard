@@ -119,6 +119,18 @@ fn load_uses_default_recent_lookup_limit_when_omitted() -> Result<(), ConfigErro
 }
 
 #[test]
+fn load_uses_default_local_capture_when_omitted() -> Result<(), ConfigError> {
+    let dir = temp_dir("local-capture-default");
+    let config_path = write_base_config(&dir, false)?;
+
+    let config = AppConfig::load(&config_path)?;
+    assert!(config.local_capture_enabled());
+
+    let _ = fs::remove_dir_all(dir);
+    Ok(())
+}
+
+#[test]
 fn load_fails_when_existing_noob_id_file_is_not_readable_text() -> Result<(), ConfigError> {
     let dir = temp_dir("node-id-invalid-utf8");
     let config_path = write_base_config(&dir, true)?;
@@ -168,6 +180,13 @@ fn write_production_template_creates_valid_config() -> Result<(), ConfigError> {
     assert_eq!(loaded.meta.profile, "production");
     assert_eq!(loaded.identity.noob_id_file, dir.join("noob_id"));
     assert_eq!(loaded.storage.db_root, dir.join("data"));
+    assert!(loaded.local_capture_enabled());
+
+    let raw = fs::read_to_string(&config_path)?;
+    assert!(
+        raw.contains("local_capture_enabled = true"),
+        "production template should enable local clipboard capture by default"
+    );
 
     let _ = fs::remove_dir_all(dir);
     Ok(())

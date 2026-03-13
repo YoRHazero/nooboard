@@ -18,7 +18,7 @@ pub fn default_recent_event_lookup_limit() -> usize {
 }
 
 pub fn default_local_capture_enabled() -> bool {
-    false
+    true
 }
 
 pub fn default_history_window_days() -> u32 {
