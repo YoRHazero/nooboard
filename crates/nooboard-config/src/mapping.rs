@@ -1,5 +1,8 @@
-use nooboard_sync::SyncConfig;
-use nooboard_sync::protocol::PROTOCOL_VERSION;
+use nooboard_network::NetworkConfig;
+use nooboard_network::{
+    DirectConfig, DirectSeedConfig, LanConfig, LocalIdentityConfig, NetworkAuthConfig,
+    NetworkTransferConfig, NetworkTransportConfig,
+};
 
 use super::schema::AppConfig;
 use crate::{ConfigError, ConfigResult};
@@ -20,7 +23,7 @@ impl AppConfig {
         }
     }
 
-    pub fn to_sync_config(&self) -> ConfigResult<SyncConfig> {
+    pub fn to_network_config(&self) -> ConfigResult<NetworkConfig> {
         let noob_id = self.noob_id.clone().ok_or_else(|| {
             ConfigError::InvalidConfig("identity.noob_id was not initialized".to_string())
         })?;
@@ -30,32 +33,55 @@ impl AppConfig {
             ));
         }
 
-        let sync_config = SyncConfig {
-            enabled: self.sync.network.enabled,
-            mdns_enabled: self.sync.network.mdns_enabled,
-            listen_addr: self.sync.network.listen_addr,
-            token: self.sync.auth.token.clone(),
-            manual_peers: self.sync.network.manual_peers.clone(),
-            protocol_version: PROTOCOL_VERSION,
-            connect_timeout_ms: self.sync.transport.connect_timeout_ms,
-            handshake_timeout_ms: self.sync.transport.handshake_timeout_ms,
-            ping_interval_ms: self.sync.transport.ping_interval_ms,
-            pong_timeout_ms: self.sync.transport.pong_timeout_ms,
-            max_packet_size: self.sync.transport.max_packet_size,
-            file_chunk_size: self.sync.file.chunk_size,
-            file_decision_timeout_ms: self.sync.file.decision_timeout_ms,
-            transfer_idle_timeout_ms: self.sync.file.idle_timeout_ms,
-            download_dir: self.sync.file.download_dir.clone(),
-            max_file_size: self.sync.file.max_file_size,
-            active_downloads: self.sync.file.active_downloads,
-            noob_id,
-            device_id: self.identity.device_id.clone(),
+        let network_config = NetworkConfig {
+            identity: LocalIdentityConfig {
+                noob_id,
+                device_id: self.identity.device_id.clone(),
+            },
+            listen_port: self.network.listen_port,
+            auth: NetworkAuthConfig {
+                token: self.network.auth.token.clone(),
+            },
+            lan: LanConfig {
+                enabled: self.network.lan.enabled,
+            },
+            direct: DirectConfig {
+                approval_timeout_ms: self.network.direct.approval_timeout_ms,
+                seeds: self
+                    .network
+                    .direct
+                    .seeds
+                    .iter()
+                    .map(|seed| DirectSeedConfig {
+                        id: seed.id,
+                        label: seed.label.clone(),
+                        host: seed.host.clone(),
+                        port: seed.port,
+                        enabled: seed.enabled,
+                    })
+                    .collect(),
+            },
+            transport: NetworkTransportConfig {
+                connect_timeout_ms: self.network.transport.connect_timeout_ms,
+                handshake_timeout_ms: self.network.transport.handshake_timeout_ms,
+                ping_interval_ms: self.network.transport.ping_interval_ms,
+                pong_timeout_ms: self.network.transport.pong_timeout_ms,
+                max_packet_size: self.network.transport.max_packet_size,
+            },
+            transfer: NetworkTransferConfig {
+                download_dir: self.network.transfer.download_dir.clone(),
+                max_file_size: self.network.transfer.max_file_size,
+                chunk_size: self.network.transfer.chunk_size,
+                active_downloads: self.network.transfer.active_downloads,
+                decision_timeout_ms: self.network.transfer.decision_timeout_ms,
+                idle_timeout_ms: self.network.transfer.idle_timeout_ms,
+            },
         };
 
-        sync_config.validate().map_err(|message| {
-            ConfigError::InvalidConfig(format!("sync config invalid: {message}"))
+        network_config.validate().map_err(|error| {
+            ConfigError::InvalidConfig(format!("network config invalid: {error}"))
         })?;
-        Ok(sync_config)
+        Ok(network_config)
     }
 
     pub fn recent_event_lookup_limit(&self) -> usize {

@@ -1,18 +1,18 @@
 use std::path::Path;
 
 use crate::defaults::{
-    default_active_downloads, default_chunk_size, default_config_version,
-    default_connect_timeout_ms, default_decision_timeout_ms, default_dedup_window_days,
-    default_gc_batch_size, default_gc_every_inserts, default_handshake_timeout_ms,
-    default_history_window_days, default_idle_timeout_ms, default_listen_addr,
-    default_local_capture_enabled, default_max_file_size, default_max_packet_size,
-    default_max_text_bytes, default_mdns_enabled, default_network_enabled,
+    default_active_downloads, default_approval_timeout_ms, default_chunk_size,
+    default_config_version, default_connect_timeout_ms, default_decision_timeout_ms,
+    default_dedup_window_days, default_gc_batch_size, default_gc_every_inserts,
+    default_handshake_timeout_ms, default_history_window_days, default_idle_timeout_ms,
+    default_lan_enabled, default_listen_port, default_local_capture_enabled,
+    default_max_file_size, default_max_packet_size, default_max_text_bytes,
     default_ping_interval_ms, default_pong_timeout_ms, default_recent_event_lookup_limit,
 };
 use crate::schema::{
     AppConfig, AppSection, ClipboardAppConfig, IdentityConfig, MetaConfig, StorageLifecycleConfig,
-    StorageSection, SyncAuthConfig, SyncFileConfig, SyncNetworkConfig, SyncSection,
-    SyncTransportConfig,
+    StorageSection, DirectConfig, LanConfig, NetworkAuthConfig, NetworkSection,
+    NetworkTransferConfig, NetworkTransportConfig,
 };
 use crate::{ConfigError, ConfigResult};
 
@@ -59,17 +59,19 @@ fn production_template(path: &Path) -> ConfigResult<AppConfig> {
                 gc_batch_size: default_gc_batch_size(),
             },
         },
-        sync: SyncSection {
-            network: SyncNetworkConfig {
-                enabled: default_network_enabled(),
-                mdns_enabled: default_mdns_enabled(),
-                listen_addr: default_listen_addr(),
-                manual_peers: Vec::new(),
-            },
-            auth: SyncAuthConfig {
+        network: NetworkSection {
+            listen_port: default_listen_port(),
+            auth: NetworkAuthConfig {
                 token: uuid::Uuid::now_v7().to_string(),
             },
-            file: SyncFileConfig {
+            lan: LanConfig {
+                enabled: default_lan_enabled(),
+            },
+            direct: DirectConfig {
+                approval_timeout_ms: default_approval_timeout_ms(),
+                seeds: Vec::new(),
+            },
+            transfer: NetworkTransferConfig {
                 download_dir: default_download_dir()?,
                 max_file_size: default_max_file_size(),
                 chunk_size: default_chunk_size(),
@@ -77,7 +79,7 @@ fn production_template(path: &Path) -> ConfigResult<AppConfig> {
                 decision_timeout_ms: default_decision_timeout_ms(),
                 idle_timeout_ms: default_idle_timeout_ms(),
             },
-            transport: SyncTransportConfig {
+            transport: NetworkTransportConfig {
                 connect_timeout_ms: default_connect_timeout_ms(),
                 handshake_timeout_ms: default_handshake_timeout_ms(),
                 ping_interval_ms: default_ping_interval_ms(),
@@ -120,17 +122,19 @@ fn development_template(path: &Path) -> ConfigResult<AppConfig> {
                 gc_batch_size: default_gc_batch_size(),
             },
         },
-        sync: SyncSection {
-            network: SyncNetworkConfig {
-                enabled: default_network_enabled(),
-                mdns_enabled: default_mdns_enabled(),
-                listen_addr: default_listen_addr(),
-                manual_peers: Vec::new(),
+        network: NetworkSection {
+            listen_port: default_listen_port(),
+            auth: NetworkAuthConfig {
+                token: "token-for-network".to_string(),
             },
-            auth: SyncAuthConfig {
-                token: "token-for-sync".to_string(),
+            lan: LanConfig {
+                enabled: default_lan_enabled(),
             },
-            file: SyncFileConfig {
+            direct: DirectConfig {
+                approval_timeout_ms: default_approval_timeout_ms(),
+                seeds: Vec::new(),
+            },
+            transfer: NetworkTransferConfig {
                 download_dir: config_dir.join("downloads"),
                 max_file_size: default_max_file_size(),
                 chunk_size: default_chunk_size(),
@@ -138,7 +142,7 @@ fn development_template(path: &Path) -> ConfigResult<AppConfig> {
                 decision_timeout_ms: default_decision_timeout_ms(),
                 idle_timeout_ms: default_idle_timeout_ms(),
             },
-            transport: SyncTransportConfig {
+            transport: NetworkTransportConfig {
                 connect_timeout_ms: default_connect_timeout_ms(),
                 handshake_timeout_ms: default_handshake_timeout_ms(),
                 ping_interval_ms: default_ping_interval_ms(),

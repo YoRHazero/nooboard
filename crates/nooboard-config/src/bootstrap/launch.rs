@@ -53,7 +53,7 @@ mod tests {
         let loaded = AppConfig::load(&config_path)?;
         assert_eq!(loaded.meta.profile, "dev");
         assert_eq!(loaded.identity.device_id, "nooboard-dev");
-        assert_eq!(loaded.sync.auth.token, "token-for-sync");
+        assert_eq!(loaded.network.auth.token, "token-for-network");
         assert_eq!(
             loaded.identity.noob_id_file,
             config_path.parent().unwrap().join("noob_id")
@@ -63,7 +63,7 @@ mod tests {
             config_path.parent().unwrap().join("data")
         );
         assert_eq!(
-            loaded.sync.file.download_dir,
+            loaded.network.transfer.download_dir,
             config_path.parent().unwrap().join("downloads")
         );
         Ok(())

@@ -1,17 +1,17 @@
-use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use super::defaults::{
-    default_active_downloads, default_chunk_size, default_config_version,
-    default_connect_timeout_ms, default_decision_timeout_ms, default_dedup_window_days,
-    default_download_dir, default_gc_batch_size, default_gc_every_inserts,
-    default_handshake_timeout_ms, default_history_window_days, default_idle_timeout_ms,
-    default_listen_addr, default_local_capture_enabled, default_max_file_size,
-    default_max_packet_size, default_max_text_bytes, default_mdns_enabled, default_network_enabled,
-    default_ping_interval_ms, default_pong_timeout_ms, default_profile,
-    default_recent_event_lookup_limit, default_sync_token,
+    default_active_downloads, default_approval_timeout_ms, default_chunk_size,
+    default_config_version, default_connect_timeout_ms, default_decision_timeout_ms,
+    default_dedup_window_days, default_download_dir, default_gc_batch_size,
+    default_gc_every_inserts, default_handshake_timeout_ms, default_history_window_days,
+    default_idle_timeout_ms, default_lan_enabled, default_listen_port,
+    default_local_capture_enabled, default_max_file_size, default_max_packet_size,
+    default_max_text_bytes, default_network_token, default_ping_interval_ms,
+    default_pong_timeout_ms, default_profile, default_recent_event_lookup_limit,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,7 +22,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub app: AppSection,
     pub storage: StorageSection,
-    pub sync: SyncSection,
+    #[serde(default)]
+    pub network: NetworkSection,
     #[serde(skip)]
     pub noob_id: Option<String>,
 }
@@ -108,56 +109,77 @@ impl Default for StorageLifecycleConfig {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SyncSection {
+pub struct NetworkSection {
     #[serde(default)]
-    pub network: SyncNetworkConfig,
+    pub auth: NetworkAuthConfig,
     #[serde(default)]
-    pub auth: SyncAuthConfig,
+    pub lan: LanConfig,
     #[serde(default)]
-    pub file: SyncFileConfig,
+    pub direct: DirectConfig,
     #[serde(default)]
-    pub transport: SyncTransportConfig,
+    pub transfer: NetworkTransferConfig,
+    #[serde(default)]
+    pub transport: NetworkTransportConfig,
+    #[serde(default = "default_listen_port")]
+    pub listen_port: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SyncNetworkConfig {
-    #[serde(default = "default_network_enabled")]
-    pub enabled: bool,
-    #[serde(default = "default_mdns_enabled")]
-    pub mdns_enabled: bool,
-    #[serde(default = "default_listen_addr")]
-    pub listen_addr: SocketAddr,
-    #[serde(default)]
-    pub manual_peers: Vec<SocketAddr>,
-}
-
-impl Default for SyncNetworkConfig {
-    fn default() -> Self {
-        Self {
-            enabled: default_network_enabled(),
-            mdns_enabled: default_mdns_enabled(),
-            listen_addr: default_listen_addr(),
-            manual_peers: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SyncAuthConfig {
-    #[serde(default = "default_sync_token")]
+pub struct NetworkAuthConfig {
+    #[serde(default = "default_network_token")]
     pub token: String,
 }
 
-impl Default for SyncAuthConfig {
+impl Default for NetworkAuthConfig {
     fn default() -> Self {
         Self {
-            token: default_sync_token(),
+            token: default_network_token(),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SyncFileConfig {
+pub struct LanConfig {
+    #[serde(default = "default_lan_enabled")]
+    pub enabled: bool,
+}
+
+impl Default for LanConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_lan_enabled(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DirectConfig {
+    #[serde(default = "default_approval_timeout_ms")]
+    pub approval_timeout_ms: u64,
+    #[serde(default)]
+    pub seeds: Vec<DirectSeedConfig>,
+}
+
+impl Default for DirectConfig {
+    fn default() -> Self {
+        Self {
+            approval_timeout_ms: default_approval_timeout_ms(),
+            seeds: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DirectSeedConfig {
+    pub id: Uuid,
+    pub label: String,
+    pub host: String,
+    pub port: u16,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkTransferConfig {
     #[serde(default = "default_download_dir")]
     pub download_dir: PathBuf,
     #[serde(default = "default_max_file_size")]
@@ -172,7 +194,7 @@ pub struct SyncFileConfig {
     pub idle_timeout_ms: u64,
 }
 
-impl Default for SyncFileConfig {
+impl Default for NetworkTransferConfig {
     fn default() -> Self {
         Self {
             download_dir: default_download_dir(),
@@ -186,7 +208,7 @@ impl Default for SyncFileConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SyncTransportConfig {
+pub struct NetworkTransportConfig {
     #[serde(default = "default_connect_timeout_ms")]
     pub connect_timeout_ms: u64,
     #[serde(default = "default_handshake_timeout_ms")]
@@ -199,7 +221,7 @@ pub struct SyncTransportConfig {
     pub max_packet_size: usize,
 }
 
-impl Default for SyncTransportConfig {
+impl Default for NetworkTransportConfig {
     fn default() -> Self {
         Self {
             connect_timeout_ms: default_connect_timeout_ms(),

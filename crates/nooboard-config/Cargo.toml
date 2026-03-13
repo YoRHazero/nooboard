@@ -7,7 +7,7 @@ authors.workspace = true
 
 [dependencies]
 nooboard-storage = { path = "../nooboard-storage" }
-nooboard-sync = { path = "../nooboard-sync" }
+nooboard-network = { path = "../nooboard-network" }
 clap.workspace = true
 serde.workspace = true
 thiserror.workspace = true

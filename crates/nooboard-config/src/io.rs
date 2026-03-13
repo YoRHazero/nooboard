@@ -61,7 +61,7 @@ impl AppConfig {
     fn resolve_relative_paths(&mut self, base_dir: &Path) {
         absolutize_if_relative(&mut self.identity.noob_id_file, base_dir);
         absolutize_if_relative(&mut self.storage.db_root, base_dir);
-        absolutize_if_relative(&mut self.sync.file.download_dir, base_dir);
+        absolutize_if_relative(&mut self.network.transfer.download_dir, base_dir);
     }
 
     fn ensure_noob_id_loaded(&mut self) -> ConfigResult<()> {

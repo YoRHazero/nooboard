@@ -1,7 +1,6 @@
-use std::net::SocketAddr;
 use std::path::PathBuf;
 
-pub const APP_CONFIG_VERSION: u32 = 2;
+pub const APP_CONFIG_VERSION: u32 = 3;
 pub const DEFAULT_RECENT_EVENT_LOOKUP_LIMIT: usize = 50;
 pub const DEFAULT_MAX_TEXT_BYTES: usize = 1024 * 1024;
 
@@ -41,22 +40,20 @@ pub fn default_max_text_bytes() -> usize {
     DEFAULT_MAX_TEXT_BYTES
 }
 
-pub fn default_network_enabled() -> bool {
+pub fn default_lan_enabled() -> bool {
     true
 }
 
-pub fn default_mdns_enabled() -> bool {
-    true
+pub fn default_listen_port() -> u16 {
+    17_890
 }
 
-pub fn default_listen_addr() -> SocketAddr {
-    "0.0.0.0:17890"
-        .parse()
-        .expect("default sync listen addr must parse")
-}
-
-pub fn default_sync_token() -> String {
+pub fn default_network_token() -> String {
     "dev-sync-token".to_string()
+}
+
+pub fn default_approval_timeout_ms() -> u64 {
+    30_000
 }
 
 pub fn default_download_dir() -> PathBuf {

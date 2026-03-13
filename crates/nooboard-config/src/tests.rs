@@ -28,7 +28,7 @@ fn write_base_config(dir: &Path, include_app_clipboard: bool) -> Result<PathBuf,
     let mut raw = format!(
         r#"
 [meta]
-config_version = 2
+config_version = 3
 profile = "test"
 
 [identity]
@@ -45,16 +45,19 @@ dedup_window_days = 14
 gc_every_inserts = 1
 gc_batch_size = 1
 
-[sync.network]
-enabled = true
-mdns_enabled = false
-listen_addr = "127.0.0.1:0"
-manual_peers = []
+[network]
+listen_port = 17890
 
-[sync.auth]
+[network.auth]
 token = "test-token"
 
-[sync.file]
+[network.lan]
+enabled = false
+
+[network.direct]
+approval_timeout_ms = 1000
+
+[network.transfer]
 download_dir = "{download_dir}"
 max_file_size = 1024
 chunk_size = 128
@@ -62,7 +65,7 @@ active_downloads = 1
 decision_timeout_ms = 1000
 idle_timeout_ms = 1000
 
-[sync.transport]
+[network.transport]
 connect_timeout_ms = 1000
 handshake_timeout_ms = 1000
 ping_interval_ms = 1000
@@ -203,10 +206,10 @@ fn write_development_template_creates_absolute_repo_local_paths() -> Result<(), 
 
     assert_eq!(loaded.meta.profile, "dev");
     assert_eq!(loaded.identity.device_id, "nooboard-dev");
-    assert_eq!(loaded.sync.auth.token, "token-for-sync");
+    assert_eq!(loaded.network.auth.token, "token-for-network");
     assert_eq!(loaded.identity.noob_id_file, dir.join("noob_id"));
     assert_eq!(loaded.storage.db_root, dir.join("data"));
-    assert_eq!(loaded.sync.file.download_dir, dir.join("downloads"));
+    assert_eq!(loaded.network.transfer.download_dir, dir.join("downloads"));
 
     let raw = fs::read_to_string(&config_path)?;
     assert!(

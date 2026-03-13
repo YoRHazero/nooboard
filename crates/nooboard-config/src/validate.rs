@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use super::defaults::APP_CONFIG_VERSION;
 use super::schema::AppConfig;
 use crate::{ConfigError, ConfigResult};
@@ -19,9 +17,9 @@ impl AppConfig {
             ));
         }
 
-        if self.sync.auth.token.trim().is_empty() {
+        if self.network.auth.token.trim().is_empty() {
             return Err(ConfigError::InvalidConfig(
-                "sync.auth.token must not be empty".to_string(),
+                "network.auth.token must not be empty".to_string(),
             ));
         }
 
@@ -57,16 +55,17 @@ impl AppConfig {
             ));
         }
 
-        let mut manual_peers = HashSet::new();
-        for peer in &self.sync.network.manual_peers {
-            if !manual_peers.insert(*peer) {
+        let mut direct_seed_ids = std::collections::HashSet::new();
+        for seed in &self.network.direct.seeds {
+            if !direct_seed_ids.insert(seed.id) {
                 return Err(ConfigError::InvalidConfig(format!(
-                    "sync.network.manual_peers contains duplicate address {peer}"
+                    "network.direct.seeds contains duplicate id {}",
+                    seed.id
                 )));
             }
         }
 
-        let _ = self.to_sync_config()?;
+        let _ = self.to_network_config()?;
         Ok(())
     }
 }

@@ -3931,8 +3931,8 @@ name = "nooboard-config"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "nooboard-network",
  "nooboard-storage",
- "nooboard-sync",
  "serde",
  "tempfile",
  "thiserror 2.0.18",
