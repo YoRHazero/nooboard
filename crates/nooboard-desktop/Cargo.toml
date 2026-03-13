@@ -20,6 +20,9 @@ nooboard is an experimental local-first clipboard and transfer board built in Ru
 The desktop package ships as a self-contained app binary with embedded UI assets.
 """
 
+[package.metadata.packager.nsis]
+installer-icon = "../../icons/nooboard-no-bkg.ico"
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
@@ -32,3 +35,6 @@ nooboard-config = { path = "../nooboard-config" }
 tokio.workspace = true
 time.workspace = true
 uuid.workspace = true
+
+[build-dependencies]
+winres = "0.1"
