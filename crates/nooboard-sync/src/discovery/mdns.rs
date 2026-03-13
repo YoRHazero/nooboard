@@ -1,13 +1,13 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV6};
 
-use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
+use mdns_sd::{ScopedIp, ServiceDaemon, ServiceEvent, ServiceInfo};
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 use tracing::{debug, warn};
 
 use crate::error::DiscoveryError;
 
-use super::DiscoveredPeer;
+use super::{DiscoveredPeer, sort_socket_addrs_by_preference};
 
 pub const NOOBOARD_SERVICE_TYPE: &str = "_nooboard-sync._tcp.local.";
 const NODE_ID_PROPERTY: &str = "noob_id";
@@ -83,21 +83,27 @@ pub fn start_mdns_discovery(
                             continue;
                         }
 
-                        for scoped_ip in resolved.get_addresses() {
-                            let ip = scoped_ip.to_ip_addr();
-                            if ip.is_unspecified() {
-                                continue;
-                            }
+                        let mut addrs: Vec<SocketAddr> = resolved
+                            .get_addresses()
+                            .iter()
+                            .filter_map(|scoped_ip| {
+                                socket_addr_from_scoped_ip(scoped_ip, resolved.get_port())
+                            })
+                            .collect();
+                        sort_socket_addrs_by_preference(&mut addrs);
 
-                            let peer = DiscoveredPeer {
-                                noob_id: noob_id.clone(),
-                                addr: SocketAddr::new(ip, resolved.get_port()),
-                            };
+                        if addrs.is_empty() {
+                            continue;
+                        }
 
-                            if peer_tx.send(peer).await.is_err() {
-                                let _ = daemon.shutdown();
-                                return;
-                            }
+                        let peer = DiscoveredPeer {
+                            noob_id: noob_id.clone(),
+                            addrs,
+                        };
+
+                        if peer_tx.send(peer).await.is_err() {
+                            let _ = daemon.shutdown();
+                            return;
                         }
                     }
                 }
@@ -132,6 +138,38 @@ fn build_service_info(config: &MdnsDiscoveryConfig) -> Result<ServiceInfo, Disco
     )
     .map(ServiceInfo::enable_addr_auto)
     .map_err(|error| DiscoveryError::Mdns(error.to_string()))
+}
+
+fn socket_addr_from_scoped_ip(scoped_ip: &ScopedIp, port: u16) -> Option<SocketAddr> {
+    match scoped_ip {
+        ScopedIp::V4(v4) => {
+            let ip = *v4.addr();
+            if ip.is_unspecified() {
+                return None;
+            }
+            Some(SocketAddr::new(IpAddr::V4(ip), port))
+        }
+        ScopedIp::V6(v6) => {
+            let ip = *v6.addr();
+            if ip.is_unspecified() {
+                return None;
+            }
+
+            let scope_id = if ip.is_unicast_link_local() {
+                let scope_id = v6.scope_id().index;
+                if scope_id == 0 {
+                    debug!("skip link-local IPv6 mDNS address without scope: {ip}");
+                    return None;
+                }
+                scope_id
+            } else {
+                0
+            };
+
+            Some(SocketAddr::V6(SocketAddrV6::new(ip, port, 0, scope_id)))
+        }
+        _ => None,
+    }
 }
 
 fn local_service_addresses(listen_addr: SocketAddr) -> Vec<IpAddr> {
@@ -180,12 +218,55 @@ fn sanitize_label(input: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
     use super::*;
+    use crate::discovery::sort_socket_addrs_by_preference;
 
     #[test]
     fn sanitize_label_replaces_non_ascii() {
         assert_eq!(sanitize_label("node-1"), "node-1");
         assert_eq!(sanitize_label("node 1"), "node-1");
         assert_eq!(sanitize_label("中文"), "nooboard");
+    }
+
+    #[test]
+    fn address_preference_prefers_routed_ipv4_before_link_local_ipv6() {
+        let mut addrs = vec![
+            SocketAddr::V6(SocketAddrV6::new(
+                Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1),
+                17890,
+                0,
+                7,
+            )),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 44)), 17890),
+            SocketAddr::V6(SocketAddrV6::new(
+                Ipv6Addr::new(0xfd00, 0, 0, 0, 0, 0, 0, 1),
+                17890,
+                0,
+                0,
+            )),
+        ];
+
+        sort_socket_addrs_by_preference(&mut addrs);
+
+        assert_eq!(
+            addrs,
+            vec![
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 44)), 17890),
+                SocketAddr::V6(SocketAddrV6::new(
+                    Ipv6Addr::new(0xfd00, 0, 0, 0, 0, 0, 0, 1),
+                    17890,
+                    0,
+                    0,
+                )),
+                SocketAddr::V6(SocketAddrV6::new(
+                    Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1),
+                    17890,
+                    0,
+                    7,
+                )),
+            ]
+        );
     }
 }

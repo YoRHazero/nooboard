@@ -390,7 +390,14 @@ async fn handle_engine_control(
             );
             true
         }
-        EngineControl::ConnectFailed { addr, error } => {
+        EngineControl::ConnectFailed {
+            addr,
+            error,
+            outbound,
+        } => {
+            if outbound {
+                registry.note_connect_failure(&addr);
+            }
             warn!(addr=%addr, "connection attempt failed: {error}");
             emit_connection_error_event(event_tx, None, Some(addr), error);
             false

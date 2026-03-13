@@ -61,7 +61,11 @@ pub(super) async fn run_accept_loop(
                         }
                         Err(error) => {
                             let _ = control_tx
-                                .send(EngineControl::ConnectFailed { addr, error })
+                                .send(EngineControl::ConnectFailed {
+                                    addr,
+                                    error,
+                                    outbound: false,
+                                })
                                 .await;
                         }
                     }

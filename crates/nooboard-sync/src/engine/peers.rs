@@ -39,6 +39,7 @@ pub(super) enum EngineControl {
     ConnectFailed {
         addr: SocketAddr,
         error: SyncError,
+        outbound: bool,
     },
     ConnectAttemptFinished {
         addr: SocketAddr,
@@ -317,6 +318,10 @@ impl PeerRegistry {
         peer: &DiscoveredPeer,
     ) -> DedupeDecision {
         self.candidates.apply_discovered_peer(local_noob_id, peer)
+    }
+
+    pub(super) fn note_connect_failure(&mut self, addr: &SocketAddr) {
+        self.candidates.note_connect_failure(addr);
     }
 
     fn resolve_targets(

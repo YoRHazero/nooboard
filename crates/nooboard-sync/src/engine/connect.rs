@@ -56,6 +56,7 @@ pub(super) fn schedule_connect_attempts(
                         .send(EngineControl::ConnectFailed {
                             addr: target.addr,
                             error,
+                            outbound: true,
                         })
                         .await;
                 }
