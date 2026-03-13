@@ -1,6 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV6};
 
-use mdns_sd::{ScopedIp, ServiceDaemon, ServiceEvent, ServiceInfo};
+use if_addrs::{IfOperStatus, Interface};
+use mdns_sd::{IfKind, ScopedIp, ServiceDaemon, ServiceEvent, ServiceInfo};
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 use tracing::{debug, warn};
@@ -11,6 +12,18 @@ use super::{DiscoveredPeer, sort_socket_addrs_by_preference};
 
 pub const NOOBOARD_SERVICE_TYPE: &str = "_nooboard-sync._tcp.local.";
 const NODE_ID_PROPERTY: &str = "noob_id";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AddressFamily {
+    V4,
+    V6,
+}
+
+#[derive(Debug, Clone)]
+struct LocalMdnsTargets {
+    addresses: Vec<IpAddr>,
+    interfaces: Vec<IfKind>,
+}
 
 #[derive(Debug, Clone)]
 pub struct MdnsDiscoveryConfig {
@@ -125,19 +138,25 @@ fn build_service_info(config: &MdnsDiscoveryConfig) -> Result<ServiceInfo, Disco
     }
 
     let host_name = format!("{}.local.", sanitize_label(&instance_name));
-    let addresses = local_service_addresses(config.listen_addr);
+    let targets = local_mdns_targets(config.listen_addr);
     let properties = [(NODE_ID_PROPERTY, config.noob_id.as_str())];
 
-    ServiceInfo::new(
+    let mut service_info = ServiceInfo::new(
         &config.service_type,
         &instance_name,
         &host_name,
-        addresses.as_slice(),
+        targets.addresses.as_slice(),
         config.listen_addr.port(),
         &properties[..],
     )
     .map(ServiceInfo::enable_addr_auto)
-    .map_err(|error| DiscoveryError::Mdns(error.to_string()))
+    .map_err(|error| DiscoveryError::Mdns(error.to_string()))?;
+
+    if !targets.interfaces.is_empty() {
+        service_info.set_interfaces(targets.interfaces);
+    }
+
+    Ok(service_info)
 }
 
 fn socket_addr_from_scoped_ip(scoped_ip: &ScopedIp, port: u16) -> Option<SocketAddr> {
@@ -172,30 +191,115 @@ fn socket_addr_from_scoped_ip(scoped_ip: &ScopedIp, port: u16) -> Option<SocketA
     }
 }
 
-fn local_service_addresses(listen_addr: SocketAddr) -> Vec<IpAddr> {
+fn local_mdns_targets(listen_addr: SocketAddr) -> LocalMdnsTargets {
+    let family = listen_addr_family(listen_addr);
+
     if !listen_addr.ip().is_unspecified() {
-        return vec![listen_addr.ip()];
+        return LocalMdnsTargets {
+            addresses: vec![listen_addr.ip()],
+            interfaces: vec![IfKind::Addr(listen_addr.ip())],
+        };
     }
 
-    let mut addresses: Vec<IpAddr> = if_addrs::get_if_addrs()
-        .map(|interfaces| {
-            interfaces
-                .into_iter()
-                .map(|interface| interface.ip())
-                .filter(|ip| !ip.is_loopback() && !ip.is_unspecified())
-                .collect()
-        })
-        .unwrap_or_default();
+    let mut targets = if_addrs::get_if_addrs()
+        .map(|interfaces| select_local_mdns_targets(interfaces, family))
+        .unwrap_or_else(|_| LocalMdnsTargets {
+            addresses: Vec::new(),
+            interfaces: Vec::new(),
+        });
 
-    if addresses.is_empty() {
-        warn!("failed to detect non-loopback interface address for mDNS, fallback to localhost");
-        addresses.push(IpAddr::V4(Ipv4Addr::LOCALHOST));
+    if targets.addresses.is_empty() {
+        warn!(
+            "failed to detect active non-loopback {family:?} interface address for mDNS, fallback to localhost"
+        );
+        return localhost_mdns_targets(family);
     }
 
-    addresses.sort();
-    addresses.dedup();
-    debug!("mDNS advertise addresses: {:?}", addresses);
-    addresses
+    targets.addresses.sort();
+    targets.addresses.dedup();
+    debug!(
+        "mDNS advertise addresses: {:?}, interfaces: {}",
+        targets.addresses,
+        format_mdns_interface_names(&targets.interfaces)
+    );
+    targets
+}
+
+fn select_local_mdns_targets(
+    interfaces: Vec<Interface>,
+    family: AddressFamily,
+) -> LocalMdnsTargets {
+    let mut addresses = Vec::new();
+    let mut supported_interfaces = Vec::new();
+
+    for interface in interfaces {
+        if !should_publish_interface(&interface, family) {
+            continue;
+        }
+
+        let ip = interface.ip();
+        addresses.push(ip);
+        supported_interfaces.push(IfKind::Name(interface.name));
+    }
+
+    LocalMdnsTargets {
+        addresses,
+        interfaces: supported_interfaces,
+    }
+}
+
+fn should_publish_interface(interface: &Interface, family: AddressFamily) -> bool {
+    if interface.oper_status != IfOperStatus::Up || interface.is_loopback() || interface.is_p2p() {
+        return false;
+    }
+
+    let ip = interface.ip();
+    if ip.is_unspecified() {
+        return false;
+    }
+
+    match family {
+        AddressFamily::V4 => ip.is_ipv4(),
+        AddressFamily::V6 => ip.is_ipv6(),
+    }
+}
+
+fn listen_addr_family(listen_addr: SocketAddr) -> AddressFamily {
+    match listen_addr {
+        SocketAddr::V4(_) => AddressFamily::V4,
+        SocketAddr::V6(_) => AddressFamily::V6,
+    }
+}
+
+fn localhost_mdns_targets(family: AddressFamily) -> LocalMdnsTargets {
+    match family {
+        AddressFamily::V4 => LocalMdnsTargets {
+            addresses: vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+            interfaces: vec![IfKind::LoopbackV4],
+        },
+        AddressFamily::V6 => LocalMdnsTargets {
+            addresses: vec![IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)],
+            interfaces: vec![IfKind::LoopbackV6],
+        },
+    }
+}
+
+fn format_mdns_interface_names(interfaces: &[IfKind]) -> String {
+    let mut names = Vec::new();
+    for interface in interfaces {
+        match interface {
+            IfKind::Name(name) => names.push(name.clone()),
+            IfKind::Addr(addr) => names.push(addr.to_string()),
+            IfKind::IndexV4(index) | IfKind::IndexV6(index) => names.push(index.to_string()),
+            IfKind::IPv4 => names.push("ipv4".to_string()),
+            IfKind::IPv6 => names.push("ipv6".to_string()),
+            IfKind::LoopbackV4 => names.push("loopback-v4".to_string()),
+            IfKind::LoopbackV6 => names.push("loopback-v6".to_string()),
+            IfKind::All => names.push("all".to_string()),
+            _ => names.push("unknown".to_string()),
+        }
+    }
+    names.join(",")
 }
 
 fn sanitize_label(input: &str) -> String {
@@ -268,5 +372,83 @@ mod tests {
                 )),
             ]
         );
+    }
+
+    #[test]
+    fn ipv4_listener_only_publishes_active_ipv4_interfaces() {
+        let targets = select_local_mdns_targets(
+            vec![
+                test_interface_v4("en0", Ipv4Addr::new(100, 64, 5, 22), true, false),
+                test_interface_v6(
+                    "awdl0",
+                    Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1),
+                    true,
+                    false,
+                ),
+                test_interface_v4("utun0", Ipv4Addr::new(100, 115, 92, 1), true, true),
+                test_interface_v4("en1", Ipv4Addr::new(192, 168, 0, 12), false, false),
+            ],
+            AddressFamily::V4,
+        );
+
+        assert_eq!(
+            targets.addresses,
+            vec![IpAddr::V4(Ipv4Addr::new(100, 64, 5, 22))]
+        );
+        assert_eq!(targets.interfaces.len(), 1);
+        assert!(matches!(&targets.interfaces[0], IfKind::Name(name) if name == "en0"));
+    }
+
+    #[test]
+    fn explicit_listen_addr_publishes_only_that_address() {
+        let targets = local_mdns_targets("192.168.1.44:17890".parse().expect("valid addr"));
+
+        assert_eq!(
+            targets.addresses,
+            vec![IpAddr::V4(Ipv4Addr::new(192, 168, 1, 44))]
+        );
+        assert_eq!(targets.interfaces.len(), 1);
+        assert!(matches!(
+            &targets.interfaces[0],
+            IfKind::Addr(IpAddr::V4(ip)) if *ip == Ipv4Addr::new(192, 168, 1, 44)
+        ));
+    }
+
+    fn test_interface_v4(name: &str, ip: Ipv4Addr, up: bool, p2p: bool) -> Interface {
+        Interface {
+            name: name.to_string(),
+            addr: if_addrs::IfAddr::V4(if_addrs::Ifv4Addr {
+                ip,
+                netmask: Ipv4Addr::new(255, 255, 255, 0),
+                prefixlen: 24,
+                broadcast: None,
+            }),
+            index: Some(1),
+            oper_status: if up {
+                IfOperStatus::Up
+            } else {
+                IfOperStatus::Down
+            },
+            is_p2p: p2p,
+        }
+    }
+
+    fn test_interface_v6(name: &str, ip: Ipv6Addr, up: bool, p2p: bool) -> Interface {
+        Interface {
+            name: name.to_string(),
+            addr: if_addrs::IfAddr::V6(if_addrs::Ifv6Addr {
+                ip,
+                netmask: Ipv6Addr::UNSPECIFIED,
+                prefixlen: 64,
+                broadcast: None,
+            }),
+            index: Some(1),
+            oper_status: if up {
+                IfOperStatus::Up
+            } else {
+                IfOperStatus::Down
+            },
+            is_p2p: p2p,
+        }
     }
 }

@@ -22,7 +22,7 @@ impl WorkspaceView {
                 .flex_shrink_0()
                 .gap(px(18.0))
                 .child(self.system_core_card(&snapshot.system_core, cx))
-                .child(self.recent_activity_card(&snapshot.recent_activity)),
+                .child(self.recent_activity_card(&snapshot.recent_activity, cx)),
         )
     }
 }

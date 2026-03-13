@@ -1,4 +1,4 @@
-use gpui::{Div, Hsla, ParentElement, Styled, div, px};
+use gpui::{AnyElement, Div, Hsla, ParentElement, Styled, div, px};
 use gpui_component::{Icon, IconName, StyledExt};
 
 use crate::ui::theme;
@@ -54,7 +54,29 @@ pub(in crate::ui::workspace::view::home) fn recent_activity_row(
     title: String,
     icon: IconName,
     accent: Hsla,
+    copy_action: Option<AnyElement>,
 ) -> Div {
+    let label_row = {
+        let row = div().h_flex().items_center().gap(px(8.0)).child(
+            div()
+                .px(px(10.0))
+                .py(px(5.0))
+                .rounded(px(999.0))
+                .bg(accent.opacity(0.14))
+                .border_1()
+                .border_color(accent.opacity(0.28))
+                .text_size(px(10.0))
+                .font_semibold()
+                .text_color(accent)
+                .child(kind_label),
+        );
+
+        match copy_action {
+            Some(action) => row.child(action),
+            None => row,
+        }
+    };
+
     div()
         .h_flex()
         .items_start()
@@ -89,19 +111,7 @@ pub(in crate::ui::workspace::view::home) fn recent_activity_row(
                         .items_center()
                         .justify_between()
                         .gap(px(12.0))
-                        .child(
-                            div()
-                                .px(px(10.0))
-                                .py(px(5.0))
-                                .rounded(px(999.0))
-                                .bg(accent.opacity(0.14))
-                                .border_1()
-                                .border_color(accent.opacity(0.28))
-                                .text_size(px(10.0))
-                                .font_semibold()
-                                .text_color(accent)
-                                .child(kind_label),
-                        )
+                        .child(label_row)
                         .child(
                             div()
                                 .text_size(px(12.0))

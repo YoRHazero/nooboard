@@ -77,11 +77,11 @@ pub(crate) fn activity_title(item: &RecentActivityItem) -> String {
             error,
         } => match (peer_noob_id, addr) {
             (Some(noob_id), Some(addr)) => {
-                format!("peer {noob_id} at {addr} reported: {error}")
+                format!("connection to peer {noob_id} at {addr} failed: {error}")
             }
-            (Some(noob_id), None) => format!("peer {noob_id} reported: {error}"),
-            (None, Some(addr)) => format!("{addr} reported: {error}"),
-            (None, None) => error.clone(),
+            (Some(noob_id), None) => format!("connection to peer {noob_id} failed: {error}"),
+            (None, Some(addr)) => format!("connection to {addr} failed: {error}"),
+            (None, None) => format!("connection failed: {error}"),
         },
         RecentActivityKind::SyncStarting => "sync runtime is starting".to_string(),
         RecentActivityKind::SyncRunning => "sync runtime is running".to_string(),
@@ -97,4 +97,28 @@ pub(crate) fn activity_title(item: &RecentActivityItem) -> String {
 
 pub(crate) fn activity_time_label(item: &RecentActivityItem) -> String {
     clock_label_from_millis(item.observed_at_ms)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::live_app::{RecentActivityItem, RecentActivityKind, RecentActivitySeverity};
+
+    #[test]
+    fn peer_error_title_describes_local_connection_failure() {
+        let item = RecentActivityItem {
+            observed_at_ms: 0,
+            severity: RecentActivitySeverity::Warning,
+            kind: RecentActivityKind::PeerConnectionError {
+                peer_noob_id: None,
+                addr: Some("100.64.5.26:17890".parse().expect("valid socket addr")),
+                error: "I/O error: can't assign requested address (os error 49)".to_string(),
+            },
+        };
+
+        assert_eq!(
+            activity_title(&item),
+            "connection to 100.64.5.26:17890 failed: I/O error: can't assign requested address (os error 49)"
+        );
+    }
 }
