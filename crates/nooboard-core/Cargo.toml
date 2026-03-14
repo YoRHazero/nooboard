@@ -1,0 +1,20 @@
+[package]
+name = "nooboard-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+if-addrs.workspace = true
+nooboard-config = { path = "../nooboard-config" }
+nooboard-network = { path = "../nooboard-network" }
+nooboard-platform = { path = "../nooboard-platform" }
+nooboard-storage = { path = "../nooboard-storage" }
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

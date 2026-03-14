@@ -1,20 +1,24 @@
+use crate::defaults::APP_CONFIG_VERSION;
 use std::path::Path;
 
 use crate::{ConfigError, ConfigResult};
 
 use super::env::config_override_path;
 use super::paths::{default_config_path, repo_development_config_path};
+use super::probe::{DefaultConfigState, inspect_default_config_state};
 use super::spec::{
-    BootstrapChooserContext, BootstrapDecision, BootstrapLaunch, BootstrapMode, BootstrapRequest,
+    BootstrapChooserContext, BootstrapChooserReason, BootstrapDecision, BootstrapLaunch,
+    BootstrapMode, BootstrapRequest,
 };
 
 pub fn resolve_bootstrap(request: &BootstrapRequest) -> ConfigResult<BootstrapDecision> {
-    resolve_bootstrap_with_override(request, config_override_path())
+    resolve_bootstrap_with_paths(request, config_override_path(), None)
 }
 
-fn resolve_bootstrap_with_override(
+fn resolve_bootstrap_with_paths(
     request: &BootstrapRequest,
     env_override: Option<std::path::PathBuf>,
+    default_config_override: Option<std::path::PathBuf>,
 ) -> ConfigResult<BootstrapDecision> {
     if request.cli_choose_config && (request.cli_config_path.is_some() || request.cli_use_repo_dev)
     {
@@ -32,6 +36,7 @@ fn resolve_bootstrap_with_override(
     if request.cli_choose_config {
         return Ok(BootstrapDecision::NeedsChooser(BootstrapChooserContext {
             default_config_path: default_config_path()?,
+            reason: BootstrapChooserReason::ExplicitChooserRequest,
         }));
     }
 
@@ -59,17 +64,30 @@ fn resolve_bootstrap_with_override(
         }));
     }
 
-    let default_config_path = default_config_path()?;
-    if default_config_path.exists() {
-        validate_existing_config_path(&default_config_path, "default config path")?;
-        Ok(BootstrapDecision::Launch(BootstrapLaunch {
+    let default_config_path = match default_config_override {
+        Some(path) => path,
+        None => default_config_path()?,
+    };
+    match inspect_default_config_state(&default_config_path, APP_CONFIG_VERSION)? {
+        DefaultConfigState::Missing => {
+            Ok(BootstrapDecision::NeedsChooser(BootstrapChooserContext {
+                default_config_path,
+                reason: BootstrapChooserReason::MissingDefaultConfig,
+            }))
+        }
+        DefaultConfigState::Compatible => Ok(BootstrapDecision::Launch(BootstrapLaunch {
             mode: BootstrapMode::UserDefault,
             config_path: default_config_path,
-        }))
-    } else {
-        Ok(BootstrapDecision::NeedsChooser(BootstrapChooserContext {
-            default_config_path,
-        }))
+        })),
+        DefaultConfigState::Incompatible { found_version } => {
+            Ok(BootstrapDecision::NeedsChooser(BootstrapChooserContext {
+                default_config_path,
+                reason: BootstrapChooserReason::DefaultConfigVersionMismatch {
+                    found_version,
+                    expected_version: APP_CONFIG_VERSION,
+                },
+            }))
+        }
     }
 }
 
@@ -119,7 +137,7 @@ mod tests {
             cli_use_repo_dev: false,
         };
 
-        let result = resolve_bootstrap_with_override(&request, None);
+        let result = resolve_bootstrap_with_paths(&request, None, None);
         assert!(matches!(result, Err(ConfigError::InvalidBootstrap(_))));
     }
 
@@ -130,7 +148,7 @@ mod tests {
         fs::write(&config_path, "")?;
 
         let request = BootstrapRequest::default();
-        let decision = resolve_bootstrap_with_override(&request, Some(config_path.clone()))?;
+        let decision = resolve_bootstrap_with_paths(&request, Some(config_path.clone()), None)?;
 
         assert_eq!(
             decision,
@@ -150,7 +168,7 @@ mod tests {
             cli_use_repo_dev: false,
         };
 
-        let result = resolve_bootstrap_with_override(&request, None);
+        let result = resolve_bootstrap_with_paths(&request, None, None);
         assert!(matches!(result, Err(ConfigError::InvalidBootstrap(_))));
     }
 
@@ -164,19 +182,26 @@ mod tests {
             cli_choose_config: true,
             ..BootstrapRequest::default()
         };
-        let decision = resolve_bootstrap_with_override(&request, Some(config_path))?;
+        let decision = resolve_bootstrap_with_paths(&request, Some(config_path), None)?;
 
-        assert!(matches!(decision, BootstrapDecision::NeedsChooser(_)));
+        assert_eq!(
+            decision,
+            BootstrapDecision::NeedsChooser(BootstrapChooserContext {
+                default_config_path: default_config_path()?,
+                reason: BootstrapChooserReason::ExplicitChooserRequest,
+            })
+        );
         Ok(())
     }
 
     #[test]
     fn dev_mode_returns_repo_development_launch() -> Result<(), ConfigError> {
-        let decision = resolve_bootstrap_with_override(
+        let decision = resolve_bootstrap_with_paths(
             &BootstrapRequest {
                 cli_use_repo_dev: true,
                 ..BootstrapRequest::default()
             },
+            None,
             None,
         )?;
 
@@ -187,6 +212,53 @@ mod tests {
                 ..
             })
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn missing_default_path_routes_to_chooser_with_missing_reason() -> Result<(), ConfigError> {
+        let temp = tempdir()?;
+        let config_path = temp.path().join("nooboard.toml");
+
+        let decision = resolve_bootstrap_with_paths(
+            &BootstrapRequest::default(),
+            None,
+            Some(config_path.clone()),
+        )?;
+
+        assert_eq!(
+            decision,
+            BootstrapDecision::NeedsChooser(BootstrapChooserContext {
+                default_config_path: config_path,
+                reason: BootstrapChooserReason::MissingDefaultConfig,
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn incompatible_default_version_routes_to_chooser_with_version_reason()
+    -> Result<(), ConfigError> {
+        let temp = tempdir()?;
+        let config_path = temp.path().join("nooboard.toml");
+        fs::write(&config_path, "[meta]\nconfig_version = 2\n")?;
+
+        let decision = resolve_bootstrap_with_paths(
+            &BootstrapRequest::default(),
+            None,
+            Some(config_path.clone()),
+        )?;
+
+        assert_eq!(
+            decision,
+            BootstrapDecision::NeedsChooser(BootstrapChooserContext {
+                default_config_path: config_path,
+                reason: BootstrapChooserReason::DefaultConfigVersionMismatch {
+                    found_version: Some(2),
+                    expected_version: APP_CONFIG_VERSION,
+                },
+            })
+        );
         Ok(())
     }
 }

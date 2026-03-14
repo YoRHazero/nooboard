@@ -3941,6 +3941,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "nooboard-core"
+version = "0.1.0"
+dependencies = [
+ "if-addrs",
+ "nooboard-config",
+ "nooboard-network",
+ "nooboard-platform",
+ "nooboard-storage",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "nooboard-desktop"
 version = "0.1.0"
 dependencies = [

@@ -25,6 +25,14 @@ The authoritative implementation contract for the future `nooboard-network` crat
 When implementing or reviewing the network rewrite, treat that document as the single source of
 truth. If code and spec differ, update the spec first or change the code.
 
+## Core rewrite
+
+The authoritative implementation contract for the future `nooboard-core` crate lives in
+[`NOOBOARD_CORE_SPEC.md`](./NOOBOARD_CORE_SPEC.md).
+
+When implementing or reviewing the application core rewrite, treat that document as the single
+source of truth. If code and spec differ, update the spec first or change the code.
+
 ## Desktop bootstrap
 
 Desktop bootstrap resolution currently follows this order:
@@ -74,7 +82,7 @@ Repository-local development setup uses:
 
 - config: `<repo>/.dev-data/nooboard.toml`
 - device id: `nooboard-dev`
-- token: `token-for-sync`
+- token: `token-for-network`
 
 Launch the desktop app against the local development setup:
 

@@ -5,14 +5,14 @@ use crate::defaults::{
     default_config_version, default_connect_timeout_ms, default_decision_timeout_ms,
     default_dedup_window_days, default_gc_batch_size, default_gc_every_inserts,
     default_handshake_timeout_ms, default_history_window_days, default_idle_timeout_ms,
-    default_lan_enabled, default_listen_port, default_local_capture_enabled,
-    default_max_file_size, default_max_packet_size, default_max_text_bytes,
-    default_ping_interval_ms, default_pong_timeout_ms, default_recent_event_lookup_limit,
+    default_lan_enabled, default_listen_port, default_local_capture_enabled, default_max_file_size,
+    default_max_packet_size, default_max_text_bytes, default_ping_interval_ms,
+    default_pong_timeout_ms, default_recent_event_lookup_limit,
 };
 use crate::schema::{
-    AppConfig, AppSection, ClipboardAppConfig, IdentityConfig, MetaConfig, StorageLifecycleConfig,
-    StorageSection, DirectConfig, LanConfig, NetworkAuthConfig, NetworkSection,
-    NetworkTransferConfig, NetworkTransportConfig,
+    AppConfig, AppSection, ClipboardAppConfig, DirectConfig, IdentityConfig, LanConfig, MetaConfig,
+    NetworkAuthConfig, NetworkSection, NetworkTransferConfig, NetworkTransportConfig,
+    StorageLifecycleConfig, StorageSection,
 };
 use crate::{ConfigError, ConfigResult};
 

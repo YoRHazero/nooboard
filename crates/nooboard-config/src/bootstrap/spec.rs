@@ -27,8 +27,19 @@ pub struct BootstrapLaunch {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BootstrapChooserReason {
+    ExplicitChooserRequest,
+    MissingDefaultConfig,
+    DefaultConfigVersionMismatch {
+        found_version: Option<u32>,
+        expected_version: u32,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BootstrapChooserContext {
     pub default_config_path: PathBuf,
+    pub reason: BootstrapChooserReason,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
