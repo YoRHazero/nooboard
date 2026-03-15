@@ -133,14 +133,19 @@ impl SuppressionState {
 #[derive(Clone)]
 pub(crate) struct ClipboardRuntime {
     backend: Arc<dyn ClipboardPort>,
+    runtime_handle: tokio::runtime::Handle,
     watch: Arc<Mutex<WatchState>>,
     suppression: Arc<Mutex<SuppressionState>>,
 }
 
 impl ClipboardRuntime {
-    pub(crate) fn new(backend: Arc<dyn ClipboardPort>) -> Self {
+    pub(crate) fn new(
+        backend: Arc<dyn ClipboardPort>,
+        runtime_handle: tokio::runtime::Handle,
+    ) -> Self {
         Self {
             backend,
+            runtime_handle,
             watch: Arc::new(Mutex::new(WatchState::new(DEFAULT_WATCH_INTERVAL))),
             suppression: Arc::new(Mutex::new(SuppressionState::new(SUPPRESSION_TTL))),
         }
@@ -191,7 +196,9 @@ impl ClipboardRuntime {
         }
 
         if let Some(worker) = worker {
-            let join_result = tokio::task::spawn_blocking(move || worker.join())
+            let join_result = self
+                .runtime_handle
+                .spawn_blocking(move || worker.join())
                 .await
                 .map_err(|error| {
                     CoreError::ChannelClosed(format!(
@@ -222,10 +229,6 @@ impl ClipboardRuntime {
             return Ok(());
         }
 
-        let handle = tokio::runtime::Handle::try_current().map_err(|error| {
-            CoreError::InvalidState(format!("clipboard watch requires a Tokio runtime: {error}"))
-        })?;
-
         let (platform_tx, mut platform_rx) = mpsc::channel(LOCAL_CLIPBOARD_CHANNEL_CAPACITY);
         let shutdown = Arc::new(AtomicBool::new(false));
         let worker =
@@ -233,7 +236,7 @@ impl ClipboardRuntime {
                 .watch_changes(platform_tx, Arc::clone(&shutdown), state.interval)?;
         let events_tx = state.events_tx.clone();
         let suppression = Arc::clone(&self.suppression);
-        let forward_task = handle.spawn(async move {
+        let forward_task = self.runtime_handle.spawn(async move {
             while let Some(event) = platform_rx.recv().await {
                 let should_drop = suppression
                     .lock()

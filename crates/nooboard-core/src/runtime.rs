@@ -1,6 +1,7 @@
 use std::sync::Arc;
+use std::sync::Mutex;
 
-use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot};
 
 use crate::bootstrap::{BootstrapLaunch, prepare_bootstrap_launch};
 use crate::clipboard::{ClipboardRuntime, port::ClipboardPort};
@@ -19,27 +20,27 @@ pub struct NooboardCore {
 
 struct CoreInner {
     command_tx: mpsc::Sender<crate::workspace::command::WorkspaceCommand>,
+    runtime: Mutex<Option<tokio::runtime::Runtime>>,
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl NooboardCore {
     pub fn launch(launch: &BootstrapLaunch, clipboard: Arc<dyn ClipboardPort>) -> CoreResult<Self> {
-        let handle = tokio::runtime::Handle::try_current().map_err(|error| {
-            CoreError::InvalidState(format!(
-                "NooboardCore::launch requires a Tokio runtime: {error}"
-            ))
-        })?;
-
         prepare_bootstrap_launch(launch)?;
         let config_path = launch.config_path.clone();
         let config = nooboard_config::AppConfig::load(&config_path)?;
-        let (storage_runtime, latest_event_id) = StorageRuntime::new(config.to_storage_config())?;
-        let clipboard_runtime = ClipboardRuntime::new(clipboard);
+        let runtime = build_internal_runtime()?;
+        let runtime_handle = runtime.handle().clone();
+        let (storage_runtime, latest_event_id) =
+            StorageRuntime::new(config.to_storage_config(), runtime_handle.clone())?;
+        let clipboard_runtime = ClipboardRuntime::new(clipboard, runtime_handle.clone());
+        let network_runtime = nooboard_network::NetworkRuntime::new(config.to_network_config()?)?;
+        let network_snapshot = network_runtime.snapshot();
+        let clipboard_subscription = clipboard_runtime.subscribe_local_changes();
+        let network_subscription = network_runtime.subscribe();
         if config.local_capture_enabled() {
             clipboard_runtime.start_watch()?;
         }
-
-        let network_runtime = nooboard_network::NetworkRuntime::new(config.to_network_config()?)?;
         let state = WorkspaceState::new(
             config_path,
             config.clone(),
@@ -52,26 +53,31 @@ impl NooboardCore {
                 ),
             },
             latest_event_id,
-            initial_network_snapshot(&config),
+            network_snapshot,
         );
-        let actor = spawn_workspace_actor(&handle, state);
+        let actor = spawn_workspace_actor(
+            &runtime_handle,
+            state,
+            clipboard_subscription,
+            network_subscription,
+        );
 
         Ok(Self {
             inner: Arc::new(CoreInner {
                 command_tx: actor.command_tx,
+                runtime: Mutex::new(Some(runtime)),
                 task: Mutex::new(Some(actor.task)),
             }),
         })
     }
 
     pub async fn shutdown(&self) -> CoreResult<()> {
-        let task = {
-            let mut guard = self.inner.task.lock().await;
-            guard.take()
-        };
-        let Some(task) = task else {
+        let task = take_mutex_option(&self.inner.task);
+        if task.is_none() {
+            drop_runtime(take_mutex_option(&self.inner.runtime)).await?;
             return Ok(());
-        };
+        }
+        let task = task.expect("checked is_some");
 
         let result = self
             .request(
@@ -82,6 +88,7 @@ impl NooboardCore {
         let join_result = task.await.map_err(|error| {
             CoreError::ChannelClosed(format!("workspace actor task join failed: {error}"))
         });
+        drop_runtime(take_mutex_option(&self.inner.runtime)).await?;
 
         match result {
             Ok(()) => join_result?,
@@ -405,30 +412,35 @@ impl NooboardCore {
     }
 }
 
-fn initial_network_snapshot(
-    config: &nooboard_config::AppConfig,
-) -> nooboard_network::NetworkSnapshot {
-    nooboard_network::NetworkSnapshot {
-        status: crate::NetworkStatus::Stopped,
-        lan_enabled: config.network.lan.enabled,
-        lan_peers: Vec::new(),
-        direct_seeds: config
-            .network
-            .direct
-            .seeds
-            .iter()
-            .map(|seed| crate::DirectSeedInfo {
-                id: crate::DirectSeedId::from_uuid(seed.id),
-                label: seed.label.clone(),
-                host: seed.host.clone(),
-                port: seed.port,
-                enabled: seed.enabled,
-                learned_device_id: None,
-                last_connected_addr: None,
-            })
-            .collect(),
-        pending_direct_requests: Vec::new(),
-        sessions: Vec::new(),
-        transfers: Default::default(),
+fn build_internal_runtime() -> CoreResult<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_name("nooboard-core")
+        .build()
+        .map_err(|error| {
+            CoreError::InvalidState(format!("failed to build nooboard-core runtime: {error}"))
+        })
+}
+
+fn take_mutex_option<T>(mutex: &Mutex<Option<T>>) -> Option<T> {
+    match mutex.lock() {
+        Ok(mut guard) => guard.take(),
+        Err(poisoned) => poisoned.into_inner().take(),
     }
+}
+
+async fn drop_runtime(runtime: Option<tokio::runtime::Runtime>) -> CoreResult<()> {
+    let Some(runtime) = runtime else {
+        return Ok(());
+    };
+
+    tokio::task::spawn_blocking(move || drop(runtime))
+        .await
+        .map_err(|error| {
+            CoreError::ChannelClosed(format!(
+                "failed to drop nooboard-core runtime on blocking task: {error}"
+            ))
+        })?;
+
+    Ok(())
 }

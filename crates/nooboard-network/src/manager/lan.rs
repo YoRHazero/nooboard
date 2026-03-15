@@ -4,9 +4,9 @@ use tokio::sync::{broadcast, mpsc};
 use super::tasks::{connect_outbound, now_millis};
 use super::{InternalEvent, ReadySession, RunningContext, RuntimeManager};
 use crate::connection::coordinator::BeginAttempt;
+use crate::errors::NetworkResult;
 use crate::lan::runtime::{LanRuntimeConfig, LanRuntimeEvent, spawn_lan_runtime};
 use crate::{ConnectionFailure, ConnectionFailureKind, ConnectionMode, NetworkEvent};
-use crate::errors::NetworkResult;
 
 impl RuntimeManager {
     pub(super) async fn ensure_lan_running(&self, running: &RunningContext) -> NetworkResult<()> {
@@ -86,6 +86,7 @@ impl RuntimeManager {
                 {
                     let mut state = self.inner.state.lock().await;
                     state.apply_lan_service_resolved(record);
+                    self.replace_snapshot(state.snapshot());
                 }
                 self.inner.event_hub.publish(NetworkEvent::LanPeersChanged);
                 self.schedule_lan_connects().await;
@@ -93,7 +94,11 @@ impl RuntimeManager {
             LanRuntimeEvent::Removed(fullname) => {
                 let changed = {
                     let mut state = self.inner.state.lock().await;
-                    state.apply_lan_service_removed(&fullname)
+                    let changed = state.apply_lan_service_removed(&fullname);
+                    if changed {
+                        self.replace_snapshot(state.snapshot());
+                    }
+                    changed
                 };
                 if changed {
                     self.inner.event_hub.publish(NetworkEvent::LanPeersChanged);

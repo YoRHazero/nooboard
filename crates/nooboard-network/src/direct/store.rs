@@ -12,7 +12,10 @@ pub(crate) struct DirectSeedStore {
 impl DirectSeedStore {
     pub(crate) fn from_configs(configs: &[DirectSeedConfig]) -> Self {
         Self {
-            seeds: configs.iter().map(DirectSeedInfo::from_seed_config).collect(),
+            seeds: configs
+                .iter()
+                .map(DirectSeedInfo::from_seed_config)
+                .collect(),
         }
     }
 

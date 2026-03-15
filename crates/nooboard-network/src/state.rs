@@ -6,13 +6,12 @@ use crate::direct::store::DirectSeedStore;
 use crate::errors::{NetworkError, NetworkResult};
 use crate::lan::peer_index::{LanPeerIndex, LanServiceRecord};
 use crate::session::store::SessionStore;
-use crate::transfer::store::TransferStore;
+use crate::transfer::store::{TransferCommandState, TransferStore};
 use crate::{
-    ActiveTransferInfo, CompletedTransferInfo,
-    DirectRequestId, DirectSeedId, DirectSeedInfo, IncomingTransferDecision,
-    IncomingTransferDisposition, IncomingTransferOffer, NetworkEvent, NetworkSnapshot,
-    NetworkStatus, PendingDirectRequest, SendFilesRequest, SendTextRequest, SessionId,
-    SessionInfo, TransferTicket, UpsertDirectSeedInput,
+    ActiveTransferInfo, CompletedTransferInfo, DirectRequestId, DirectSeedId, DirectSeedInfo,
+    IncomingTransferDecision, IncomingTransferDisposition, IncomingTransferOffer, NetworkEvent,
+    NetworkSnapshot, NetworkStatus, PendingDirectRequest, SendFilesRequest, SendTextRequest,
+    SessionId, SessionInfo, TransferTicket, UpsertDirectSeedInput,
 };
 
 pub(crate) struct RuntimeState {
@@ -203,7 +202,12 @@ impl RuntimeState {
         if !matches!(self.status, NetworkStatus::Running) {
             return Err(NetworkError::NotRunning);
         }
-        self.sessions.send_files(request)
+        let queued = self.sessions.send_files(request)?;
+        let tickets = queued.iter().map(|transfer| transfer.ticket).collect();
+        for transfer in queued {
+            self.transfers.apply_queued_upload(transfer);
+        }
+        Ok(tickets)
     }
 
     pub(crate) fn validate_incoming_transfer_decision(
@@ -213,13 +217,12 @@ impl RuntimeState {
         if !matches!(self.status, NetworkStatus::Running) {
             return Err(NetworkError::NotRunning);
         }
-        if self.transfers.has_pending_offer(decision.ticket) {
-            Ok(())
-        } else {
-            Err(NetworkError::Internal(format!(
-                "incoming transfer offer not found: {}:{}",
-                decision.ticket.session_id, decision.ticket.raw_id
-            )))
+        match self.transfers.classify(decision.ticket) {
+            TransferCommandState::PendingDecision => Ok(()),
+            TransferCommandState::Active | TransferCommandState::Completed => {
+                Err(NetworkError::transfer_not_cancelable(decision.ticket))
+            }
+            TransferCommandState::Missing => Err(NetworkError::transfer_not_found(decision.ticket)),
         }
     }
 
@@ -242,13 +245,12 @@ impl RuntimeState {
         if !matches!(self.status, NetworkStatus::Running) {
             return Err(NetworkError::NotRunning);
         }
-        if self.transfers.has_active_or_pending(id) {
-            self.sessions.cancel_transfer(id).await
-        } else {
-            Err(NetworkError::Internal(format!(
-                "transfer not found: {}:{}",
-                id.session_id, id.raw_id
-            )))
+        match self.transfers.classify(id) {
+            TransferCommandState::PendingDecision | TransferCommandState::Active => {
+                self.sessions.cancel_transfer(id).await
+            }
+            TransferCommandState::Completed => Err(NetworkError::transfer_not_cancelable(id)),
+            TransferCommandState::Missing => Err(NetworkError::transfer_not_found(id)),
         }
     }
 
@@ -257,7 +259,8 @@ impl RuntimeState {
     }
 
     pub(crate) fn has_pending_direct_request_for_peer(&self, peer_noob_id: &str) -> bool {
-        self.pending_direct_requests.contains_peer_noob_id(peer_noob_id)
+        self.pending_direct_requests
+            .contains_peer_noob_id(peer_noob_id)
     }
 
     pub(crate) fn record_direct_seed_success(
@@ -320,9 +323,14 @@ impl RuntimeState {
         self.lan_peers.apply_removed(fullname)
     }
 
-    pub(crate) fn next_lan_candidate(&self, local_noob_id: &str, now_ms: u64) -> Option<crate::lan::peer_index::LanConnectCandidate> {
+    pub(crate) fn next_lan_candidate(
+        &self,
+        local_noob_id: &str,
+        now_ms: u64,
+    ) -> Option<crate::lan::peer_index::LanConnectCandidate> {
         let connected = self.sessions.connected_peer_noob_ids();
-        self.lan_peers.next_candidate(local_noob_id, &connected, now_ms)
+        self.lan_peers
+            .next_candidate(local_noob_id, &connected, now_ms)
     }
 
     pub(crate) fn mark_lan_connecting(&mut self, peer_noob_id: &str) {
@@ -357,11 +365,11 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::*;
+    use crate::ConnectionMode;
     use crate::config::{
         DirectConfig, LanConfig, LocalIdentityConfig, NetworkAuthConfig, NetworkTransferConfig,
         NetworkTransportConfig,
     };
-    use crate::ConnectionMode;
 
     fn test_config() -> NetworkConfig {
         NetworkConfig {
@@ -402,26 +410,32 @@ mod tests {
         state.status = NetworkStatus::Running;
         let (tx1, _) = mpsc::channel(1);
         let (tx2, _) = mpsc::channel(1);
-        state.sessions.insert(SessionInfo {
-            id: SessionId::new(),
-            mode: ConnectionMode::Direct,
-            peer_noob_id: "b".to_string(),
-            peer_device_id: "device-b".to_string(),
-            remote_addr: "127.0.0.1:1001".parse().expect("addr"),
-            local_bind_addr: None,
-            outbound: true,
-            connected_at_ms: 2,
-        }, tx1);
-        state.sessions.insert(SessionInfo {
-            id: SessionId::new(),
-            mode: ConnectionMode::Lan,
-            peer_noob_id: "a".to_string(),
-            peer_device_id: "device-a".to_string(),
-            remote_addr: "127.0.0.1:1000".parse().expect("addr"),
-            local_bind_addr: None,
-            outbound: false,
-            connected_at_ms: 1,
-        }, tx2);
+        state.sessions.insert(
+            SessionInfo {
+                id: SessionId::new(),
+                mode: ConnectionMode::Direct,
+                peer_noob_id: "b".to_string(),
+                peer_device_id: "device-b".to_string(),
+                remote_addr: "127.0.0.1:1001".parse().expect("addr"),
+                local_bind_addr: None,
+                outbound: true,
+                connected_at_ms: 2,
+            },
+            tx1,
+        );
+        state.sessions.insert(
+            SessionInfo {
+                id: SessionId::new(),
+                mode: ConnectionMode::Lan,
+                peer_noob_id: "a".to_string(),
+                peer_device_id: "device-a".to_string(),
+                remote_addr: "127.0.0.1:1000".parse().expect("addr"),
+                local_bind_addr: None,
+                outbound: false,
+                connected_at_ms: 1,
+            },
+            tx2,
+        );
 
         let before = state.snapshot();
         assert_eq!(before.sessions.len(), 2);
@@ -433,5 +447,4 @@ mod tests {
         assert_eq!(after.sessions.len(), 1);
         assert_eq!(after.sessions[0].mode, ConnectionMode::Direct);
     }
-
 }

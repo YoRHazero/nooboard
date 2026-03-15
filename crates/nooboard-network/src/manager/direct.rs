@@ -7,6 +7,7 @@ use super::tasks::{classify_transport_error, connect_outbound, now_millis};
 use super::{InternalEvent, ReadySession, RunningContext, RuntimeManager};
 use crate::direct::approval_store::PendingApproval;
 use crate::direct::resolver::{ResolveError, resolve_seed_ipv4_addrs};
+use crate::errors::TransportError;
 use crate::protocol::{ConnectionIntent, ControlPacket, DirectRequestStatus, Packet};
 use crate::state::DirectConnectPreparation;
 use crate::transport::{recv_packet, send_packet};
@@ -15,7 +16,6 @@ use crate::{
     DirectRequestId, DirectSeedId, DirectSeedInfo, NetworkEvent, NetworkResult,
     PendingDirectRequest, UpsertDirectSeedInput,
 };
-use crate::errors::TransportError;
 
 impl RuntimeManager {
     pub(crate) async fn list_direct_seeds(&self) -> NetworkResult<Vec<crate::DirectSeedInfo>> {
@@ -29,9 +29,13 @@ impl RuntimeManager {
     ) -> NetworkResult<DirectSeedId> {
         let id = {
             let mut state = self.inner.state.lock().await;
-            state.upsert_direct_seed(input)?
+            let id = state.upsert_direct_seed(input)?;
+            self.replace_snapshot(state.snapshot());
+            id
         };
-        self.inner.event_hub.publish(NetworkEvent::DirectSeedsChanged);
+        self.inner
+            .event_hub
+            .publish(NetworkEvent::DirectSeedsChanged);
         Ok(id)
     }
 
@@ -39,8 +43,11 @@ impl RuntimeManager {
         {
             let mut state = self.inner.state.lock().await;
             state.remove_direct_seed(id)?;
+            self.replace_snapshot(state.snapshot());
         }
-        self.inner.event_hub.publish(NetworkEvent::DirectSeedsChanged);
+        self.inner
+            .event_hub
+            .publish(NetworkEvent::DirectSeedsChanged);
         Ok(())
     }
 
@@ -70,11 +77,13 @@ impl RuntimeManager {
         let addrs = match resolve_seed_ipv4_addrs(&seed).await {
             Ok(addrs) => addrs,
             Err(error) => {
-                self.inner.event_hub.publish(connection_failure_from_resolve(
-                    ConnectionMode::Direct,
-                    &seed,
-                    error,
-                ));
+                self.inner
+                    .event_hub
+                    .publish(connection_failure_from_resolve(
+                        ConnectionMode::Direct,
+                        &seed,
+                        error,
+                    ));
                 return Ok(ConnectDirectOutcome::Started);
             }
         };
@@ -121,7 +130,9 @@ impl RuntimeManager {
     pub(crate) async fn approve_direct_request(&self, id: DirectRequestId) -> NetworkResult<()> {
         let pending = {
             let mut state = self.inner.state.lock().await;
-            state.take_pending_direct_request(id)?
+            let pending = state.take_pending_direct_request(id)?;
+            self.replace_snapshot(state.snapshot());
+            pending
         };
         pending.abort_timeout();
 
@@ -156,7 +167,9 @@ impl RuntimeManager {
     pub(crate) async fn reject_direct_request(&self, id: DirectRequestId) -> NetworkResult<()> {
         let pending = {
             let mut state = self.inner.state.lock().await;
-            state.take_pending_direct_request(id)?
+            let pending = state.take_pending_direct_request(id)?;
+            self.replace_snapshot(state.snapshot());
+            pending
         };
         pending.abort_timeout();
 
@@ -179,7 +192,9 @@ impl RuntimeManager {
     pub(super) async fn handle_inbound_direct(&self, pending: super::InboundDirectPending) {
         let duplicate = {
             let state = self.inner.state.lock().await;
-            state.find_session_by_noob_id(&pending.peer_noob_id).is_some()
+            state
+                .find_session_by_noob_id(&pending.peer_noob_id)
+                .is_some()
                 || state.has_pending_direct_request_for_peer(&pending.peer_noob_id)
         };
         if duplicate {
@@ -239,6 +254,7 @@ impl RuntimeManager {
                 framed,
                 timeout_task,
             });
+            self.replace_snapshot(state.snapshot());
         }
         self.inner
             .event_hub
@@ -248,7 +264,11 @@ impl RuntimeManager {
     pub(super) async fn expire_direct_request(&self, id: DirectRequestId) {
         let pending = {
             let mut state = self.inner.state.lock().await;
-            state.take_pending_direct_request(id).ok()
+            let pending = state.take_pending_direct_request(id).ok();
+            if pending.is_some() {
+                self.replace_snapshot(state.snapshot());
+            }
+            pending
         };
         let Some(pending) = pending else {
             return;
@@ -379,15 +399,18 @@ async fn wait_for_direct_approval(
     framed: &mut crate::transport::NetworkFramed,
 ) -> Result<DirectRequestStatus, ConnectionFailure> {
     loop {
-        let Some(packet) = recv_packet(framed).await.map_err(|error| ConnectionFailure {
-            kind: classify_transport_error(&error),
-            mode: ConnectionMode::Direct,
-            peer_noob_id: None,
-            peer_device_id: None,
-            remote_addr: None,
-            local_bind_addr: None,
-            detail: error.to_string(),
-        })? else {
+        let Some(packet) = recv_packet(framed)
+            .await
+            .map_err(|error| ConnectionFailure {
+                kind: classify_transport_error(&error),
+                mode: ConnectionMode::Direct,
+                peer_noob_id: None,
+                peer_device_id: None,
+                remote_addr: None,
+                local_bind_addr: None,
+                detail: error.to_string(),
+            })?
+        else {
             return Err(ConnectionFailure {
                 kind: ConnectionFailureKind::Io,
                 mode: ConnectionMode::Direct,

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use tokio::sync::{Mutex, broadcast, mpsc};
 use tokio::task::JoinHandle;
@@ -40,6 +40,7 @@ pub(crate) struct RuntimeManager {
 struct ManagerInner {
     startup: RuntimeStartup,
     state: Mutex<RuntimeState>,
+    snapshot: RwLock<NetworkSnapshot>,
     event_hub: EventHub,
     driver: Mutex<RuntimeDriver>,
 }
@@ -162,10 +163,13 @@ impl RuntimeStartup {
 impl RuntimeManager {
     pub(crate) fn new(config: NetworkConfig) -> NetworkResult<Self> {
         config.validate()?;
+        let state = RuntimeState::new(&config);
+        let snapshot = state.snapshot();
         Ok(Self {
             inner: Arc::new(ManagerInner {
                 startup: RuntimeStartup::from_config(&config),
-                state: Mutex::new(RuntimeState::new(&config)),
+                state: Mutex::new(state),
+                snapshot: RwLock::new(snapshot),
                 event_hub: EventHub::new(),
                 driver: Mutex::new(RuntimeDriver::default()),
             }),
@@ -180,28 +184,33 @@ impl RuntimeManager {
             }
         }
 
-        let mut start_events = {
+        let start_events = {
             let mut state = self.inner.state.lock().await;
-            state.start()
+            let events = state.start();
+            self.replace_snapshot(state.snapshot());
+            events
         };
+        self.inner.event_hub.publish_all(start_events);
 
         let start_result = self.start_runtime_tasks().await;
         if let Err(error) = start_result {
             let error_events = {
                 let mut state = self.inner.state.lock().await;
-                state.set_error(error.to_string())
+                let events = state.set_error(error.to_string());
+                self.replace_snapshot(state.snapshot());
+                events
             };
-            start_events.extend(error_events);
-            self.inner.event_hub.publish_all(start_events);
+            self.inner.event_hub.publish_all(error_events);
             return Err(error);
         }
 
         let running_events = {
             let mut state = self.inner.state.lock().await;
-            state.mark_running()
+            let events = state.mark_running();
+            self.replace_snapshot(state.snapshot());
+            events
         };
-        start_events.extend(running_events);
-        self.inner.event_hub.publish_all(start_events);
+        self.inner.event_hub.publish_all(running_events);
         self.schedule_lan_connects().await;
         Ok(())
     }
@@ -276,15 +285,20 @@ impl RuntimeManager {
 
         let events = {
             let mut state = self.inner.state.lock().await;
-            state.shutdown()
+            let events = state.shutdown();
+            self.replace_snapshot(state.snapshot());
+            events
         };
         self.inner.event_hub.publish_all(events);
         Ok(())
     }
 
-    pub(crate) async fn snapshot(&self) -> NetworkResult<NetworkSnapshot> {
-        let state = self.inner.state.lock().await;
-        Ok(state.snapshot())
+    pub(crate) fn snapshot(&self) -> NetworkSnapshot {
+        self.inner
+            .snapshot
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 
     pub(crate) fn subscribe(&self) -> NetworkSubscription {
@@ -294,7 +308,9 @@ impl RuntimeManager {
     pub(crate) async fn set_lan_enabled(&self, enabled: bool) -> NetworkResult<()> {
         let events = {
             let mut state = self.inner.state.lock().await;
-            state.set_lan_enabled(enabled)
+            let events = state.set_lan_enabled(enabled);
+            self.replace_snapshot(state.snapshot());
+            events
         };
         self.inner.event_hub.publish_all(events);
 
@@ -334,5 +350,23 @@ impl RuntimeManager {
                 self.schedule_lan_connects().await;
             }
         }
+    }
+}
+
+impl RuntimeManager {
+    pub(crate) fn replace_snapshot(&self, snapshot: NetworkSnapshot) {
+        *self
+            .inner
+            .snapshot
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = snapshot;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_publish_hook(
+        &self,
+        hook: std::sync::Arc<dyn Fn(&NetworkEvent) + Send + Sync>,
+    ) {
+        self.inner.event_hub.set_before_send_hook(hook);
     }
 }

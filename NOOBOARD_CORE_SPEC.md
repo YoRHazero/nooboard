@@ -287,12 +287,19 @@ impl NooboardCore {
 
 - `launch(...)` MUST:
   - validate and load the config referenced by `launch`
+  - establish the internal async execution context needed by the workspace actor, bridge tasks,
+    and clipboard watch forwarding
   - create `StorageRuntime`
   - create `ClipboardRuntime`
   - create a stopped `NetworkRuntime`
+  - obtain the initial `NetworkSnapshot` directly from `NetworkRuntime::snapshot()`
+  - allocate bridge subscriptions before enabling any background producer that can emit into them
   - start clipboard watch only if `local_capture_enabled == true`
   - return a ready workspace handle
 - `launch(...)` MUST NOT auto-start the network runtime.
+- `launch(...)` and the rest of the public API MUST NOT require the caller to already be inside a
+  Tokio runtime.
+- `launch(...)` MUST NOT spawn helper threads or use `block_on` solely to bridge an async network snapshot read.
 - `start_network()` MUST be idempotent.
 - `stop_network()` MUST be idempotent.
 - `shutdown()` MUST:
@@ -437,7 +444,7 @@ pub enum WorkspaceEvent {
 
 ### 6.1 Snapshot semantics
 
-- `WorkspaceSnapshot.network` MUST be copied directly from `NetworkRuntime::snapshot()`.
+- `WorkspaceSnapshot.network` MUST be copied directly from synchronous `NetworkRuntime::snapshot()`.
 - `WorkspaceSnapshot` MUST NOT maintain a second peer list or second transfer list outside
   `NetworkSnapshot`.
 - `WorkspaceSnapshot.settings.network` MUST contain only persisted settings, not transient network
@@ -504,6 +511,8 @@ record remains persisted.
 - `send_files(...)` MUST delegate directly to `NetworkRuntime::send_files(...)`.
 - `decide_incoming_transfer(...)` MUST delegate directly to `NetworkRuntime`.
 - `cancel_transfer(...)` MUST delegate directly to `NetworkRuntime`.
+- `nooboard-core` MUST NOT classify transfer tickets from `WorkspaceSnapshot` before invoking
+  `NetworkRuntime`.
 - `WorkspaceSnapshot.network.transfers` is the single source of truth for transfer state.
 - incoming transfer offers, active transfer updates, and transfer completions MUST be surfaced as
   `WorkspaceEvent`s with the corresponding `TransferTicket`.
@@ -590,6 +599,10 @@ pub enum CoreError {
 
 The exact payload type for clipboard failures may be refined, but clipboard/backend failures MUST
 remain distinguishable from config, storage, and network failures.
+
+Transfer command failures MUST be derived from structured `NetworkRuntime` errors and then mapped
+to `CoreError::TransferNotFound` / `CoreError::TransferNotCancelable`. `nooboard-core` MUST NOT
+derive those errors by inspecting `WorkspaceSnapshot`.
 
 ## 12. Internal Module Layout
 

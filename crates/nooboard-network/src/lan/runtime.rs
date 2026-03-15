@@ -118,7 +118,10 @@ fn build_service_info(config: &LanRuntimeConfig) -> Result<ServiceInfo, Discover
         .map(IfKind::Addr)
         .collect::<Vec<_>>();
     let properties = [
-        (TXT_PROTOCOL_VERSION, crate::protocol::PROTOCOL_VERSION.to_string()),
+        (
+            TXT_PROTOCOL_VERSION,
+            crate::protocol::PROTOCOL_VERSION.to_string(),
+        ),
         (TXT_NOOB_ID, config.local_noob_id.clone()),
         (TXT_DEVICE_ID, config.local_device_id.clone()),
         (TXT_BOOT_ID, config.boot_id.clone()),
@@ -205,10 +208,7 @@ mod tests {
             local_device_id: "Local Device".to_string(),
             boot_id: "boot-a".to_string(),
             listen_port: 17890,
-            advertise_addrs: vec![
-                Ipv4Addr::new(10, 0, 0, 2),
-                Ipv4Addr::new(10, 0, 0, 3),
-            ],
+            advertise_addrs: vec![Ipv4Addr::new(10, 0, 0, 2), Ipv4Addr::new(10, 0, 0, 3)],
         }
     }
 
@@ -249,8 +249,14 @@ mod tests {
         assert_eq!(addrs.len(), 2);
         assert!(addrs.contains(&Ipv4Addr::new(10, 0, 0, 2)));
         assert!(addrs.contains(&Ipv4Addr::new(10, 0, 0, 3)));
-        assert_eq!(service.get_property_val_str(TXT_NOOB_ID), Some("local-noob"));
-        assert_eq!(service.get_property_val_str(TXT_DEVICE_ID), Some("Local Device"));
+        assert_eq!(
+            service.get_property_val_str(TXT_NOOB_ID),
+            Some("local-noob")
+        );
+        assert_eq!(
+            service.get_property_val_str(TXT_DEVICE_ID),
+            Some("Local Device")
+        );
         assert_eq!(service.get_property_val_str(TXT_BOOT_ID), Some("boot-a"));
         let expected_protocol = crate::protocol::PROTOCOL_VERSION.to_string();
         assert_eq!(

@@ -1,11 +1,13 @@
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
+use crate::clipboard::LocalClipboardSubscription;
 use crate::error::CoreResult;
+use nooboard_network::NetworkSubscription;
 
 use super::bridges;
 use super::command::{WorkspaceBridgeMessage, WorkspaceCommand};
-use super::handlers::{clipboard, config, network, storage, transfers};
+use super::handlers::{clipboard, config, network, snapshot, storage, transfers};
 use super::state::WorkspaceState;
 
 const COMMAND_CHANNEL_CAPACITY: usize = 256;
@@ -24,13 +26,20 @@ struct ActorRuntime {
 pub(crate) fn spawn_workspace_actor(
     handle: &tokio::runtime::Handle,
     mut state: WorkspaceState,
+    clipboard_subscription: LocalClipboardSubscription,
+    network_subscription: NetworkSubscription,
 ) -> WorkspaceActor {
     let (command_tx, command_rx) = mpsc::channel(COMMAND_CHANNEL_CAPACITY);
     let actor_tx = command_tx.clone();
     let runtime_handle = handle.clone();
     let task = runtime_handle.spawn(async move {
         let mut runtime = ActorRuntime::default();
-        start_bridge_tasks(&mut runtime, &state, &actor_tx);
+        start_bridge_tasks(
+            &mut runtime,
+            &actor_tx,
+            clipboard_subscription,
+            network_subscription,
+        );
         run_workspace_actor(&mut state, &mut runtime, actor_tx.clone(), command_rx).await;
     });
 
@@ -235,15 +244,16 @@ async fn handle_bridge_message(state: &mut WorkspaceState, message: WorkspaceBri
 
 fn start_bridge_tasks(
     runtime: &mut ActorRuntime,
-    state: &WorkspaceState,
     actor_tx: &mpsc::Sender<WorkspaceCommand>,
+    clipboard_subscription: LocalClipboardSubscription,
+    network_subscription: NetworkSubscription,
 ) {
     runtime.clipboard_bridge = Some(bridges::clipboard::spawn(
-        state.clipboard_runtime().subscribe_local_changes(),
+        clipboard_subscription,
         actor_tx.clone(),
     ));
     runtime.network_bridge = Some(bridges::network::spawn(
-        state.network_runtime().subscribe(),
+        network_subscription,
         actor_tx.clone(),
     ));
 }
@@ -277,7 +287,7 @@ async fn stop_bridge_tasks(runtime: &mut ActorRuntime) {
 async fn shutdown_workspace(state: &mut WorkspaceState) -> CoreResult<()> {
     let clipboard_result = state.clipboard_runtime().stop_watch().await;
     let network_result = state.network_runtime().shutdown().await.map_err(Into::into);
-    let refresh_result = network::refresh_snapshot_from_runtime(state).await;
+    let refresh_result = snapshot::refresh_snapshot_from_runtime(state).await;
     let storage_result = state.storage_runtime().shutdown().await;
 
     if let Err(error) = clipboard_result {

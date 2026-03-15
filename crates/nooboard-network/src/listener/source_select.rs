@@ -2,7 +2,9 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 
 use crate::errors::NetworkError;
 
-pub(crate) fn select_local_ipv4_for_remote(remote_addr: SocketAddr) -> Result<Ipv4Addr, NetworkError> {
+pub(crate) fn select_local_ipv4_for_remote(
+    remote_addr: SocketAddr,
+) -> Result<Ipv4Addr, NetworkError> {
     let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))
         .map_err(|error| NetworkError::Internal(error.to_string()))?;
     socket

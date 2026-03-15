@@ -2,8 +2,8 @@ mod auth;
 mod config;
 mod connection;
 mod direct;
-mod event_hub;
 mod errors;
+mod event_hub;
 mod events;
 mod lan;
 mod listener;
@@ -25,8 +25,7 @@ pub use events::{
     ConnectionFailure, ConnectionFailureKind, ConnectionMode, DirectRequestId, DirectSeedId,
     DirectSeedInfo, IncomingTransferDecision, IncomingTransferDisposition, IncomingTransferOffer,
     LanPeerInfo, NetworkEvent, NetworkSnapshot, NetworkStatus, NetworkSubscription,
-    PendingDirectRequest, SendFilesRequest, SendTextRequest, SessionId, SessionInfo,
-    SessionTarget, TransferDirection, TransferOutcome, TransferTicket, TransfersSnapshot,
-    UpsertDirectSeedInput,
+    PendingDirectRequest, SendFilesRequest, SendTextRequest, SessionId, SessionInfo, SessionTarget,
+    TransferDirection, TransferOutcome, TransferTicket, TransfersSnapshot, UpsertDirectSeedInput,
 };
 pub use runtime::NetworkRuntime;

@@ -1,17 +1,20 @@
 mod support;
 
 use std::fs;
+use std::net::TcpListener;
 use std::sync::Arc;
 
+use nooboard_config::AppConfig;
 use nooboard_core::{
-    ClipboardRecordSource, ListClipboardHistoryRequest, SendFilesRequest, SessionTarget,
+    ClipboardRecordSource, ListClipboardHistoryRequest, NetworkStatus, SendFilesRequest,
+    SessionTarget, TransferOutcome,
 };
 use tokio::time::Duration;
 
 use support::{
     TestError, accept_incoming_transfer, committed_clipboard_event, connect_core_pair,
     incoming_transfer_ticket, new_core, new_core_pair, restart_core, transfer_completed_event,
-    wait_for_event, wait_for_snapshot, wait_for_state_update,
+    wait_for_event, wait_for_sessions, wait_for_snapshot, wait_for_state_update,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -68,6 +71,16 @@ async fn submit_text_and_adopt_round_trip() -> Result<(), TestError> {
     Ok(())
 }
 
+#[test]
+fn launch_does_not_require_callers_tokio_runtime() -> Result<(), TestError> {
+    let env = new_core()?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    runtime.block_on(env.core.shutdown())?;
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_capture_enabled_persists_and_restarts_watch_on_launch() -> Result<(), TestError> {
     let env = new_core()?;
@@ -117,6 +130,67 @@ async fn local_capture_enabled_persists_and_restarts_watch_on_launch() -> Result
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn start_network_failure_refreshes_snapshot_to_error_state() -> Result<(), TestError> {
+    let env = new_core()?;
+    let mut state_subscription = env.core.subscribe_state().await?;
+    let initial_snapshot = state_subscription.latest().clone();
+    let _occupied = TcpListener::bind(("0.0.0.0", env.listen_port))?;
+
+    let error = env.core.start_network().await.expect_err("start must fail");
+    assert!(matches!(error, nooboard_core::CoreError::Network(_)));
+
+    let snapshot = wait_for_state_update(
+        &mut state_subscription,
+        Duration::from_secs(2),
+        |snapshot| matches!(snapshot.network.status, NetworkStatus::Error(_)),
+    )
+    .await?;
+    assert!(snapshot.revision > initial_snapshot.revision);
+
+    env.core.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn failed_network_rebuild_refreshes_snapshot_to_persisted_config() -> Result<(), TestError> {
+    let env = new_core()?;
+    env.core.start_network().await?;
+    let _ = wait_for_snapshot(&env.core, Duration::from_secs(2), |snapshot| {
+        matches!(snapshot.network.status, NetworkStatus::Running)
+    })
+    .await?;
+
+    let occupied = TcpListener::bind(("0.0.0.0", 0))?;
+    let occupied_port = occupied.local_addr()?.port();
+    assert_ne!(occupied_port, env.listen_port);
+
+    let mut state_subscription = env.core.subscribe_state().await?;
+    let error = env
+        .core
+        .set_network_listen_port(occupied_port)
+        .await
+        .expect_err("rebuild must fail");
+    assert!(matches!(error, nooboard_core::CoreError::Network(_)));
+
+    let snapshot = wait_for_state_update(
+        &mut state_subscription,
+        Duration::from_secs(2),
+        |snapshot| {
+            snapshot.settings.network.listen_port == occupied_port
+                && matches!(snapshot.network.status, NetworkStatus::Error(_))
+        },
+    )
+    .await?;
+    assert_eq!(snapshot.settings.network.listen_port, occupied_port);
+
+    let persisted = AppConfig::load(&env.config_path)?;
+    assert_eq!(persisted.network.listen_port, occupied_port);
+
+    env.core.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn direct_connect_and_submit_text_commits_remote_sync() -> Result<(), TestError> {
     let (env_a, env_b) = new_core_pair()?;
     connect_core_pair(&env_a.core, &env_b.core, env_b.listen_port).await?;
@@ -138,6 +212,23 @@ async fn direct_connect_and_submit_text_commits_remote_sync() -> Result<(), Test
     assert_eq!(record_b.source, ClipboardRecordSource::RemoteSync);
     assert_eq!(record_b.origin_noob_id, sender_identity.noob_id);
     assert_eq!(record_b.origin_device_id, sender_identity.device_id);
+
+    env_a.core.shutdown().await?;
+    env_b.core.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn disconnect_session_after_listing_runtime_sessions_succeeds() -> Result<(), TestError> {
+    let (env_a, env_b) = new_core_pair()?;
+    connect_core_pair(&env_a.core, &env_b.core, env_b.listen_port).await?;
+
+    let sessions = env_a.core.list_sessions().await?;
+    assert_eq!(sessions.len(), 1);
+
+    env_a.core.disconnect_session(sessions[0].id).await?;
+    let _ = wait_for_sessions(&env_a.core, 0).await?;
+    let _ = wait_for_sessions(&env_b.core, 0).await?;
 
     env_a.core.shutdown().await?;
     env_b.core.shutdown().await?;
@@ -213,6 +304,40 @@ async fn send_files_updates_transfer_snapshot_and_writes_downloaded_file() -> Re
             .iter()
             .all(|transfer| transfer.ticket != offered_ticket)
     );
+
+    env_a.core.shutdown().await?;
+    env_b.core.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancel_transfer_immediately_after_send_files_succeeds() -> Result<(), TestError> {
+    let (env_a, env_b) = new_core_pair()?;
+    connect_core_pair(&env_a.core, &env_b.core, env_b.listen_port).await?;
+
+    let mut events_a = env_a.core.subscribe_events().await?;
+    let source_path = env_a.dir.path().join("queued.txt");
+    fs::write(&source_path, b"file-body")?;
+
+    let tickets = env_a
+        .core
+        .send_files(SendFilesRequest {
+            files: vec![source_path],
+            target: SessionTarget::AllConnected,
+        })
+        .await?;
+    assert_eq!(tickets.len(), 1);
+
+    env_a.core.cancel_transfer(tickets[0]).await?;
+
+    let (completed_ticket, outcome) = wait_for_event(
+        &mut events_a,
+        Duration::from_secs(10),
+        transfer_completed_event,
+    )
+    .await?;
+    assert_eq!(completed_ticket, tickets[0]);
+    assert_eq!(outcome, TransferOutcome::Cancelled);
 
     env_a.core.shutdown().await?;
     env_b.core.shutdown().await?;

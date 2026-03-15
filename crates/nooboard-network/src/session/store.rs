@@ -1,13 +1,14 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::net::SocketAddr;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::sync::{mpsc, oneshot};
 
 use crate::errors::{NetworkError, NetworkResult};
 use crate::session::actor::SessionCommand;
 use crate::{
-    ConnectionMode, SendFilesRequest, SendTextRequest, SessionId, SessionInfo, SessionTarget,
-    TransferTicket,
+    ActiveTransferInfo, ActiveTransferState, ConnectionMode, SendFilesRequest, SendTextRequest,
+    SessionId, SessionInfo, SessionTarget, TransferDirection, TransferTicket,
 };
 
 #[derive(Debug)]
@@ -24,7 +25,11 @@ pub(crate) struct SessionStore {
 
 impl SessionStore {
     pub(crate) fn list_sorted(&self) -> Vec<SessionInfo> {
-        let mut sessions: Vec<_> = self.sessions.values().map(|record| record.info.clone()).collect();
+        let mut sessions: Vec<_> = self
+            .sessions
+            .values()
+            .map(|record| record.info.clone())
+            .collect();
         sessions.sort_by_key(|session| (session.connected_at_ms, session.id));
         sessions
     }
@@ -81,7 +86,8 @@ impl SessionStore {
 
     pub(crate) fn find_direct_by_remote_addr(&self, remote_addr: SocketAddr) -> Option<SessionId> {
         self.sessions.iter().find_map(|(id, record)| {
-            if record.info.mode == ConnectionMode::Direct && record.info.remote_addr == remote_addr {
+            if record.info.mode == ConnectionMode::Direct && record.info.remote_addr == remote_addr
+            {
                 Some(*id)
             } else {
                 None
@@ -90,14 +96,15 @@ impl SessionStore {
     }
 
     pub(crate) fn find_by_peer_noob_id(&self, peer_noob_id: &str) -> Option<SessionId> {
-        self.sessions.iter().find_map(|(id, record)| {
-            (record.info.peer_noob_id == peer_noob_id).then_some(*id)
-        })
+        self.sessions
+            .iter()
+            .find_map(|(id, record)| (record.info.peer_noob_id == peer_noob_id).then_some(*id))
     }
 
     pub(crate) fn insert(&mut self, info: SessionInfo, command_tx: mpsc::Sender<SessionCommand>) {
         self.next_transfer_id_by_session.entry(info.id).or_insert(1);
-        self.sessions.insert(info.id, SessionRecord { info, command_tx });
+        self.sessions
+            .insert(info.id, SessionRecord { info, command_tx });
     }
 
     pub(crate) fn send_text(&self, request: &SendTextRequest) -> NetworkResult<()> {
@@ -140,17 +147,17 @@ impl SessionStore {
     pub(crate) fn send_files(
         &mut self,
         request: &SendFilesRequest,
-    ) -> NetworkResult<Vec<TransferTicket>> {
+    ) -> NetworkResult<Vec<ActiveTransferInfo>> {
         let target_ids = self.resolve_target_ids(&request.target)?;
-        let mut tickets = Vec::new();
+        let mut queued = Vec::new();
 
         for session_id in target_ids {
-            let command_tx = self
+            let record = self
                 .sessions
                 .get(&session_id)
-                .map(|record| record.command_tx.clone())
                 .ok_or(NetworkError::SessionNotFound(session_id))?;
-
+            let command_tx = record.command_tx.clone();
+            let session_info = record.info.clone();
             for path in &request.files {
                 let transfer_id = self.next_transfer_id(session_id);
                 try_send_session_command(
@@ -162,14 +169,15 @@ impl SessionStore {
                     session_id,
                     "send file",
                 )?;
-                tickets.push(TransferTicket {
-                    session_id,
-                    raw_id: transfer_id,
-                });
+                queued.push(queued_upload_info(
+                    session_info.clone(),
+                    transfer_id,
+                    path.as_path(),
+                ));
             }
         }
 
-        Ok(tickets)
+        Ok(queued)
     }
 
     pub(crate) fn decide_incoming_transfer(
@@ -209,10 +217,7 @@ impl SessionStore {
             ticket.session_id,
             "cancel transfer",
         )?;
-        reply_rx
-            .await
-            .map_err(|_| NetworkError::ChannelClosed)?
-            .map_err(|error| NetworkError::Internal(error.to_string()))
+        reply_rx.await.map_err(|_| NetworkError::ChannelClosed)?
     }
 
     pub(crate) fn disconnect(&self, session_id: SessionId) -> NetworkResult<()> {
@@ -250,11 +255,47 @@ impl SessionStore {
     }
 
     fn next_transfer_id(&mut self, session_id: SessionId) -> u32 {
-        let entry = self.next_transfer_id_by_session.entry(session_id).or_insert(1);
+        let entry = self
+            .next_transfer_id_by_session
+            .entry(session_id)
+            .or_insert(1);
         let next = *entry;
         *entry = entry.wrapping_add(1);
         next
     }
+}
+
+fn queued_upload_info(
+    session: SessionInfo,
+    transfer_id: u32,
+    path: &std::path::Path,
+) -> ActiveTransferInfo {
+    ActiveTransferInfo {
+        ticket: TransferTicket {
+            session_id: session.id,
+            raw_id: transfer_id,
+        },
+        session_id: session.id,
+        peer_noob_id: session.peer_noob_id,
+        peer_device_id: session.peer_device_id,
+        file_name: path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(ToString::to_string)
+            .unwrap_or_default(),
+        file_size: 0,
+        transferred_bytes: 0,
+        direction: TransferDirection::Upload,
+        state: ActiveTransferState::Queued,
+        updated_at_ms: now_millis(),
+    }
+}
+
+fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 fn try_send_session_command(

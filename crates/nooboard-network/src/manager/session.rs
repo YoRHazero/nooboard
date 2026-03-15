@@ -1,5 +1,5 @@
-use tokio::sync::mpsc;
 use tokio::spawn;
+use tokio::sync::mpsc;
 
 use super::tasks::{classify_connection_error, now_millis};
 use super::{ReadySession, RuntimeManager};
@@ -32,7 +32,9 @@ impl RuntimeManager {
         request: SendFilesRequest,
     ) -> NetworkResult<Vec<TransferTicket>> {
         let mut state = self.inner.state.lock().await;
-        state.send_files(&request)
+        let tickets = state.send_files(&request)?;
+        self.replace_snapshot(state.snapshot());
+        Ok(tickets)
     }
 
     pub(crate) async fn decide_incoming_transfer(
@@ -53,6 +55,7 @@ impl RuntimeManager {
             SessionLifecycleEvent::Network(NetworkEvent::IncomingTransferOffered { offer }) => {
                 let mut state = self.inner.state.lock().await;
                 state.apply_transfer_offer(offer.clone());
+                self.replace_snapshot(state.snapshot());
                 drop(state);
                 self.inner
                     .event_hub
@@ -61,6 +64,7 @@ impl RuntimeManager {
             SessionLifecycleEvent::Network(NetworkEvent::TransferUpdated { transfer }) => {
                 let mut state = self.inner.state.lock().await;
                 state.apply_transfer_update(transfer.clone());
+                self.replace_snapshot(state.snapshot());
                 drop(state);
                 self.inner
                     .event_hub
@@ -69,6 +73,7 @@ impl RuntimeManager {
             SessionLifecycleEvent::Network(NetworkEvent::TransferCompleted { transfer }) => {
                 let mut state = self.inner.state.lock().await;
                 state.apply_transfer_completed(transfer.clone());
+                self.replace_snapshot(state.snapshot());
                 drop(state);
                 self.inner
                     .event_hub
@@ -85,6 +90,9 @@ impl RuntimeManager {
                         .into_iter()
                         .find(|session| session.id == session_id);
                     let removed = state.remove_session_if_present(session_id);
+                    if removed {
+                        self.replace_snapshot(state.snapshot());
+                    }
                     (info, removed)
                 };
                 if removed.1 {
@@ -98,11 +106,9 @@ impl RuntimeManager {
                     }
                 }
                 if let Some(info) = removed.0 {
-                    self.inner
-                        .event_hub
-                        .publish(NetworkEvent::ConnectionFailed(
-                            connection_failure_from_session_error(info, error),
-                        ));
+                    self.inner.event_hub.publish(NetworkEvent::ConnectionFailed(
+                        connection_failure_from_session_error(info, error),
+                    ));
                 }
                 self.schedule_lan_connects().await;
             }
@@ -114,6 +120,9 @@ impl RuntimeManager {
                         .into_iter()
                         .find(|session| session.id == session_id);
                     let removed = state.remove_session_if_present(session_id);
+                    if removed {
+                        self.replace_snapshot(state.snapshot());
+                    }
                     removed.then_some(info).flatten()
                 };
                 if let Some(info) = removed_info {
@@ -131,9 +140,8 @@ impl RuntimeManager {
         if ready.mode == ConnectionMode::Lan {
             match dedupe_decision(&self.inner.startup.identity.noob_id, &ready.peer_noob_id) {
                 DedupeDecision::RejectConflict => {
-                    self.inner
-                        .event_hub
-                        .publish(NetworkEvent::ConnectionFailed(ConnectionFailure {
+                    self.inner.event_hub.publish(NetworkEvent::ConnectionFailed(
+                        ConnectionFailure {
                             kind: ConnectionFailureKind::AlreadyConnected,
                             mode: ready.mode,
                             peer_noob_id: Some(ready.peer_noob_id),
@@ -141,7 +149,8 @@ impl RuntimeManager {
                             remote_addr: Some(ready.remote_addr),
                             local_bind_addr: ready.local_bind_addr,
                             detail: "conflicting LAN noob_id".to_string(),
-                        }));
+                        },
+                    ));
                     return;
                 }
                 DedupeDecision::ConnectOut if !ready.outbound => return,
@@ -196,10 +205,13 @@ impl RuntimeManager {
                 state.note_lan_connect_success(&ready.peer_noob_id);
             }
             state.insert_session(info, command_tx);
+            self.replace_snapshot(state.snapshot());
         }
 
         if ready.seed_id.is_some() {
-            self.inner.event_hub.publish(NetworkEvent::DirectSeedsChanged);
+            self.inner
+                .event_hub
+                .publish(NetworkEvent::DirectSeedsChanged);
         }
         if ready.mode == ConnectionMode::Lan {
             self.inner.event_hub.publish(NetworkEvent::LanPeersChanged);

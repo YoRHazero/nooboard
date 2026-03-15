@@ -27,8 +27,8 @@ impl NetworkRuntime {
         self.manager.shutdown().await
     }
 
-    pub async fn snapshot(&self) -> NetworkResult<NetworkSnapshot> {
-        self.manager.snapshot().await
+    pub fn snapshot(&self) -> NetworkSnapshot {
+        self.manager.snapshot()
     }
 
     pub fn subscribe(&self) -> NetworkSubscription {
@@ -65,9 +65,7 @@ impl NetworkRuntime {
         self.manager.connect_direct_seed(id).await
     }
 
-    pub async fn list_pending_direct_requests(
-        &self,
-    ) -> NetworkResult<Vec<PendingDirectRequest>> {
+    pub async fn list_pending_direct_requests(&self) -> NetworkResult<Vec<PendingDirectRequest>> {
         self.manager.list_pending_direct_requests().await
     }
 
@@ -107,6 +105,14 @@ impl NetworkRuntime {
 
     pub async fn cancel_transfer(&self, id: TransferTicket) -> NetworkResult<()> {
         self.manager.cancel_transfer(id).await
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_publish_hook(
+        &self,
+        hook: std::sync::Arc<dyn Fn(&crate::NetworkEvent) + Send + Sync>,
+    ) {
+        self.manager.set_publish_hook(hook);
     }
 }
 

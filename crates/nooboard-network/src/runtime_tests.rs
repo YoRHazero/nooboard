@@ -1,5 +1,7 @@
 use std::fs;
+use std::net::TcpListener;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use tempfile::tempdir;
 use tokio::time::{Duration, sleep, timeout};
@@ -9,9 +11,10 @@ use crate::config::{
     NetworkTransportConfig,
 };
 use crate::{
-    ConnectDirectOutcome, IncomingTransferDecision, IncomingTransferDisposition, NetworkConfig,
-    NetworkError, NetworkEvent, NetworkRuntime, NetworkStatus, PendingDirectRequest,
-    SendTextRequest, SessionId, SessionInfo, SessionTarget, UpsertDirectSeedInput,
+    ActiveTransferState, ConnectDirectOutcome, IncomingTransferDecision,
+    IncomingTransferDisposition, NetworkConfig, NetworkError, NetworkEvent, NetworkRuntime,
+    NetworkStatus, PendingDirectRequest, SendTextRequest, SessionId, SessionInfo, SessionTarget,
+    TransferOutcome, UpsertDirectSeedInput,
 };
 
 fn free_port() -> u16 {
@@ -122,17 +125,125 @@ async fn start_and_shutdown_are_idempotent() {
     let runtime = NetworkRuntime::new(test_config()).expect("runtime");
     runtime.start().await.expect("start");
     runtime.start().await.expect("start again");
-    assert!(matches!(
-        runtime.snapshot().await.expect("snapshot").status,
-        NetworkStatus::Running
-    ));
+    assert!(matches!(runtime.snapshot().status, NetworkStatus::Running));
 
     runtime.shutdown().await.expect("stop");
     runtime.shutdown().await.expect("stop again");
+    assert!(matches!(runtime.snapshot().status, NetworkStatus::Stopped));
+}
+
+#[tokio::test]
+async fn start_emits_starting_before_running_status_events() {
+    let runtime = NetworkRuntime::new(test_config()).expect("runtime");
+    let mut subscription = runtime.subscribe();
+    let runtime_for_start = runtime.clone();
+
+    let start_task = tokio::spawn(async move { runtime_for_start.start().await });
+    let starting = wait_for_event(&mut subscription, |event| {
+        matches!(event, NetworkEvent::StatusChanged(NetworkStatus::Starting))
+    })
+    .await;
     assert!(matches!(
-        runtime.snapshot().await.expect("snapshot").status,
-        NetworkStatus::Stopped
+        starting,
+        NetworkEvent::StatusChanged(NetworkStatus::Starting)
     ));
+    let running = wait_for_event(&mut subscription, |event| {
+        matches!(event, NetworkEvent::StatusChanged(NetworkStatus::Running))
+    })
+    .await;
+    assert!(matches!(
+        running,
+        NetworkEvent::StatusChanged(NetworkStatus::Running)
+    ));
+
+    start_task.await.expect("join start").expect("start");
+    assert!(matches!(runtime.snapshot().status, NetworkStatus::Running));
+    runtime.shutdown().await.expect("shutdown");
+}
+
+#[tokio::test]
+async fn start_updates_snapshot_cache_before_status_events() {
+    let runtime = NetworkRuntime::new(test_config()).expect("runtime");
+    let observed = Arc::new(Mutex::new(Vec::<(NetworkStatus, NetworkStatus)>::new()));
+    let observed_for_hook = Arc::clone(&observed);
+    let runtime_for_hook = runtime.clone();
+    runtime.set_publish_hook(Arc::new(move |event| {
+        let NetworkEvent::StatusChanged(event_status) = event else {
+            return;
+        };
+        observed_for_hook
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push((event_status.clone(), runtime_for_hook.snapshot().status));
+    }));
+
+    runtime.start().await.expect("start");
+
+    let observed = observed
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    assert!(
+        observed
+            .iter()
+            .any(|(event_status, snapshot_status)| matches!(
+                (event_status, snapshot_status),
+                (NetworkStatus::Starting, NetworkStatus::Starting)
+            ))
+    );
+    assert!(
+        observed
+            .iter()
+            .any(|(event_status, snapshot_status)| matches!(
+                (event_status, snapshot_status),
+                (NetworkStatus::Running, NetworkStatus::Running)
+            ))
+    );
+
+    runtime.shutdown().await.expect("shutdown");
+}
+
+#[tokio::test]
+async fn failed_start_updates_snapshot_cache_before_error_event() {
+    let config = test_config();
+    let _occupied = TcpListener::bind(("0.0.0.0", config.listen_port)).expect("occupy port");
+    let runtime = NetworkRuntime::new(config).expect("runtime");
+    let observed = Arc::new(Mutex::new(Vec::<(NetworkStatus, NetworkStatus)>::new()));
+    let observed_for_hook = Arc::clone(&observed);
+    let runtime_for_hook = runtime.clone();
+    runtime.set_publish_hook(Arc::new(move |event| {
+        let NetworkEvent::StatusChanged(event_status) = event else {
+            return;
+        };
+        observed_for_hook
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push((event_status.clone(), runtime_for_hook.snapshot().status));
+    }));
+
+    let error = runtime.start().await.expect_err("start must fail");
+    assert!(matches!(error, NetworkError::Internal(_)));
+
+    let observed = observed
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    assert!(
+        observed
+            .iter()
+            .any(|(event_status, snapshot_status)| matches!(
+                (event_status, snapshot_status),
+                (NetworkStatus::Starting, NetworkStatus::Starting)
+            ))
+    );
+    assert!(
+        observed
+            .iter()
+            .any(|(event_status, snapshot_status)| matches!(
+                (event_status, snapshot_status),
+                (NetworkStatus::Error(_), NetworkStatus::Error(_))
+            ))
+    );
 }
 
 #[tokio::test]
@@ -144,7 +255,7 @@ async fn set_lan_enabled_updates_stopped_runtime_without_error() {
         .await
         .expect("disable lan while stopped");
 
-    let snapshot = runtime.snapshot().await.expect("snapshot");
+    let snapshot = runtime.snapshot();
     assert!(!snapshot.lan_enabled);
     assert!(matches!(snapshot.status, NetworkStatus::Stopped));
 }
@@ -391,8 +502,20 @@ async fn direct_rejection_reports_failure_without_session() {
         unreachable!();
     };
     assert_eq!(failure.kind, crate::ConnectionFailureKind::DirectRejected);
-    assert!(runtime_a.list_sessions().await.expect("sessions a").is_empty());
-    assert!(runtime_b.list_sessions().await.expect("sessions b").is_empty());
+    assert!(
+        runtime_a
+            .list_sessions()
+            .await
+            .expect("sessions a")
+            .is_empty()
+    );
+    assert!(
+        runtime_b
+            .list_sessions()
+            .await
+            .expect("sessions b")
+            .is_empty()
+    );
     assert!(
         runtime_b
             .list_pending_direct_requests()
@@ -530,9 +653,10 @@ async fn direct_text_and_file_transfer_roundtrip() {
         .await
         .expect("send text");
 
-    let text_event = wait_for_event(&mut sub_b, |event| {
-        matches!(event, NetworkEvent::TextReceived { event_id, .. } if event_id == "evt-1")
-    })
+    let text_event = wait_for_event(
+        &mut sub_b,
+        |event| matches!(event, NetworkEvent::TextReceived { event_id, .. } if event_id == "evt-1"),
+    )
     .await;
     let NetworkEvent::TextReceived { content, .. } = text_event else {
         unreachable!();
@@ -551,9 +675,10 @@ async fn direct_text_and_file_transfer_roundtrip() {
         .expect("send files");
     assert_eq!(tickets.len(), 1);
 
-    let offer_event =
-        wait_for_event(&mut sub_b, |event| matches!(event, NetworkEvent::IncomingTransferOffered { .. }))
-            .await;
+    let offer_event = wait_for_event(&mut sub_b, |event| {
+        matches!(event, NetworkEvent::IncomingTransferOffered { .. })
+    })
+    .await;
     let NetworkEvent::IncomingTransferOffered { offer } = offer_event else {
         unreachable!();
     };
@@ -585,6 +710,98 @@ async fn direct_text_and_file_transfer_roundtrip() {
         )
     })
     .await;
+
+    runtime_a.shutdown().await.expect("shutdown a");
+    runtime_b.shutdown().await.expect("shutdown b");
+}
+
+#[tokio::test]
+async fn send_files_registers_queued_transfer_before_returning_ticket() {
+    let temp_a = tempdir().expect("tempdir");
+    let temp_b = tempdir().expect("tempdir");
+    let runtime_a = NetworkRuntime::new(test_config_named(
+        "node-a",
+        "device-a",
+        temp_a.path().to_path_buf(),
+        false,
+    ))
+    .expect("runtime a");
+    let config_b = test_config_named("node-b", "device-b", temp_b.path().to_path_buf(), false);
+    let port_b = config_b.listen_port;
+    let runtime_b = NetworkRuntime::new(config_b).expect("runtime b");
+
+    runtime_a.start().await.expect("start a");
+    runtime_b.start().await.expect("start b");
+
+    let seed_id = runtime_a
+        .upsert_direct_seed(UpsertDirectSeedInput {
+            id: None,
+            label: "peer-b".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: port_b,
+            enabled: true,
+        })
+        .await
+        .expect("seed");
+
+    let mut sub_a = runtime_a.subscribe();
+
+    runtime_a
+        .connect_direct_seed(seed_id)
+        .await
+        .expect("connect");
+    let pending = wait_for_pending_request(&runtime_b).await;
+    runtime_b
+        .approve_direct_request(pending.id)
+        .await
+        .expect("approve");
+
+    wait_for_session_count(&runtime_a, 1).await;
+    wait_for_session_count(&runtime_b, 1).await;
+
+    let source_path = temp_a.path().join("queued.txt");
+    fs::write(&source_path, b"file-body").expect("write source");
+
+    let tickets = runtime_a
+        .send_files(crate::SendFilesRequest {
+            files: vec![source_path.clone()],
+            target: SessionTarget::AllConnected,
+        })
+        .await
+        .expect("send files");
+    assert_eq!(tickets.len(), 1);
+
+    let snapshot = runtime_a.snapshot();
+    assert!(snapshot.transfers.active.iter().any(|transfer| {
+        transfer.ticket == tickets[0]
+            && transfer.file_name == "queued.txt"
+            && matches!(
+                transfer.state,
+                ActiveTransferState::Queued
+                    | ActiveTransferState::Starting
+                    | ActiveTransferState::InProgress
+            )
+    }));
+
+    runtime_a
+        .cancel_transfer(tickets[0])
+        .await
+        .expect("cancel queued transfer");
+
+    let completed = wait_for_event(&mut sub_a, |event| {
+        matches!(
+            event,
+            NetworkEvent::TransferCompleted { transfer }
+                if transfer.ticket == tickets[0]
+                    && transfer.outcome == TransferOutcome::Cancelled
+        )
+    })
+    .await;
+    let NetworkEvent::TransferCompleted { transfer } = completed else {
+        unreachable!();
+    };
+    assert_eq!(transfer.ticket, tickets[0]);
+    assert_eq!(transfer.outcome, TransferOutcome::Cancelled);
 
     runtime_a.shutdown().await.expect("shutdown a");
     runtime_b.shutdown().await.expect("shutdown b");

@@ -96,9 +96,9 @@ pub(crate) async fn perform_client_handshake(
 
     match auth_result {
         HandshakePacket::AuthAccepted => Ok(peer),
-        HandshakePacket::AuthRejected { reason } => {
-            Err(ConnectionError::State(format!("auth rejected by peer: {reason}")))
-        }
+        HandshakePacket::AuthRejected { reason } => Err(ConnectionError::State(format!(
+            "auth rejected by peer: {reason}"
+        ))),
         _ => Err(ConnectionError::State(
             "expected Handshake::AuthAccepted/AuthRejected".to_string(),
         )),
@@ -136,7 +136,11 @@ pub(crate) async fn perform_server_handshake(
                 intent,
             }
         }
-        _ => return Err(ConnectionError::State("expected Handshake::Hello".to_string())),
+        _ => {
+            return Err(ConnectionError::State(
+                "expected Handshake::Hello".to_string(),
+            ));
+        }
     };
 
     send_packet(
@@ -229,8 +233,7 @@ async fn recv_handshake_only(
     framed: &mut NetworkFramed,
 ) -> Result<HandshakePacket, ConnectionError> {
     let packet = recv_packet(framed).await?;
-    let packet =
-        packet.ok_or_else(|| ConnectionError::State("connection closed".to_string()))?;
+    let packet = packet.ok_or_else(|| ConnectionError::State("connection closed".to_string()))?;
     require_handshake(packet).map_err(|_| {
         ConnectionError::Transport(crate::errors::TransportError::Protocol(
             ProtocolError::HandshakeRequired,

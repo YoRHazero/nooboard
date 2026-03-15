@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::net::SocketAddr;
 
-use crate::connection::policy::{DedupeDecision, dedupe_decision};
 use crate::LanPeerInfo;
+use crate::connection::policy::{DedupeDecision, dedupe_decision};
 
 const LAN_BACKOFF_STEPS_MS: [u64; 5] = [5_000, 15_000, 30_000, 60_000, 60_000];
 
@@ -38,7 +38,8 @@ pub(crate) struct LanPeerIndex {
 
 impl LanPeerIndex {
     pub(crate) fn apply_resolved(&mut self, record: LanServiceRecord) {
-        self.services.insert(record.fullname.clone(), record.clone());
+        self.services
+            .insert(record.fullname.clone(), record.clone());
         self.peer_state.entry(record.noob_id).or_default();
     }
 
@@ -66,13 +67,15 @@ impl LanPeerIndex {
         let mut merged: BTreeMap<&str, LanPeerInfo> = BTreeMap::new();
 
         for service in self.services.values() {
-            let entry = merged.entry(&service.noob_id).or_insert_with(|| LanPeerInfo {
-                noob_id: service.noob_id.clone(),
-                device_id: service.device_id.clone(),
-                addresses: Vec::new(),
-                last_seen_at_ms: service.last_seen_at_ms,
-                connected: connected_noob_ids.contains(&service.noob_id),
-            });
+            let entry = merged
+                .entry(&service.noob_id)
+                .or_insert_with(|| LanPeerInfo {
+                    noob_id: service.noob_id.clone(),
+                    device_id: service.device_id.clone(),
+                    addresses: Vec::new(),
+                    last_seen_at_ms: service.last_seen_at_ms,
+                    connected: connected_noob_ids.contains(&service.noob_id),
+                });
             entry.device_id = service.device_id.clone();
             entry.last_seen_at_ms = entry.last_seen_at_ms.max(service.last_seen_at_ms);
             entry.connected = connected_noob_ids.contains(&service.noob_id);
@@ -105,7 +108,11 @@ impl LanPeerIndex {
                 continue;
             }
 
-            let state = self.peer_state.get(&peer.noob_id).cloned().unwrap_or_default();
+            let state = self
+                .peer_state
+                .get(&peer.noob_id)
+                .cloned()
+                .unwrap_or_default();
             if state.connecting || now_ms < state.next_retry_at_ms || peer.addresses.is_empty() {
                 continue;
             }
@@ -152,14 +159,13 @@ impl LanPeerIndex {
         let state = self.peer_state.entry(peer_noob_id.to_string()).or_default();
         state.connecting = false;
         state.failure_count = state.failure_count.saturating_add(1);
-        let backoff_index = usize::from(state.failure_count.saturating_sub(1))
-            .min(LAN_BACKOFF_STEPS_MS.len() - 1);
+        let backoff_index =
+            usize::from(state.failure_count.saturating_sub(1)).min(LAN_BACKOFF_STEPS_MS.len() - 1);
         state.next_retry_at_ms = now_ms + LAN_BACKOFF_STEPS_MS[backoff_index];
         if !peer.addresses.is_empty() {
             state.next_addr_index = (state.next_addr_index + 1) % peer.addresses.len();
         }
     }
-
 }
 
 #[cfg(test)]
@@ -205,7 +211,15 @@ mod tests {
         index.apply_resolved(record("one", "peer-b", "10.0.0.2:17890", 1));
         index.note_connect_failure("peer-b", 100);
 
-        assert!(index.next_candidate("peer-a", &HashSet::new(), 5_000).is_none());
-        assert!(index.next_candidate("peer-a", &HashSet::new(), 5_100).is_some());
+        assert!(
+            index
+                .next_candidate("peer-a", &HashSet::new(), 5_000)
+                .is_none()
+        );
+        assert!(
+            index
+                .next_candidate("peer-a", &HashSet::new(), 5_100)
+                .is_some()
+        );
     }
 }

@@ -7,15 +7,16 @@ use crate::{
 
 use super::super::state::WorkspaceState;
 use super::clipboard;
+use super::snapshot::{finish_with_snapshot_refresh, refresh_snapshot_from_runtime};
 
 pub(crate) async fn start_network(state: &mut WorkspaceState) -> CoreResult<()> {
     let result = state.network_runtime().start().await.map_err(Into::into);
-    finish_after_refresh(result, refresh_snapshot_from_runtime(state).await)
+    finish_with_snapshot_refresh(state, result).await
 }
 
 pub(crate) async fn stop_network(state: &mut WorkspaceState) -> CoreResult<()> {
     let result = state.network_runtime().shutdown().await.map_err(Into::into);
-    finish_after_refresh(result, refresh_snapshot_from_runtime(state).await)
+    finish_with_snapshot_refresh(state, result).await
 }
 
 pub(crate) async fn list_direct_seeds(state: &WorkspaceState) -> CoreResult<Vec<DirectSeedInfo>> {
@@ -46,7 +47,7 @@ pub(crate) async fn connect_direct_seed(
         .connect_direct_seed(id)
         .await
         .map_err(Into::into);
-    finish_after_refresh(result, refresh_snapshot_from_runtime(state).await)
+    finish_with_snapshot_refresh(state, result).await
 }
 
 pub(crate) async fn list_pending_direct_requests(
@@ -68,7 +69,7 @@ pub(crate) async fn approve_direct_request(
         .approve_direct_request(id)
         .await
         .map_err(Into::into);
-    finish_after_refresh(result, refresh_snapshot_from_runtime(state).await)
+    finish_with_snapshot_refresh(state, result).await
 }
 
 pub(crate) async fn reject_direct_request(
@@ -80,7 +81,7 @@ pub(crate) async fn reject_direct_request(
         .reject_direct_request(id)
         .await
         .map_err(Into::into);
-    finish_after_refresh(result, refresh_snapshot_from_runtime(state).await)
+    finish_with_snapshot_refresh(state, result).await
 }
 
 pub(crate) async fn list_sessions(state: &WorkspaceState) -> CoreResult<Vec<SessionInfo>> {
@@ -95,18 +96,12 @@ pub(crate) async fn disconnect_session(
     state: &mut WorkspaceState,
     id: SessionId,
 ) -> CoreResult<()> {
-    if !snapshot_has_session(state.current_snapshot(), id) {
-        return Err(CoreError::SessionNotFound {
-            session_id: id.to_string(),
-        });
-    }
-
     let result = state
         .network_runtime()
         .disconnect_session(id)
         .await
-        .map_err(Into::into);
-    finish_after_refresh(result, refresh_snapshot_from_runtime(state).await)
+        .map_err(map_disconnect_session_error);
+    finish_with_snapshot_refresh(state, result).await
 }
 
 pub(crate) async fn handle_network_event(
@@ -165,94 +160,31 @@ pub(crate) async fn handle_network_event(
     Ok(())
 }
 
-pub(crate) async fn refresh_snapshot_from_runtime(state: &mut WorkspaceState) -> CoreResult<()> {
-    let network_snapshot = state.network_runtime().snapshot().await?;
-    state.refresh_snapshot(network_snapshot);
-    Ok(())
-}
-
-fn finish_after_refresh<T>(result: CoreResult<T>, refresh: CoreResult<()>) -> CoreResult<T> {
-    match result {
-        Ok(value) => {
-            refresh?;
-            Ok(value)
-        }
-        Err(error) => Err(error),
+fn map_disconnect_session_error(error: nooboard_network::NetworkError) -> CoreError {
+    match error {
+        nooboard_network::NetworkError::SessionNotFound(session_id) => CoreError::SessionNotFound {
+            session_id: session_id.to_string(),
+        },
+        other => other.into(),
     }
-}
-
-fn snapshot_has_session(snapshot: &crate::WorkspaceSnapshot, id: SessionId) -> bool {
-    snapshot
-        .network
-        .sessions
-        .iter()
-        .any(|session| session.id == id)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use crate::CoreError;
 
-    use crate::{NetworkSnapshot, NetworkStatus, SessionId, SessionInfo};
-    use nooboard_network::ConnectionMode;
-
-    use super::snapshot_has_session;
+    use super::map_disconnect_session_error;
 
     #[test]
-    fn detects_session_presence_from_snapshot() {
-        let session_id = SessionId::new();
-        let snapshot = crate::WorkspaceSnapshot {
-            revision: 0,
-            identity: crate::WorkspaceIdentity {
-                noob_id: crate::NoobId::new("local"),
-                device_id: "device".to_string(),
-            },
-            local_connection: crate::LocalConnectionInfo::default(),
-            clipboard: crate::ClipboardState::default(),
-            settings: crate::WorkspaceSettings {
-                connection: crate::ConnectionSettings {
-                    device_id: "device".to_string(),
-                    token: "token".to_string(),
-                },
-                network: crate::NetworkSettings {
-                    listen_port: 1,
-                    lan_enabled: false,
-                },
-                storage: crate::StorageSettings {
-                    db_root: std::path::PathBuf::new(),
-                    history_window_days: 1,
-                    dedup_window_days: 1,
-                    max_text_bytes: 1,
-                    gc_batch_size: 1,
-                },
-                clipboard: crate::ClipboardSettings {
-                    local_capture_enabled: false,
-                },
-                transfers: crate::TransferSettings {
-                    download_dir: std::path::PathBuf::new(),
-                },
-            },
-            network: NetworkSnapshot {
-                status: NetworkStatus::Stopped,
-                lan_enabled: false,
-                lan_peers: Vec::new(),
-                direct_seeds: Vec::new(),
-                pending_direct_requests: Vec::new(),
-                sessions: vec![SessionInfo {
-                    id: session_id,
-                    mode: ConnectionMode::Direct,
-                    peer_noob_id: "peer".to_string(),
-                    peer_device_id: "peer-device".to_string(),
-                    remote_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 24000),
-                    local_bind_addr: None,
-                    outbound: true,
-                    connected_at_ms: 0,
-                }],
-                transfers: Default::default(),
-            },
-        };
+    fn maps_runtime_session_not_found_to_core_session_not_found() {
+        let session_id = crate::SessionId::new();
+        let error = map_disconnect_session_error(nooboard_network::NetworkError::SessionNotFound(
+            session_id,
+        ));
 
-        assert!(snapshot_has_session(&snapshot, session_id));
-        assert!(!snapshot_has_session(&snapshot, SessionId::new()));
+        assert!(matches!(
+            error,
+            CoreError::SessionNotFound { session_id: value } if value == session_id.to_string()
+        ));
     }
 }

@@ -61,6 +61,10 @@ Allowed:
 
 - immutable startup parameters in a dedicated immutable struct
 - mutable runtime state in dedicated stores
+- a dedicated public snapshot read-model cache, if and only if:
+  - it is derived only from runtime state
+  - it is updated immediately after state mutation
+  - it is updated before any corresponding public events are published
 
 Forbidden:
 
@@ -207,7 +211,7 @@ impl NetworkRuntime {
     pub async fn start(&self) -> NetworkResult<()>;
     pub async fn shutdown(&self) -> NetworkResult<()>;
 
-    pub async fn snapshot(&self) -> NetworkResult<NetworkSnapshot>;
+    pub fn snapshot(&self) -> NetworkSnapshot;
     pub fn subscribe(&self) -> NetworkSubscription;
 
     pub async fn set_lan_enabled(&self, enabled: bool) -> NetworkResult<()>;
@@ -260,7 +264,14 @@ impl NetworkRuntime {
 - `new(...)` creates a stopped runtime handle and validates config.
 - `start()` is idempotent.
 - `shutdown()` is idempotent.
-- `snapshot()` returns current in-memory state.
+- `snapshot()` is synchronous and infallible.
+- `snapshot()` returns the current public in-memory read model.
+- if a dedicated snapshot cache exists, it MUST be updated before any related `NetworkEvent` is published.
+- multi-stage transitions MUST publish each stage separately after updating the snapshot cache for
+  that stage; they MUST NOT batch earlier-stage events after the final state has already been
+  written to the cache.
+- `snapshot()` is a current-state view, not a historical per-event view; by the time a subscriber
+  processes an event, `snapshot()` MAY already reflect a newer state transition.
 - `subscribe()` returns a live event subscription and does not require async.
 - `set_lan_enabled(...)` MUST succeed even when the runtime is stopped; when stopped it only mutates in-memory configuration and MUST NOT start background network tasks.
 - `upsert_direct_seed(...)` and `remove_direct_seed(...)` MUST succeed even when the runtime is stopped; they only mutate in-memory seed state.

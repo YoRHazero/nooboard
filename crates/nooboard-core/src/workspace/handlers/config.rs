@@ -7,7 +7,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::workspace::local_connection::detect_device_endpoint;
 
 use super::super::state::WorkspaceState;
-use super::network::refresh_snapshot_from_runtime;
+use super::snapshot::finish_with_snapshot_refresh;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ConfigMutation {
@@ -43,7 +43,7 @@ pub(crate) async fn set_device_id(state: &mut WorkspaceState, value: String) -> 
     }
 
     let (post_action, side_effect) = rebuild_network_runtime(state, network_config).await;
-    let result = finish_after_refresh(side_effect, refresh_snapshot_from_runtime(state).await);
+    let result = finish_with_snapshot_refresh(state, side_effect).await;
     ConfigOutcome::new(post_action, result)
 }
 
@@ -65,7 +65,7 @@ pub(crate) async fn set_network_token(
     }
 
     let (post_action, side_effect) = rebuild_network_runtime(state, network_config).await;
-    let result = finish_after_refresh(side_effect, refresh_snapshot_from_runtime(state).await);
+    let result = finish_with_snapshot_refresh(state, side_effect).await;
     ConfigOutcome::new(post_action, result)
 }
 
@@ -87,7 +87,7 @@ pub(crate) async fn set_network_listen_port(
     }
 
     let (post_action, side_effect) = rebuild_network_runtime(state, network_config).await;
-    let result = finish_after_refresh(side_effect, refresh_snapshot_from_runtime(state).await);
+    let result = finish_with_snapshot_refresh(state, side_effect).await;
     ConfigOutcome::new(post_action, result)
 }
 
@@ -107,7 +107,7 @@ pub(crate) async fn set_lan_enabled(state: &mut WorkspaceState, value: bool) -> 
         .set_lan_enabled(value)
         .await
         .map_err(Into::into);
-    let result = finish_after_refresh(side_effect, refresh_snapshot_from_runtime(state).await);
+    let result = finish_with_snapshot_refresh(state, side_effect).await;
     ConfigOutcome::new(ConfigMutation::default(), result)
 }
 
@@ -130,7 +130,7 @@ pub(crate) async fn set_local_capture_enabled(
     } else {
         state.clipboard_runtime().stop_watch().await
     };
-    let result = finish_after_refresh(side_effect, refresh_snapshot_from_runtime(state).await);
+    let result = finish_with_snapshot_refresh(state, side_effect).await;
     ConfigOutcome::new(ConfigMutation::default(), result)
 }
 
@@ -152,7 +152,7 @@ pub(crate) async fn set_download_dir(
     }
 
     let (post_action, side_effect) = rebuild_network_runtime(state, network_config).await;
-    let result = finish_after_refresh(side_effect, refresh_snapshot_from_runtime(state).await);
+    let result = finish_with_snapshot_refresh(state, side_effect).await;
     ConfigOutcome::new(post_action, result)
 }
 
@@ -189,7 +189,7 @@ pub(crate) async fn set_storage_settings(
     }
 
     let side_effect = state.storage_runtime().reconfigure(storage_config).await;
-    let result = finish_after_refresh(side_effect, refresh_snapshot_from_runtime(state).await);
+    let result = finish_with_snapshot_refresh(state, side_effect).await;
     ConfigOutcome::new(ConfigMutation::default(), result)
 }
 
@@ -212,7 +212,7 @@ pub(crate) async fn upsert_direct_seed(
         .upsert_direct_seed(runtime_input)
         .await
         .map_err(Into::into);
-    let result = finish_after_refresh(side_effect, refresh_snapshot_from_runtime(state).await);
+    let result = finish_with_snapshot_refresh(state, side_effect).await;
     ConfigOutcome::new(ConfigMutation::default(), result)
 }
 
@@ -240,7 +240,7 @@ pub(crate) async fn remove_direct_seed(
         .remove_direct_seed(id)
         .await
         .map_err(Into::into);
-    let result = finish_after_refresh(side_effect, refresh_snapshot_from_runtime(state).await);
+    let result = finish_with_snapshot_refresh(state, side_effect).await;
     ConfigOutcome::new(ConfigMutation::default(), result)
 }
 
@@ -348,16 +348,6 @@ fn normalize_path(path: PathBuf, base_dir: &Path) -> PathBuf {
         base_dir.join(path)
     } else {
         path
-    }
-}
-
-fn finish_after_refresh<T>(result: CoreResult<T>, refresh: CoreResult<()>) -> CoreResult<T> {
-    match result {
-        Ok(value) => {
-            refresh?;
-            Ok(value)
-        }
-        Err(error) => Err(error),
     }
 }
 

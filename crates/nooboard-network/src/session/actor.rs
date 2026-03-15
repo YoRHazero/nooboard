@@ -5,7 +5,7 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::time::{MissedTickBehavior, interval};
 
 use crate::config::NetworkConfig;
-use crate::errors::ConnectionError;
+use crate::errors::{ConnectionError, NetworkError, NetworkResult};
 use crate::protocol::{ControlPacket, DataPacket, Packet};
 use crate::transport::{NetworkFramed, send_packet_sink};
 use crate::{
@@ -36,7 +36,7 @@ pub(crate) enum SessionCommand {
     },
     CancelTransfer {
         transfer_id: u32,
-        reply: oneshot::Sender<Result<(), ConnectionError>>,
+        reply: oneshot::Sender<NetworkResult<()>>,
     },
     Shutdown,
 }
@@ -272,6 +272,10 @@ async fn run_session_actor_inner(ctx: SessionActorContext) -> Result<(), Connect
                         }
                     }
                     Some(SessionCommand::CancelTransfer { transfer_id, reply }) => {
+                        let ticket = TransferTicket {
+                            session_id,
+                            raw_id: transfer_id,
+                        };
                         let cancel_reason = Some("cancelled by local peer".to_string());
                         if sender.cancel_transfer(transfer_id, cancel_reason.clone()) {
                             let _ = reply.send(Ok(()));
@@ -283,13 +287,10 @@ async fn run_session_actor_inner(ctx: SessionActorContext) -> Result<(), Connect
                                 let _ = reply.send(Ok(()));
                             }
                             Ok(false) => {
-                                let _ = reply.send(Err(ConnectionError::State(format!(
-                                    "transfer {} not found",
-                                    transfer_id
-                                ))));
+                                let _ = reply.send(Err(NetworkError::transfer_not_found(ticket)));
                             }
                             Err(error) => {
-                                let _ = reply.send(Err(ConnectionError::from(error)));
+                                let _ = reply.send(Err(NetworkError::Internal(error.to_string())));
                             }
                         }
                     }
@@ -346,21 +347,23 @@ async fn handle_incoming_packet(
                 .register_file_start(transfer_id, &file_name, file_size, total_chunks)
                 .await?;
             let _ = lifecycle_tx
-                .send(SessionLifecycleEvent::Network(NetworkEvent::IncomingTransferOffered {
-                    offer: IncomingTransferOffer {
-                        ticket: TransferTicket {
+                .send(SessionLifecycleEvent::Network(
+                    NetworkEvent::IncomingTransferOffered {
+                        offer: IncomingTransferOffer {
+                            ticket: TransferTicket {
+                                session_id,
+                                raw_id: request.transfer_id,
+                            },
                             session_id,
-                            raw_id: request.transfer_id,
+                            peer_noob_id: peer_noob_id.to_string(),
+                            peer_device_id: peer_device_id.to_string(),
+                            file_name: request.file_name,
+                            file_size: request.file_size,
+                            total_chunks: request.total_chunks,
+                            offered_at_ms: now_millis_u64(),
                         },
-                        session_id,
-                        peer_noob_id: peer_noob_id.to_string(),
-                        peer_device_id: peer_device_id.to_string(),
-                        file_name: request.file_name,
-                        file_size: request.file_size,
-                        total_chunks: request.total_chunks,
-                        offered_at_ms: now_millis_u64(),
                     },
-                }))
+                ))
                 .await;
             Ok(false)
         }
@@ -487,7 +490,10 @@ async fn emit_sender_update(
             )
             .await;
         }
-        TransferProgressEvent::Failed { transfer_id, reason } => {
+        TransferProgressEvent::Failed {
+            transfer_id,
+            reason,
+        } => {
             emit_transfer_completed(
                 lifecycle_tx,
                 session_id,
@@ -501,7 +507,10 @@ async fn emit_sender_update(
             )
             .await;
         }
-        TransferProgressEvent::Rejected { transfer_id, reason } => {
+        TransferProgressEvent::Rejected {
+            transfer_id,
+            reason,
+        } => {
             emit_transfer_completed(
                 lifecycle_tx,
                 session_id,
@@ -515,7 +524,10 @@ async fn emit_sender_update(
             )
             .await;
         }
-        TransferProgressEvent::Cancelled { transfer_id, reason } => {
+        TransferProgressEvent::Cancelled {
+            transfer_id,
+            reason,
+        } => {
             emit_transfer_completed(
                 lifecycle_tx,
                 session_id,
@@ -544,23 +556,25 @@ async fn emit_transfer_updated(
     state: ActiveTransferState,
 ) {
     let _ = lifecycle_tx
-        .send(SessionLifecycleEvent::Network(NetworkEvent::TransferUpdated {
-            transfer: ActiveTransferInfo {
-                ticket: TransferTicket {
+        .send(SessionLifecycleEvent::Network(
+            NetworkEvent::TransferUpdated {
+                transfer: ActiveTransferInfo {
+                    ticket: TransferTicket {
+                        session_id,
+                        raw_id: transfer_id,
+                    },
                     session_id,
-                    raw_id: transfer_id,
+                    peer_noob_id: peer_noob_id.to_string(),
+                    peer_device_id: peer_device_id.to_string(),
+                    file_name: String::new(),
+                    file_size,
+                    transferred_bytes,
+                    direction,
+                    state,
+                    updated_at_ms: now_millis_u64(),
                 },
-                session_id,
-                peer_noob_id: peer_noob_id.to_string(),
-                peer_device_id: peer_device_id.to_string(),
-                file_name: String::new(),
-                file_size,
-                transferred_bytes,
-                direction,
-                state,
-                updated_at_ms: now_millis_u64(),
             },
-        }))
+        ))
         .await;
 }
 
@@ -576,24 +590,26 @@ async fn emit_transfer_completed(
     message: Option<String>,
 ) {
     let _ = lifecycle_tx
-        .send(SessionLifecycleEvent::Network(NetworkEvent::TransferCompleted {
-            transfer: CompletedTransferInfo {
-                ticket: TransferTicket {
+        .send(SessionLifecycleEvent::Network(
+            NetworkEvent::TransferCompleted {
+                transfer: CompletedTransferInfo {
+                    ticket: TransferTicket {
+                        session_id,
+                        raw_id: transfer_id,
+                    },
                     session_id,
-                    raw_id: transfer_id,
+                    peer_noob_id: peer_noob_id.to_string(),
+                    peer_device_id: peer_device_id.to_string(),
+                    file_name: String::new(),
+                    file_size: 0,
+                    direction,
+                    outcome,
+                    saved_path,
+                    message,
+                    finished_at_ms: now_millis_u64(),
                 },
-                session_id,
-                peer_noob_id: peer_noob_id.to_string(),
-                peer_device_id: peer_device_id.to_string(),
-                file_name: String::new(),
-                file_size: 0,
-                direction,
-                outcome,
-                saved_path,
-                message,
-                finished_at_ms: now_millis_u64(),
             },
-        }))
+        ))
         .await;
 }
 

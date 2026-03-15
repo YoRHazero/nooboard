@@ -262,15 +262,18 @@ async fn accept_inbound_connection(
 ) -> Result<(AuthenticatedPeer, crate::transport::NetworkFramed), ConnectionFailure> {
     let remote_addr = stream.peer_addr().ok();
     let local_bind_addr = stream.local_addr().ok();
-    let tls_stream = tls.accept(stream).await.map_err(|error| ConnectionFailure {
-        kind: ConnectionFailureKind::TlsHandshakeFailed,
-        mode: ConnectionMode::Direct,
-        peer_noob_id: None,
-        peer_device_id: None,
-        remote_addr,
-        local_bind_addr,
-        detail: error.to_string(),
-    })?;
+    let tls_stream = tls
+        .accept(stream)
+        .await
+        .map_err(|error| ConnectionFailure {
+            kind: ConnectionFailureKind::TlsHandshakeFailed,
+            mode: ConnectionMode::Direct,
+            peer_noob_id: None,
+            peer_device_id: None,
+            remote_addr,
+            local_bind_addr,
+            detail: error.to_string(),
+        })?;
     let mut framed = framed_with_max_packet(tls_stream, config.transport.max_packet_size);
     let peer = perform_server_handshake(&config, socket_id, &challenge_registry, &mut framed)
         .await
@@ -291,10 +294,19 @@ pub(super) async fn connect_outbound(
     tls: &TlsContext,
     intent: ConnectionIntent,
     remote_addr: SocketAddr,
-) -> Result<(AuthenticatedPeer, SocketAddr, crate::transport::NetworkFramed), ConnectionFailure> {
+) -> Result<
+    (
+        AuthenticatedPeer,
+        SocketAddr,
+        crate::transport::NetworkFramed,
+    ),
+    ConnectionFailure,
+> {
     let dialed = dial_ipv4(remote_addr, config.transport.connect_timeout_ms).await?;
-    let tls_stream = tls.connect(dialed.stream, "nooboard.local").await.map_err(|error| {
-        ConnectionFailure {
+    let tls_stream = tls
+        .connect(dialed.stream, "nooboard.local")
+        .await
+        .map_err(|error| ConnectionFailure {
             kind: ConnectionFailureKind::TlsHandshakeFailed,
             mode: match intent {
                 ConnectionIntent::LanSync => ConnectionMode::Lan,
@@ -305,8 +317,7 @@ pub(super) async fn connect_outbound(
             remote_addr: Some(remote_addr),
             local_bind_addr: Some(dialed.local_addr),
             detail: error.to_string(),
-        }
-    })?;
+        })?;
     let mut framed = framed_with_max_packet(tls_stream, config.transport.max_packet_size);
     let peer = perform_client_handshake(&config, remote_addr, &mut framed, intent)
         .await
@@ -334,15 +345,16 @@ async fn dial_ipv4(
     remote_addr: SocketAddr,
     connect_timeout_ms: u64,
 ) -> Result<DialedStream, ConnectionFailure> {
-    let local_ip = select_local_ipv4_for_remote(remote_addr).map_err(|error| ConnectionFailure {
-        kind: ConnectionFailureKind::ConnectFailed,
-        mode: ConnectionMode::Direct,
-        peer_noob_id: None,
-        peer_device_id: None,
-        remote_addr: Some(remote_addr),
-        local_bind_addr: None,
-        detail: error.to_string(),
-    })?;
+    let local_ip =
+        select_local_ipv4_for_remote(remote_addr).map_err(|error| ConnectionFailure {
+            kind: ConnectionFailureKind::ConnectFailed,
+            mode: ConnectionMode::Direct,
+            peer_noob_id: None,
+            peer_device_id: None,
+            remote_addr: Some(remote_addr),
+            local_bind_addr: None,
+            detail: error.to_string(),
+        })?;
     let socket = TcpSocket::new_v4().map_err(|error| ConnectionFailure {
         kind: ConnectionFailureKind::ConnectFailed,
         mode: ConnectionMode::Direct,
@@ -410,8 +422,7 @@ pub(super) fn classify_connection_error(error: &ConnectionError) -> ConnectionFa
         ConnectionError::State(detail) => {
             if detail.contains("protocol version mismatch") {
                 ConnectionFailureKind::ProtocolMismatch
-            } else if detail.contains("auth rejected") || detail.contains("authentication failed")
-            {
+            } else if detail.contains("auth rejected") || detail.contains("authentication failed") {
                 ConnectionFailureKind::AuthRejected
             } else {
                 ConnectionFailureKind::Internal

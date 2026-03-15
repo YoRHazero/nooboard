@@ -37,12 +37,14 @@ enum StorageCommand {
 
 pub(crate) struct StorageRuntime {
     command_tx: mpsc::Sender<StorageCommand>,
+    runtime_handle: tokio::runtime::Handle,
     worker: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl StorageRuntime {
     pub(crate) fn new(
         storage_config: nooboard_storage::AppConfig,
+        runtime_handle: tokio::runtime::Handle,
     ) -> CoreResult<(Self, Option<EventId>)> {
         let (command_tx, command_rx) = mpsc::channel();
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
@@ -58,6 +60,7 @@ impl StorageRuntime {
             Ok(Ok(latest_event_id)) => Ok((
                 Self {
                     command_tx,
+                    runtime_handle,
                     worker: Mutex::new(Some(worker)),
                 },
                 latest_event_id,
@@ -155,7 +158,9 @@ impl StorageRuntime {
         };
 
         let _ = self.command_tx.send(StorageCommand::Shutdown);
-        let join_result = tokio::task::spawn_blocking(move || worker.join())
+        let join_result = self
+            .runtime_handle
+            .spawn_blocking(move || worker.join())
             .await
             .map_err(|error| {
                 CoreError::ChannelClosed(format!("failed to join storage actor thread: {error}"))

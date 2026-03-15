@@ -14,6 +14,14 @@ pub(crate) struct TransferStore {
     recent_completed: VecDeque<CompletedTransferInfo>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TransferCommandState {
+    PendingDecision,
+    Active,
+    Completed,
+    Missing,
+}
+
 impl TransferStore {
     pub(crate) fn snapshot(&self) -> TransfersSnapshot {
         let mut incoming_pending: Vec<_> = self.incoming_pending.values().cloned().collect();
@@ -43,12 +51,26 @@ impl TransferStore {
         self.recent_completed.clear();
     }
 
-    pub(crate) fn has_pending_offer(&self, ticket: TransferTicket) -> bool {
-        self.incoming_pending.contains_key(&ticket)
+    pub(crate) fn classify(&self, ticket: TransferTicket) -> TransferCommandState {
+        if self.incoming_pending.contains_key(&ticket) {
+            return TransferCommandState::PendingDecision;
+        }
+        if self.active.contains_key(&ticket) {
+            return TransferCommandState::Active;
+        }
+        if self
+            .recent_completed
+            .iter()
+            .any(|transfer| transfer.ticket == ticket)
+        {
+            return TransferCommandState::Completed;
+        }
+        TransferCommandState::Missing
     }
 
-    pub(crate) fn has_active_or_pending(&self, ticket: TransferTicket) -> bool {
-        self.incoming_pending.contains_key(&ticket) || self.active.contains_key(&ticket)
+    pub(crate) fn apply_queued_upload(&mut self, transfer: ActiveTransferInfo) {
+        self.incoming_pending.remove(&transfer.ticket);
+        self.active.insert(transfer.ticket, transfer);
     }
 
     pub(crate) fn apply_offer(&mut self, offer: IncomingTransferOffer) {
@@ -112,7 +134,7 @@ mod tests {
         SessionId, TransferDirection, TransferOutcome, TransferTicket,
     };
 
-    use super::TransferStore;
+    use super::{TransferCommandState, TransferStore};
 
     fn ticket() -> TransferTicket {
         TransferTicket {
@@ -189,5 +211,57 @@ mod tests {
         assert!(snapshot.active.is_empty());
         assert_eq!(snapshot.recent_completed[0].file_name, "demo.txt");
         assert_eq!(snapshot.recent_completed[0].file_size, 42);
+    }
+
+    #[test]
+    fn classifies_ticket_across_pending_active_and_completed() {
+        let mut store = TransferStore::default();
+        let ticket = ticket();
+
+        assert_eq!(store.classify(ticket), TransferCommandState::Missing);
+
+        store.apply_offer(IncomingTransferOffer {
+            ticket,
+            session_id: ticket.session_id,
+            peer_noob_id: "peer".to_string(),
+            peer_device_id: "device".to_string(),
+            file_name: "demo.txt".to_string(),
+            file_size: 42,
+            total_chunks: 1,
+            offered_at_ms: 1,
+        });
+        assert_eq!(
+            store.classify(ticket),
+            TransferCommandState::PendingDecision
+        );
+
+        store.apply_queued_upload(ActiveTransferInfo {
+            ticket,
+            session_id: ticket.session_id,
+            peer_noob_id: "peer".to_string(),
+            peer_device_id: "device".to_string(),
+            file_name: "demo.txt".to_string(),
+            file_size: 42,
+            transferred_bytes: 0,
+            direction: TransferDirection::Upload,
+            state: ActiveTransferState::Queued,
+            updated_at_ms: 2,
+        });
+        assert_eq!(store.classify(ticket), TransferCommandState::Active);
+
+        store.apply_completed(CompletedTransferInfo {
+            ticket,
+            session_id: ticket.session_id,
+            peer_noob_id: "peer".to_string(),
+            peer_device_id: "device".to_string(),
+            file_name: String::new(),
+            file_size: 0,
+            direction: TransferDirection::Upload,
+            outcome: TransferOutcome::Cancelled,
+            saved_path: None,
+            message: None,
+            finished_at_ms: 3,
+        });
+        assert_eq!(store.classify(ticket), TransferCommandState::Completed);
     }
 }

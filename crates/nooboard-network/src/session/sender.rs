@@ -89,8 +89,10 @@ impl FileSender {
             .position(|pending| pending.transfer_id == transfer_id)
         {
             let _ = self.pending_files.remove(position);
-            self.updates
-                .push_back(TransferProgressEvent::Cancelled { transfer_id, reason });
+            self.updates.push_back(TransferProgressEvent::Cancelled {
+                transfer_id,
+                reason,
+            });
             return true;
         }
 
@@ -103,8 +105,10 @@ impl FileSender {
 
         self.outbox
             .push_back(Packet::Data(DataPacket::FileCancel { transfer_id }));
-        self.updates
-            .push_back(TransferProgressEvent::Cancelled { transfer_id, reason });
+        self.updates.push_back(TransferProgressEvent::Cancelled {
+            transfer_id,
+            reason,
+        });
         self.upload = None;
         true
     }
@@ -115,7 +119,9 @@ impl FileSender {
         accept: bool,
         reason: Option<String>,
     ) {
-        if let Some(transfer) = self.upload.as_mut() && transfer.transfer_id == transfer_id {
+        if let Some(transfer) = self.upload.as_mut()
+            && transfer.transfer_id == transfer_id
+        {
             transfer.accepted = Some(accept);
             transfer.decision_reason = reason;
         }
@@ -140,7 +146,10 @@ impl FileSender {
     ) -> Result<(), ConnectionError> {
         if self.upload.is_none() && allow_new_data {
             if let Some(pending) = self.pending_files.pop_front() {
-                match self.start_upload(config, &pending.path, pending.transfer_id).await {
+                match self
+                    .start_upload(config, &pending.path, pending.transfer_id)
+                    .await
+                {
                     Ok(()) => {}
                     Err(error) => {
                         self.updates.push_back(TransferProgressEvent::Failed {
@@ -181,8 +190,9 @@ impl FileSender {
             .ok_or_else(|| {
                 ConnectionError::State(format!("invalid file name: {}", path.display()))
             })?;
-        let file_name = super::path::sanitize_file_name(raw_file_name)
-            .map_err(|_| ConnectionError::State(format!("invalid file name: {}", path.display())))?;
+        let file_name = super::path::sanitize_file_name(raw_file_name).map_err(|_| {
+            ConnectionError::State(format!("invalid file name: {}", path.display()))
+        })?;
 
         let total_chunks = if metadata.len() == 0 {
             0
@@ -206,8 +216,7 @@ impl FileSender {
             transfer_id,
             total_chunks,
             next_seq: 0,
-            deadline: Instant::now()
-                + Duration::from_millis(config.transfer.decision_timeout_ms),
+            deadline: Instant::now() + Duration::from_millis(config.transfer.decision_timeout_ms),
             accepted: None,
             decision_reason: None,
             file,

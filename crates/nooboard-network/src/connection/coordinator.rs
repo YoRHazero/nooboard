@@ -28,7 +28,9 @@ impl ConnectionCoordinator {
         task: JoinHandle<()>,
     ) -> BeginAttempt {
         match self.outbound_attempts.remove(&addr) {
-            Some(existing) if existing.mode == ConnectionMode::Lan && mode == ConnectionMode::Direct => {
+            Some(existing)
+                if existing.mode == ConnectionMode::Lan && mode == ConnectionMode::Direct =>
+            {
                 existing.task.abort();
                 self.outbound_attempts
                     .insert(addr, OutboundAttempt { mode, task });

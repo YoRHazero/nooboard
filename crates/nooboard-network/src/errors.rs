@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::{DirectRequestId, DirectSeedId, SessionId};
+use crate::{DirectRequestId, DirectSeedId, SessionId, TransferTicket};
 
 pub type NetworkResult<T> = Result<T, NetworkError>;
 
@@ -16,10 +16,24 @@ pub enum NetworkError {
     DirectRequestNotFound(DirectRequestId),
     #[error("session not found: {0}")]
     SessionNotFound(SessionId),
+    #[error("transfer not found: {0}:{1}")]
+    TransferNotFound(SessionId, u32),
+    #[error("transfer cannot be changed in its current state: {0}:{1}")]
+    TransferNotCancelable(SessionId, u32),
     #[error("channel closed")]
     ChannelClosed,
     #[error("internal error: {0}")]
     Internal(String),
+}
+
+impl NetworkError {
+    pub(crate) fn transfer_not_found(ticket: TransferTicket) -> Self {
+        Self::TransferNotFound(ticket.session_id, ticket.raw_id)
+    }
+
+    pub(crate) fn transfer_not_cancelable(ticket: TransferTicket) -> Self {
+        Self::TransferNotCancelable(ticket.session_id, ticket.raw_id)
+    }
 }
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
