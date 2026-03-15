@@ -8,7 +8,15 @@ mod transfers;
 use nooboard_core::{ClipboardRecord, WorkspaceSnapshot};
 
 pub use clipboard::ClipboardWorkspaceViewState;
-pub use home::HomePageViewState;
+#[cfg(test)]
+pub use home::{
+    HomeClipboardControlViewState, HomeClipboardPanelViewState, HomeNetworkControlViewState,
+    HomeRadarViewState,
+};
+pub use home::{
+    HomeClipboardRecordViewState, HomePageViewState, HomeRadarPeerViewState, HomeRadarVisualState,
+    HomeSystemCoreViewState,
+};
 pub use network::NetworkPageViewState;
 pub use settings::SettingsPageViewState;
 pub use shared::{WorkspaceMetricViewState, WorkspaceSessionTargetViewState};
@@ -95,10 +103,21 @@ mod tests {
 
         assert_eq!(state.identity.headline, "desk-01");
         assert!(state.network.can_stop);
+        assert_eq!(state.home.system_core.local_device_id, "desk-01");
         assert_eq!(
-            state.home.latest_clipboard_source.as_deref(),
-            Some("User Submit")
+            state.home.system_core.clipboard_control.adopt_event_id,
+            Some(record.event_id)
         );
+        assert!(matches!(
+            state
+                .home
+                .system_core
+                .clipboard
+                .latest_record
+                .as_ref()
+                .map(|item| item.source),
+            Some(ClipboardRecordSource::UserSubmit)
+        ));
         assert_eq!(state.clipboard.max_text_bytes, 4096);
         assert_eq!(state.clipboard.session_targets.len(), 0);
         assert_eq!(state.settings.rows[0].label, "Device ID");
@@ -110,10 +129,7 @@ mod tests {
 
         let state = build_workspace_view_state(&snapshot, None);
 
-        assert_eq!(
-            state.home.latest_clipboard_preview,
-            "No committed clipboard record yet."
-        );
+        assert!(state.home.system_core.clipboard.latest_record.is_none());
         assert!(state.clipboard.latest_record.is_none());
     }
 

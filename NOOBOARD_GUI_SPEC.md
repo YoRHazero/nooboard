@@ -206,7 +206,16 @@ crates/nooboard-gui/
     route.rs
     view_state/
       mod.rs
-      home.rs
+      home/
+        mod.rs
+        recent_activity.rs
+        system_core/
+          mod.rs
+          header.rs
+          controls.rs
+          radar.rs
+          clipboard.rs
+          components.rs
       clipboard.rs
       network.rs
       transfers.rs
@@ -229,7 +238,16 @@ crates/nooboard-gui/
     workspace/
       mod.rs
       shell.rs
-      home.rs
+      home/
+        mod.rs
+        recent_activity.rs
+        system_core/
+          mod.rs
+          header.rs
+          controls.rs
+          radar.rs
+          clipboard.rs
+          components.rs
       clipboard/
         mod.rs
         actions/
@@ -266,6 +284,9 @@ This structure is normative in intent:
 - when a route grows beyond a single cohesive file, `ui/workspace/<route>/` MAY expand into a
   submodule directory as long as route-local state, route-local view-state composition, and route
   visuals stay contained within that route module boundary
+- the Home route SHOULD preserve the old desktop `system_core + recent_activity` composition, and
+  if the old Home dock depends on removed business concepts, the layout MAY be preserved while the
+  control semantics are adapted to core-native actions
 
 ## 5. Bootstrap Flow
 

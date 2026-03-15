@@ -7,11 +7,7 @@ use gpui_component::{Disableable, StyledExt};
 
 use crate::{
     ui::theme,
-    workspace::{
-        recent_activity::{RecentActivitySeverity, RecentActivityViewState},
-        route::WorkspaceRoute,
-        view_state::WorkspaceMetricViewState,
-    },
+    workspace::{route::WorkspaceRoute, view_state::WorkspaceMetricViewState},
 };
 
 use super::WorkspaceView;
@@ -208,68 +204,5 @@ impl WorkspaceView {
                     })
                     .collect()
             })
-    }
-
-    pub(super) fn activity_row(
-        &self,
-        item: &RecentActivityViewState,
-        row_index: usize,
-    ) -> impl IntoElement {
-        let accent = match item.severity {
-            RecentActivitySeverity::Info => theme::accent_cyan(),
-            RecentActivitySeverity::Warning => theme::accent_amber(),
-            RecentActivitySeverity::Error => theme::accent_rose(),
-        };
-
-        div()
-            .id(format!("activity-row-{row_index}"))
-            .w_full()
-            .h_flex()
-            .items_start()
-            .gap(px(12.0))
-            .p(px(12.0))
-            .bg(theme::bg_panel())
-            .border_1()
-            .border_color(theme::border_soft())
-            .rounded(px(18.0))
-            .child(
-                div()
-                    .mt(px(4.0))
-                    .size(px(8.0))
-                    .rounded(px(999.0))
-                    .bg(accent),
-            )
-            .child(
-                div()
-                    .v_flex()
-                    .flex_1()
-                    .gap(px(4.0))
-                    .child(
-                        div()
-                            .h_flex()
-                            .justify_between()
-                            .gap(px(10.0))
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .font_semibold()
-                                    .text_color(theme::fg_secondary())
-                                    .child(item.label),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .text_color(theme::fg_muted())
-                                    .child(item.time_label.clone()),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .line_height(px(18.0))
-                            .text_color(theme::fg_primary())
-                            .child(item.title.clone()),
-                    ),
-            )
     }
 }

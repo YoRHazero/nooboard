@@ -96,9 +96,13 @@ impl WorkspaceView {
             })
     }
 
-    fn page_body(&self, model: &WorkspaceRenderModel, cx: &Context<Self>) -> Vec<gpui::AnyElement> {
+    fn page_body(
+        &self,
+        model: &WorkspaceRenderModel,
+        cx: &mut Context<Self>,
+    ) -> Vec<gpui::AnyElement> {
         match model.route {
-            WorkspaceRoute::Home => self.home_page(model),
+            WorkspaceRoute::Home => self.home_page(model, cx),
             WorkspaceRoute::Clipboard => self.clipboard_page(model, cx),
             WorkspaceRoute::Network => self.network_page(model, cx),
             WorkspaceRoute::Transfers => self.transfers_page(model),
@@ -106,7 +110,7 @@ impl WorkspaceView {
         }
     }
 
-    fn main_panel(&self, model: &WorkspaceRenderModel, cx: &Context<Self>) -> Div {
+    fn main_panel(&self, model: &WorkspaceRenderModel, cx: &mut Context<Self>) -> Div {
         div()
             .flex_1()
             .min_h_0()

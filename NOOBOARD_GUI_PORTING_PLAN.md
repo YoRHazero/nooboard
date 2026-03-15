@@ -109,7 +109,16 @@ crates/nooboard-gui/
     route.rs
     view_state/
       mod.rs
-      home.rs
+      home/
+        mod.rs
+        recent_activity.rs
+        system_core/
+          mod.rs
+          header.rs
+          controls.rs
+          radar.rs
+          clipboard.rs
+          components.rs
       clipboard.rs
       network.rs
       transfers.rs
@@ -134,7 +143,16 @@ crates/nooboard-gui/
     workspace/
       mod.rs
       shell.rs
-      home.rs
+      home/
+        mod.rs
+        recent_activity.rs
+        system_core/
+          mod.rs
+          header.rs
+          controls.rs
+          radar.rs
+          clipboard.rs
+          components.rs
       clipboard/
         mod.rs
         actions/
@@ -172,6 +190,10 @@ Notes:
 - if a route like clipboard or settings becomes materially larger than one cohesive file,
   it should be expanded into `ui/workspace/<route>/` submodules instead of pushing more unrelated
   concerns into a single route file
+- the Home route is expected to keep the old desktop `system_core + recent_activity` composition;
+  if the old dock contains removed concepts like desktop-only clipboard preferences, preserve the
+  layout and adapt the interaction to an equivalent `nooboard-core` action instead of restoring
+  the removed concept
 
 ## 5. Phase Plan
 

@@ -105,10 +105,23 @@ mod tests {
                 transfer_count_label: "0".to_string(),
             },
             home: view_state::HomePageViewState {
-                metrics: Vec::new(),
-                latest_clipboard_preview: String::new(),
-                latest_clipboard_event_id: None,
-                latest_clipboard_source: None,
+                system_core: view_state::HomeSystemCoreViewState {
+                    local_device_id: "desk-01".to_string(),
+                    network_control: view_state::HomeNetworkControlViewState {
+                        can_start: false,
+                        can_stop: true,
+                    },
+                    clipboard_control: view_state::HomeClipboardControlViewState {
+                        adopt_event_id: None,
+                    },
+                    radar: view_state::HomeRadarViewState {
+                        state: view_state::HomeRadarVisualState::Running,
+                        peers: Vec::new(),
+                    },
+                    clipboard: view_state::HomeClipboardPanelViewState {
+                        latest_record: None,
+                    },
+                },
             },
             clipboard: view_state::ClipboardWorkspaceViewState {
                 latest_record: None,
