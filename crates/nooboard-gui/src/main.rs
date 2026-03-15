@@ -3,6 +3,7 @@
 use clap::Parser;
 
 mod app;
+mod assets;
 mod bootstrap;
 mod ui;
 mod workspace;

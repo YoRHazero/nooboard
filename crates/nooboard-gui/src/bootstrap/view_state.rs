@@ -1,4 +1,4 @@
-use super::controller::BootstrapPreset;
+use super::state::BootstrapPreset;
 
 #[derive(Clone)]
 pub struct BootstrapViewState {

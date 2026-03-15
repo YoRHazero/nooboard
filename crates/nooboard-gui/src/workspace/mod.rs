@@ -2,6 +2,9 @@
 pub mod actions;
 pub mod controller;
 pub mod core_bridge;
+pub mod recent_activity;
+pub mod runtime_state;
+pub mod shell_view_state;
 pub mod subscriptions;
 pub mod view_state;
 

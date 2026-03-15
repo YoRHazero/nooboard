@@ -80,11 +80,18 @@ The implementation MUST obey these internal structure rules:
 
 - `app.rs` MUST only assemble the top-level GPUI application and route to bootstrap or workspace
   flows.
+- `assets.rs` SHOULD own bundled asset manifests and GPUI asset-source wiring.
 - `bootstrap/*` MUST only own bootstrap UI state, bootstrap commands, and bootstrap-to-core launch
   flow.
+- `bootstrap/state.rs` SHOULD own chooser-local selection state and preset-specific probe results.
 - `workspace/core_bridge.rs` MUST only hold `NooboardCore`, subscriptions, and bridge lifecycle.
 - `workspace/controller.rs` MUST only coordinate GUI-level actions and UI tasks.
+- `workspace/runtime_state.rs` SHOULD own GUI-local load/bridge status types.
+- `workspace/recent_activity.rs` SHOULD own recent-activity models and event/status-to-activity
+  translation.
 - `workspace/view_state.rs` MUST only derive UI projection state from `WorkspaceSnapshot`.
+- `workspace/shell_view_state.rs` SHOULD only compose shell/header/status projection from GUI-local
+  runtime state plus snapshot-derived view state.
 - `workspace/subscriptions.rs` MUST only forward state and event subscriptions into GUI updates.
 - `workspace/actions.rs` MUST only define GUI actions and command entry points.
 - UI component modules under `ui/` MUST NOT call `NooboardCore` directly.
@@ -177,30 +184,40 @@ The crate SHOULD be structured like this:
 crates/nooboard-gui/
   build.rs
   src/main.rs
+  src/assets.rs
   src/app.rs
 
   src/bootstrap/
     mod.rs
     controller.rs
+    state.rs
     view_state.rs
 
   src/workspace/
     mod.rs
     core_bridge.rs
     controller.rs
+    runtime_state.rs
+    recent_activity.rs
+    shell_view_state.rs
     view_state.rs
     subscriptions.rs
     actions.rs
 
   src/ui/
     bootstrap/
-    shell/
-    home/
-    clipboard/
-    network/
-    transfers/
-    settings/
-    shared/
+      actions.rs
+      components.rs
+      view.rs
+    workspace/
+      mod.rs
+      shell.rs
+      home.rs
+      clipboard.rs
+      network.rs
+      transfers.rs
+      settings.rs
+      shared.rs
 ```
 
 This structure is normative in intent:
@@ -208,6 +225,8 @@ This structure is normative in intent:
 - bootstrap flow is separate from workspace flow
 - bridge logic is separate from view-state derivation
 - UI components are separate from command execution
+- route-level workspace visuals are split into shell/home/clipboard/network/transfers/settings/shared
+  modules rather than collected in one render file
 
 ## 5. Bootstrap Flow
 

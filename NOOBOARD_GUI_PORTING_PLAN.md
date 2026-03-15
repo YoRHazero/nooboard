@@ -90,17 +90,22 @@ crates/nooboard-gui/
   build.rs
   Cargo.toml
   src/main.rs
+  src/assets.rs
   src/app.rs
 
   src/bootstrap/
     mod.rs
     controller.rs
+    state.rs
     view_state.rs
 
   src/workspace/
     mod.rs
     core_bridge.rs
     controller.rs
+    runtime_state.rs
+    recent_activity.rs
+    shell_view_state.rs
     view_state.rs
     subscriptions.rs
     actions.rs
@@ -109,7 +114,18 @@ crates/nooboard-gui/
     mod.rs
     theme.rs
     bootstrap/
+      actions.rs
+      components.rs
+      view.rs
     workspace/
+      mod.rs
+      shell.rs
+      home.rs
+      clipboard.rs
+      network.rs
+      transfers.rs
+      settings.rs
+      shared.rs
 ```
 
 Notes:
@@ -117,6 +133,8 @@ Notes:
 - `ui/bootstrap/` and `ui/workspace/` should preserve the same broad visual module layout as the
   old desktop crate where practical
 - `bootstrap/` and `workspace/` outside `ui/` are logic modules, not render modules
+- route-specific render logic should live under `ui/workspace/*`, while top-level view types only
+  assemble render models and shell layout
 
 ## 5. Phase Plan
 

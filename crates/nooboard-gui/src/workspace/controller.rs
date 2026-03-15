@@ -1,106 +1,21 @@
-use std::{
-    collections::VecDeque,
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{collections::VecDeque, sync::Arc};
 
 use gpui::{Context, Entity};
-use nooboard_core::{
-    BootstrapLaunch, ClipboardRecord, ClipboardRecordSource, ConnectionFailure, EventId,
-    NetworkStatus, NooboardCore, TransferOutcome, TransferTicket, WorkspaceEvent,
-    WorkspaceSnapshot,
-};
+use nooboard_core::{BootstrapLaunch, ClipboardRecord, EventId, NooboardCore, WorkspaceEvent, WorkspaceSnapshot};
 
 use super::{
     LaunchHandle,
     actions::WorkspaceRoute,
     core_bridge::{CoreBridge, CoreBridgeBoot},
+    recent_activity::{
+        RecentActivityItem, RecentActivityKind, recent_activity_from_network_status,
+        recent_activity_from_workspace_event,
+    },
+    runtime_state::{WorkspaceBridgeState, WorkspaceLoadState},
     subscriptions::{spawn_event_bridge, spawn_state_bridge},
 };
 
 const RECENT_ACTIVITY_CAPACITY: usize = 64;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RecentActivitySeverity {
-    Info,
-    Warning,
-    Error,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RecentActivityKind {
-    ClipboardCommitted {
-        event_id: EventId,
-        source: ClipboardRecordSource,
-    },
-    ClipboardAdoptFailed {
-        event_id: EventId,
-        message: String,
-    },
-    IncomingTransferOffered {
-        ticket: TransferTicket,
-    },
-    TransferCompleted {
-        ticket: TransferTicket,
-        outcome: TransferOutcome,
-    },
-    NetworkConnectionFailed {
-        failure: ConnectionFailure,
-    },
-    NetworkStarting,
-    NetworkRunning,
-    NetworkStopped,
-    NetworkError {
-        message: String,
-    },
-    GuiWarning {
-        message: String,
-    },
-    GuiError {
-        message: String,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RecentActivityItem {
-    pub observed_at_ms: i64,
-    pub severity: RecentActivitySeverity,
-    pub kind: RecentActivityKind,
-}
-
-impl RecentActivityItem {
-    fn new(kind: RecentActivityKind) -> Self {
-        Self {
-            observed_at_ms: now_millis(),
-            severity: activity_severity(&kind),
-            kind,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkspaceBridgeState {
-    pub state_stream_open: bool,
-    pub event_stream_open: bool,
-    pub last_error: Option<String>,
-}
-
-impl Default for WorkspaceBridgeState {
-    fn default() -> Self {
-        Self {
-            state_stream_open: true,
-            event_stream_open: true,
-            last_error: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WorkspaceLoadState {
-    Loading,
-    Ready,
-    Failed(String),
-}
 
 pub struct WorkspaceController {
     launch: BootstrapLaunch,
@@ -219,9 +134,7 @@ impl WorkspaceController {
         self.snapshot = Some(snapshot);
 
         if previous_status.as_ref() != Some(&next_status) {
-            if let Some(activity) = recent_activity_from_network_status(&next_status) {
-                self.push_recent_activity(activity);
-            }
+            self.push_recent_activity(recent_activity_from_network_status(&next_status));
         }
     }
 
@@ -280,78 +193,13 @@ impl WorkspaceController {
     }
 }
 
-fn activity_severity(kind: &RecentActivityKind) -> RecentActivitySeverity {
-    match kind {
-        RecentActivityKind::ClipboardCommitted { .. }
-        | RecentActivityKind::IncomingTransferOffered { .. }
-        | RecentActivityKind::TransferCompleted { .. }
-        | RecentActivityKind::NetworkStarting
-        | RecentActivityKind::NetworkRunning
-        | RecentActivityKind::NetworkStopped => RecentActivitySeverity::Info,
-        RecentActivityKind::ClipboardAdoptFailed { .. }
-        | RecentActivityKind::NetworkConnectionFailed { .. }
-        | RecentActivityKind::GuiWarning { .. } => RecentActivitySeverity::Warning,
-        RecentActivityKind::NetworkError { .. } | RecentActivityKind::GuiError { .. } => {
-            RecentActivitySeverity::Error
-        }
-    }
-}
-
-fn recent_activity_from_workspace_event(event: &WorkspaceEvent) -> Option<RecentActivityItem> {
-    let kind = match event {
-        WorkspaceEvent::ClipboardCommitted { event_id, source } => {
-            RecentActivityKind::ClipboardCommitted {
-                event_id: *event_id,
-                source: *source,
-            }
-        }
-        WorkspaceEvent::IncomingTransferOffered { ticket } => {
-            RecentActivityKind::IncomingTransferOffered { ticket: *ticket }
-        }
-        WorkspaceEvent::TransferUpdated { .. } => return None,
-        WorkspaceEvent::TransferCompleted { ticket, outcome } => {
-            RecentActivityKind::TransferCompleted {
-                ticket: *ticket,
-                outcome: *outcome,
-            }
-        }
-        WorkspaceEvent::NetworkConnectionFailed { failure } => {
-            RecentActivityKind::NetworkConnectionFailed {
-                failure: failure.clone(),
-            }
-        }
-    };
-
-    Some(RecentActivityItem::new(kind))
-}
-
-fn recent_activity_from_network_status(status: &NetworkStatus) -> Option<RecentActivityItem> {
-    let kind = match status {
-        NetworkStatus::Starting => RecentActivityKind::NetworkStarting,
-        NetworkStatus::Running => RecentActivityKind::NetworkRunning,
-        NetworkStatus::Stopped => RecentActivityKind::NetworkStopped,
-        NetworkStatus::Error(message) => RecentActivityKind::NetworkError {
-            message: message.clone(),
-        },
-    };
-
-    Some(RecentActivityItem::new(kind))
-}
-
-fn now_millis() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| i64::try_from(duration.as_millis()).unwrap_or(i64::MAX))
-        .unwrap_or(0)
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
     use nooboard_core::{
         BootstrapLaunch, BootstrapMode, ClipboardSettings, ClipboardState, ConnectionSettings,
-        LocalConnectionInfo, NetworkSettings, NetworkSnapshot, NetworkStatus, NoobId,
+        EventId, LocalConnectionInfo, NetworkSettings, NetworkSnapshot, NetworkStatus, NoobId,
         StorageSettings, TransferSettings, TransfersSnapshot, WorkspaceIdentity, WorkspaceSettings,
         WorkspaceSnapshot,
     };
@@ -363,20 +211,14 @@ mod tests {
         let mut controller = WorkspaceController::new(LaunchHandle::Ready(sample_launch()));
 
         for index in 0..(RECENT_ACTIVITY_CAPACITY + 4) {
-            controller.push_recent_activity(RecentActivityItem {
-                observed_at_ms: index as i64,
-                severity: RecentActivitySeverity::Warning,
-                kind: RecentActivityKind::GuiWarning {
-                    message: format!("warning-{index}"),
-                },
-            });
+            controller.record_bridge_warning(format!("warning-{index}"));
         }
 
         assert_eq!(controller.recent_activity().len(), RECENT_ACTIVITY_CAPACITY);
-        assert_eq!(
-            controller.recent_activity().front().unwrap().observed_at_ms,
-            (RECENT_ACTIVITY_CAPACITY + 3) as i64
-        );
+        assert!(matches!(
+            controller.recent_activity().front().map(|item| &item.kind),
+            Some(RecentActivityKind::GuiWarning { .. })
+        ));
     }
 
     #[test]
@@ -389,6 +231,19 @@ mod tests {
         assert!(matches!(
             controller.recent_activity().front().map(|item| &item.kind),
             Some(RecentActivityKind::NetworkRunning)
+        ));
+    }
+
+    #[test]
+    fn clipboard_adopt_failure_is_tracked_as_recent_activity() {
+        let mut controller = WorkspaceController::new(LaunchHandle::Ready(sample_launch()));
+        let event_id = EventId::new();
+
+        controller.record_clipboard_adopt_failed(event_id, "clipboard backend unavailable".to_string());
+
+        assert!(matches!(
+            controller.recent_activity().front().map(|item| &item.kind),
+            Some(RecentActivityKind::ClipboardAdoptFailed { event_id: observed, .. }) if *observed == event_id
         ));
     }
 
