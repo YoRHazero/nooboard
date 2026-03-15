@@ -25,6 +25,10 @@ struct CoreInner {
 }
 
 impl NooboardCore {
+    pub fn launch_default(launch: &BootstrapLaunch) -> CoreResult<Self> {
+        Self::launch(launch, crate::default_clipboard::default_clipboard_port()?)
+    }
+
     pub fn launch(launch: &BootstrapLaunch, clipboard: Arc<dyn ClipboardPort>) -> CoreResult<Self> {
         prepare_bootstrap_launch(launch)?;
         let config_path = launch.config_path.clone();

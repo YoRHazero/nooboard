@@ -3948,6 +3948,8 @@ dependencies = [
  "nooboard-config",
  "nooboard-network",
  "nooboard-platform",
+ "nooboard-platform-macos",
+ "nooboard-platform-windows",
  "nooboard-storage",
  "tempfile",
  "thiserror 2.0.18",
@@ -3971,6 +3973,22 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
+ "winres",
+]
+
+[[package]]
+name = "nooboard-gui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "gpui",
+ "gpui-component",
+ "gpui-component-assets",
+ "gpui_platform",
+ "nooboard-core",
+ "time",
+ "tokio",
  "winres",
 ]
 

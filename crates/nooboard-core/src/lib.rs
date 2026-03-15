@@ -1,5 +1,6 @@
 mod bootstrap;
 mod clipboard;
+mod default_clipboard;
 mod error;
 mod runtime;
 mod storage;
