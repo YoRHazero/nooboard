@@ -47,3 +47,32 @@ pub enum BootstrapDecision {
     Launch(BootstrapLaunch),
     NeedsChooser(BootstrapChooserContext),
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExistingConfigProbe {
+    Valid { path: PathBuf },
+    Invalid { path: PathBuf, message: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CustomLocationProbe {
+    ReadyToCreate {
+        directory: PathBuf,
+        config_path: PathBuf,
+    },
+    ExistingValidConfig {
+        directory: PathBuf,
+        config_path: PathBuf,
+    },
+    ExistingInvalidConfig {
+        directory: PathBuf,
+        config_path: PathBuf,
+        message: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RepoDevelopmentProbe {
+    Available { config_path: PathBuf },
+    Unavailable { message: String },
+}

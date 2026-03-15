@@ -33,6 +33,14 @@ The authoritative implementation contract for the future `nooboard-core` crate l
 When implementing or reviewing the application core rewrite, treat that document as the single
 source of truth. If code and spec differ, update the spec first or change the code.
 
+## GUI rewrite
+
+The authoritative implementation contract for the future `nooboard-gui` crate lives in
+[`NOOBOARD_GUI_SPEC.md`](./NOOBOARD_GUI_SPEC.md).
+
+When implementing or reviewing the GUI rewrite, treat that document as the single source of truth.
+If code and spec differ, update the spec first or change the code.
+
 ## Desktop bootstrap
 
 Desktop bootstrap resolution currently follows this order:

@@ -1,11 +1,12 @@
 use crate::defaults::APP_CONFIG_VERSION;
-use std::path::Path;
 
 use crate::{ConfigError, ConfigResult};
 
 use super::env::config_override_path;
 use super::paths::{default_config_path, repo_development_config_path};
-use super::probe::{DefaultConfigState, inspect_default_config_state};
+use super::probe::{
+    DefaultConfigState, inspect_default_config_state, validate_existing_config_file_path,
+};
 use super::spec::{
     BootstrapChooserContext, BootstrapChooserReason, BootstrapDecision, BootstrapLaunch,
     BootstrapMode, BootstrapRequest,
@@ -41,7 +42,7 @@ fn resolve_bootstrap_with_paths(
     }
 
     if let Some(config_path) = request.cli_config_path.clone() {
-        validate_existing_config_path(&config_path, "--config")?;
+        validate_existing_config_file_path(&config_path, "--config config")?;
         return Ok(BootstrapDecision::Launch(BootstrapLaunch {
             mode: BootstrapMode::ExplicitPath,
             config_path,
@@ -57,7 +58,7 @@ fn resolve_bootstrap_with_paths(
     }
 
     if let Some(config_path) = env_override {
-        validate_existing_config_path(&config_path, super::env::BOOTSTRAP_ENV_VAR)?;
+        validate_existing_config_file_path(&config_path, super::env::BOOTSTRAP_ENV_VAR)?;
         return Ok(BootstrapDecision::Launch(BootstrapLaunch {
             mode: BootstrapMode::ExplicitPath,
             config_path,
@@ -89,24 +90,6 @@ fn resolve_bootstrap_with_paths(
             }))
         }
     }
-}
-
-fn validate_existing_config_path(path: &Path, source: &str) -> ConfigResult<()> {
-    if !path.exists() {
-        return Err(ConfigError::InvalidBootstrap(format!(
-            "{source} config path does not exist: {}",
-            path.display()
-        )));
-    }
-
-    if !path.is_file() {
-        return Err(ConfigError::InvalidBootstrap(format!(
-            "{source} config path is not a file: {}",
-            path.display()
-        )));
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]

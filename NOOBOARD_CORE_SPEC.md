@@ -185,11 +185,64 @@ pub use nooboard_config::{
     BootstrapRequest,
 };
 
+pub enum ExistingConfigProbe {
+    Valid { path: std::path::PathBuf },
+    Invalid {
+        path: std::path::PathBuf,
+        message: String,
+    },
+}
+
+pub enum CustomLocationProbe {
+    ReadyToCreate {
+        directory: std::path::PathBuf,
+        config_path: std::path::PathBuf,
+    },
+    ExistingValidConfig {
+        directory: std::path::PathBuf,
+        config_path: std::path::PathBuf,
+    },
+    ExistingInvalidConfig {
+        directory: std::path::PathBuf,
+        config_path: std::path::PathBuf,
+        message: String,
+    },
+}
+
+pub enum RepoDevelopmentProbe {
+    Available {
+        config_path: std::path::PathBuf,
+    },
+    Unavailable {
+        message: String,
+    },
+}
+
 pub fn resolve_bootstrap(request: &BootstrapRequest) -> CoreResult<BootstrapDecision>;
+
+pub fn inspect_existing_config(path: &std::path::Path) -> CoreResult<ExistingConfigProbe>;
+
+pub fn inspect_custom_location(directory: &std::path::Path) -> CoreResult<CustomLocationProbe>;
+
+pub fn inspect_repo_development() -> CoreResult<RepoDevelopmentProbe>;
 
 pub fn prepare_default_config_from_chooser(
     context: &BootstrapChooserContext,
 ) -> CoreResult<BootstrapLaunch>;
+
+pub fn prepare_existing_config_launch(
+    path: &std::path::Path,
+) -> CoreResult<BootstrapLaunch>;
+
+pub fn rewrite_existing_config(
+    path: &std::path::Path,
+) -> CoreResult<BootstrapLaunch>;
+
+pub fn prepare_custom_location_launch(
+    directory: &std::path::Path,
+) -> CoreResult<BootstrapLaunch>;
+
+pub fn prepare_repo_development_launch() -> CoreResult<BootstrapLaunch>;
 ```
 
 ### 4.1 Bootstrap semantics
@@ -202,6 +255,91 @@ pub fn prepare_default_config_from_chooser(
 - `prepare_default_config_from_chooser(...)` MUST remain destructive only when the chooser reason
   authorizes it.
 - explicit chooser requests MUST NOT silently recreate the default config.
+
+### 4.2 Probe vs execution split
+
+Bootstrap helper APIs are divided into two categories:
+
+- probe APIs
+- execution APIs
+
+Probe APIs are:
+
+- `inspect_existing_config(...)`
+- `inspect_custom_location(...)`
+- `inspect_repo_development()`
+
+Execution APIs are:
+
+- `prepare_default_config_from_chooser(...)`
+- `prepare_existing_config_launch(...)`
+- `rewrite_existing_config(...)`
+- `prepare_custom_location_launch(...)`
+- `prepare_repo_development_launch()`
+
+### 4.3 Probe API rules
+
+Probe APIs MUST be side-effect free.
+
+This means:
+
+- they MAY read files
+- they MAY validate config contents
+- they MAY report invalidity and explain why
+- they MUST NOT create files
+- they MUST NOT overwrite files
+- they MUST NOT archive files
+- they MUST NOT mutate configuration on disk
+
+The purpose of probe APIs is to let the GUI determine:
+
+- whether a chooser selection is valid
+- what description to show
+- whether confirm is enabled
+- whether rewrite should be offered
+
+### 4.4 Execution API rules
+
+Execution APIs MAY perform side effects and MUST return a `BootstrapLaunch` on success.
+
+This means:
+
+- `prepare_existing_config_launch(...)` validates and returns a launch for an existing config file
+- `rewrite_existing_config(...)` rewrites an invalid config file in place using the current
+  production template, then returns a launch for that file
+- `prepare_custom_location_launch(...)` either creates a new config in the given directory or
+  reuses an existing compatible config there, then returns a launch
+- `prepare_repo_development_launch()` resolves and prepares the repository-local development setup
+  and returns a launch
+
+### 4.5 GUI restrictions during bootstrap
+
+The GUI MUST NOT directly perform config-file inspection or mutation during bootstrap.
+
+Specifically, the GUI MUST NOT directly call:
+
+- `AppConfig::load(...)`
+- `write_config_template(...)`
+- `prepare_bootstrap_launch(...)`
+- `repo_development_config_path(...)`
+- any other `nooboard-config` function that directly reads, writes, or rewrites config files
+
+Instead:
+
+- GUI browse flows MUST call probe APIs
+- GUI confirm/rewrite actions MUST call execution APIs
+
+### 4.6 Chooser preset coverage
+
+The bootstrap API MUST fully cover the chooser presets required by the old desktop application:
+
+- default config
+- existing config
+- custom location
+- repository-local development setup
+
+It is not acceptable for `nooboard-gui` to restore these presets by directly reimplementing
+`nooboard-config` file behavior.
 
 ## 5. Public Runtime API
 

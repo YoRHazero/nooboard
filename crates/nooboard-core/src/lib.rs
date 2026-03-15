@@ -8,7 +8,11 @@ mod workspace;
 
 pub use bootstrap::{
     BootstrapChooserContext, BootstrapChooserReason, BootstrapDecision, BootstrapLaunch,
-    BootstrapMode, BootstrapRequest, prepare_default_config_from_chooser, resolve_bootstrap,
+    BootstrapMode, BootstrapRequest, CustomLocationProbe, ExistingConfigProbe,
+    RepoDevelopmentProbe, inspect_custom_location, inspect_existing_config,
+    inspect_repo_development, prepare_custom_location_launch, prepare_default_config_from_chooser,
+    prepare_existing_config_launch, prepare_repo_development_launch, resolve_bootstrap,
+    rewrite_existing_config,
 };
 pub use clipboard::port::ClipboardPort;
 pub use error::{CoreError, CoreResult};
