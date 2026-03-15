@@ -105,8 +105,8 @@ impl WorkspaceView {
             WorkspaceRoute::Home => self.home_page(model, cx),
             WorkspaceRoute::Clipboard => self.clipboard_page(model, cx),
             WorkspaceRoute::Network => self.network_page(model, cx),
-            WorkspaceRoute::Transfers => self.transfers_page(model),
-            WorkspaceRoute::Settings => self.settings_page(model),
+            WorkspaceRoute::Transfers => self.transfers_page(model, cx),
+            WorkspaceRoute::Settings => self.settings_page(model, cx),
         }
     }
 

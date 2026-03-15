@@ -7,6 +7,24 @@ use crate::workspace::controller::WorkspaceController;
 
 use super::spawn::spawn_core_call;
 
+#[derive(Clone)]
+pub struct ApplyConnectionSettingsInput {
+    pub device_id: String,
+    pub token: String,
+    pub listen_port: u16,
+    pub lan_enabled: bool,
+    pub current_device_id: String,
+    pub current_token: String,
+    pub current_listen_port: u16,
+    pub current_lan_enabled: bool,
+}
+
+#[derive(Clone)]
+pub struct ApplyClipboardSettingsInput {
+    pub local_capture_enabled: bool,
+    pub current_local_capture_enabled: bool,
+}
+
 pub fn set_device_id_task<T: 'static>(
     controller: &Entity<WorkspaceController>,
     value: String,
@@ -95,5 +113,51 @@ pub fn set_storage_settings_task<T: 'static>(
         cx,
         "failed to set storage settings",
         move |core| async move { core.set_storage_settings(input).await },
+    )
+}
+
+pub fn apply_connection_settings_task<T: 'static>(
+    controller: &Entity<WorkspaceController>,
+    input: ApplyConnectionSettingsInput,
+    cx: &Context<T>,
+) -> Option<Task<nooboard_core::CoreResult<()>>> {
+    spawn_core_call(
+        controller,
+        cx,
+        "failed to apply connection settings",
+        move |core| async move {
+            if input.device_id != input.current_device_id {
+                core.set_device_id(input.device_id.clone()).await?;
+            }
+            if input.token != input.current_token {
+                core.set_network_token(input.token.clone()).await?;
+            }
+            if input.listen_port != input.current_listen_port {
+                core.set_network_listen_port(input.listen_port).await?;
+            }
+            if input.lan_enabled != input.current_lan_enabled {
+                core.set_lan_enabled(input.lan_enabled).await?;
+            }
+            Ok(())
+        },
+    )
+}
+
+pub fn apply_clipboard_settings_task<T: 'static>(
+    controller: &Entity<WorkspaceController>,
+    input: ApplyClipboardSettingsInput,
+    cx: &Context<T>,
+) -> Option<Task<nooboard_core::CoreResult<()>>> {
+    spawn_core_call(
+        controller,
+        cx,
+        "failed to apply clipboard settings",
+        move |core| async move {
+            if input.local_capture_enabled != input.current_local_capture_enabled {
+                core.set_local_capture_enabled(input.local_capture_enabled)
+                    .await?;
+            }
+            Ok(())
+        },
     )
 }

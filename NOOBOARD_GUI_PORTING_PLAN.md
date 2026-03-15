@@ -120,9 +120,18 @@ crates/nooboard-gui/
           clipboard.rs
           components.rs
       clipboard.rs
-      network.rs
-      transfers.rs
-      settings.rs
+      network/
+        mod.rs
+        actions.rs
+        state.rs
+      transfers/
+        mod.rs
+        actions.rs
+        state.rs
+      settings/
+        mod.rs
+        actions.rs
+        state.rs
       shared.rs
     subscriptions.rs
     actions/
@@ -194,6 +203,9 @@ Notes:
   if the old dock contains removed concepts like desktop-only clipboard preferences, preserve the
   layout and adapt the interaction to an equivalent `nooboard-core` action instead of restoring
   the removed concept
+- `network`, `transfers`, and `settings` are expected to follow the same rule once they gain route-
+  local drafts, file pickers, or async interaction state; those concerns should live inside the
+  route directory rather than in `WorkspaceView` or shared helpers
 
 ## 5. Phase Plan
 
@@ -327,6 +339,8 @@ Exit criteria:
 
 - old `PeerTransport`/`manual_peers` vocabulary is gone
 - UI reflects the new core/network model directly
+- `ui/workspace/network/` stays split by page/panel/components instead of returning to one route
+  render hotspot
 
 ### Phase 7: Transfer surfaces
 
@@ -347,6 +361,7 @@ Exit criteria:
 
 - transfer UI behaves correctly under `nooboard-core`
 - no local transfer truth store exists in the GUI
+- `ui/workspace/transfers/` stays split by targets/composer/activity/components
 
 ### Phase 8: Settings surfaces
 
@@ -361,14 +376,18 @@ Required work:
   - `set_device_id`
   - `set_network_token`
   - `set_network_listen_port`
+  - `set_lan_enabled`
   - `set_local_capture_enabled`
   - `set_download_dir`
   - `set_storage_settings`
+  - keep `db_root` as read-only display until `nooboard-core` exposes a dedicated setter
 
 Exit criteria:
 
 - settings edits reflect immediately through `WorkspaceSnapshot`
 - GUI does not maintain a second persistent settings model
+- `ui/workspace/settings/` stays split into section renderers plus shared chrome/derived status
+- settings draft state stays as a thin aggregate over section-local substates
 
 ### Phase 9: Parity and cleanup
 

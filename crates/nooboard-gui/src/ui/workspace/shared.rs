@@ -5,10 +5,7 @@ use gpui::{
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::{Disableable, StyledExt};
 
-use crate::{
-    ui::theme,
-    workspace::{route::WorkspaceRoute, view_state::WorkspaceMetricViewState},
-};
+use crate::{ui::theme, workspace::route::WorkspaceRoute};
 
 use super::WorkspaceView;
 
@@ -86,32 +83,6 @@ impl WorkspaceView {
                     .font_semibold()
                     .text_color(theme::fg_primary())
                     .child(value),
-            )
-    }
-
-    pub(super) fn metric_card(&self, metric: &WorkspaceMetricViewState) -> Div {
-        div()
-            .v_flex()
-            .gap(px(10.0))
-            .p(px(16.0))
-            .bg(theme::bg_panel())
-            .border_1()
-            .border_color(theme::border_soft())
-            .rounded(px(20.0))
-            .min_w(px(150.0))
-            .child(
-                div()
-                    .text_size(px(11.0))
-                    .font_semibold()
-                    .text_color(theme::fg_muted())
-                    .child(metric.label),
-            )
-            .child(
-                div()
-                    .text_size(px(18.0))
-                    .font_semibold()
-                    .text_color(theme::fg_primary())
-                    .child(metric.value.clone()),
             )
     }
 

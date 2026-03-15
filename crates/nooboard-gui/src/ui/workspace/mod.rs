@@ -20,6 +20,9 @@ use crate::workspace::{
 pub struct WorkspaceView {
     controller: Entity<WorkspaceController>,
     clipboard: clipboard::ClipboardPageState,
+    network: network::NetworkPageState,
+    transfers: transfers::TransfersPageState,
+    settings: settings::SettingsPageState,
 }
 
 pub(super) struct WorkspaceRenderModel {
@@ -32,14 +35,25 @@ impl WorkspaceView {
     pub fn new(launch: LaunchHandle, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let controller = cx.new(|_| WorkspaceController::new(launch.clone()));
         let clipboard = clipboard::ClipboardPageState::new(window, cx);
-        let edit_input = clipboard.edit_input();
-        cx.observe(&edit_input, |_, _, cx| cx.notify()).detach();
+        let network = network::NetworkPageState::new(window, cx);
+        let transfers = transfers::TransfersPageState::new();
+        let settings = settings::SettingsPageState::new(window, cx);
+
+        for input in std::iter::once(clipboard.edit_input())
+            .chain(network.input_entities())
+            .chain(settings.input_entities())
+        {
+            cx.observe(&input, |_, _, cx| cx.notify()).detach();
+        }
         cx.observe(&controller, |_, _, cx| cx.notify()).detach();
         WorkspaceController::initialize(&controller, launch, cx);
 
         Self {
             controller,
             clipboard,
+            network,
+            transfers,
+            settings,
         }
     }
 
@@ -74,6 +88,15 @@ impl Render for WorkspaceView {
         let model = self.render_model(cx);
         self.sync_clipboard_from_workspace(
             model.page.as_ref().map(|page| &page.clipboard),
+            window,
+            cx,
+        );
+        self.network
+            .sync_from_workspace(model.page.as_ref().map(|page| &page.network), window, cx);
+        self.transfers
+            .sync_from_workspace(model.page.as_ref().map(|page| &page.transfers));
+        self.settings.sync_from_workspace(
+            model.page.as_ref().map(|page| &page.settings),
             window,
             cx,
         );

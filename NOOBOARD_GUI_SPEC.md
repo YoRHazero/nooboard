@@ -217,9 +217,18 @@ crates/nooboard-gui/
           clipboard.rs
           components.rs
       clipboard.rs
-      network.rs
-      transfers.rs
-      settings.rs
+      network/
+        mod.rs
+        actions.rs
+        state.rs
+      transfers/
+        mod.rs
+        actions.rs
+        state.rs
+      settings/
+        mod.rs
+        actions.rs
+        state.rs
       shared.rs
     subscriptions.rs
     actions/
@@ -284,9 +293,16 @@ This structure is normative in intent:
 - when a route grows beyond a single cohesive file, `ui/workspace/<route>/` MAY expand into a
   submodule directory as long as route-local state, route-local view-state composition, and route
   visuals stay contained within that route module boundary
+- when a route directory expands, page composition, panel/section rendering, and shared route-local
+  chrome SHOULD be split into separate files instead of being recollected into one large `mod.rs`
 - the Home route SHOULD preserve the old desktop `system_core + recent_activity` composition, and
   if the old Home dock depends on removed business concepts, the layout MAY be preserved while the
   control semantics are adapted to core-native actions
+- the Network, Transfers, and Settings routes SHOULD use route-local state modules for ephemeral
+  drafts, picker state, and action feedback instead of pushing those concerns into `WorkspaceView`
+  or generic shared files
+- if a route-local state module grows to cover multiple independent settings/panel drafts, it
+  SHOULD become a thin aggregate over section-local substate modules rather than a flat store
 
 ## 5. Bootstrap Flow
 
@@ -367,6 +383,11 @@ Permitted calls include:
 - `send_files`
 - `decide_incoming_transfer`
 - `cancel_transfer`
+
+Current limitation:
+
+- the Settings route SHOULD render `storage.db_root`, but MUST treat it as read-only until
+  `nooboard-core` exposes a dedicated setter for that field
 
 UI components MUST NOT call these methods directly from render logic; they MUST route through GUI
 actions/controllers.

@@ -17,10 +17,19 @@ pub use home::{
     HomeClipboardRecordViewState, HomePageViewState, HomeRadarPeerViewState, HomeRadarVisualState,
     HomeSystemCoreViewState,
 };
-pub use network::NetworkPageViewState;
-pub use settings::SettingsPageViewState;
-pub use shared::{WorkspaceMetricViewState, WorkspaceSessionTargetViewState};
-pub use transfers::TransfersPageViewState;
+pub use network::{
+    NetworkDirectSeedViewState, NetworkLanPeerViewState, NetworkPageViewState,
+    NetworkPendingRequestViewState, NetworkSessionViewState,
+};
+pub use settings::{
+    SettingsClipboardViewState, SettingsConnectionViewState, SettingsPageViewState,
+    SettingsStorageViewState, SettingsTransfersViewState,
+};
+pub use shared::WorkspaceSessionTargetViewState;
+pub use transfers::{
+    ActiveTransferViewState, CompletedTransferViewState, IncomingTransferViewState,
+    TransfersPageViewState,
+};
 
 #[derive(Clone)]
 pub struct WorkspaceIdentityViewState {
@@ -120,7 +129,12 @@ mod tests {
         ));
         assert_eq!(state.clipboard.max_text_bytes, 4096);
         assert_eq!(state.clipboard.session_targets.len(), 0);
-        assert_eq!(state.settings.rows[0].label, "Device ID");
+        assert_eq!(state.settings.connection.device_id, "desk-01");
+        assert_eq!(state.settings.connection.listen_port, 17890);
+        assert_eq!(
+            state.settings.transfers.download_dir,
+            PathBuf::from("/tmp/downloads")
+        );
     }
 
     #[test]

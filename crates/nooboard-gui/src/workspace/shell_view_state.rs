@@ -132,17 +132,43 @@ mod tests {
                 status_label: "Running".to_string(),
                 can_start: false,
                 can_stop: true,
+                lan_peer_count: 0,
+                direct_seed_count: 0,
+                pending_request_count: 0,
+                session_count: 0,
                 lan_peers: Vec::new(),
                 direct_seeds: Vec::new(),
                 pending_requests: Vec::new(),
                 sessions: Vec::new(),
             },
             transfers: view_state::TransfersPageViewState {
+                available_targets: Vec::new(),
                 incoming: Vec::new(),
                 active: Vec::new(),
                 completed: Vec::new(),
             },
-            settings: view_state::SettingsPageViewState { rows: Vec::new() },
+            settings: view_state::SettingsPageViewState {
+                connection: view_state::SettingsConnectionViewState {
+                    device_id: "desk-01".to_string(),
+                    token: "shared-token".to_string(),
+                    endpoint_label: Some("127.0.0.1:17890".to_string()),
+                    listen_port: 17890,
+                    lan_enabled: true,
+                },
+                clipboard: view_state::SettingsClipboardViewState {
+                    local_capture_enabled: true,
+                },
+                transfers: view_state::SettingsTransfersViewState {
+                    download_dir: "/tmp/downloads".into(),
+                },
+                storage: view_state::SettingsStorageViewState {
+                    db_root: "/tmp/db".into(),
+                    history_window_days: 7,
+                    dedup_window_days: 14,
+                    max_text_bytes: 4096,
+                    gc_batch_size: 64,
+                },
+            },
         }
     }
 }

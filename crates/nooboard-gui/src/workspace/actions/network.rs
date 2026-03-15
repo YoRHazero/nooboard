@@ -1,6 +1,7 @@
 use gpui::{Context, Entity, Task};
 use nooboard_core::{
-    ConnectDirectOutcome, DirectRequestId, DirectSeedId, SessionId, UpsertDirectSeedInput,
+    ConnectDirectOutcome, DirectRequestId, DirectSeedId, DirectSeedInfo, SessionId,
+    UpsertDirectSeedInput,
 };
 
 use crate::workspace::controller::WorkspaceController;
@@ -79,6 +80,19 @@ pub fn connect_direct_seed_task<T: 'static>(
         cx,
         "failed to connect direct seed",
         move |core| async move { core.connect_direct_seed(id).await },
+    )
+}
+
+pub fn search_direct_seeds_task<T: 'static>(
+    controller: &Entity<WorkspaceController>,
+    query: String,
+    cx: &Context<T>,
+) -> Option<Task<nooboard_core::CoreResult<Vec<DirectSeedInfo>>>> {
+    spawn_core_call(
+        controller,
+        cx,
+        "failed to search direct seeds",
+        move |core| async move { core.search_direct_seeds(&query).await },
     )
 }
 
