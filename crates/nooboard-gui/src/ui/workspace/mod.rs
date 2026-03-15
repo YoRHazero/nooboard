@@ -4,9 +4,11 @@ mod network;
 mod settings;
 mod shared;
 mod shell;
+mod transfer_rail;
 mod transfers;
 
-use gpui::{AppContext as _, Context, Entity, IntoElement, Render, Window};
+use gpui::{AppContext as _, Context, Entity, IntoElement, Render, ScrollHandle, Window};
+use nooboard_core::BootstrapMode;
 
 use crate::workspace::{
     LaunchHandle,
@@ -23,6 +25,9 @@ pub struct WorkspaceView {
     network: network::NetworkPageState,
     transfers: transfers::TransfersPageState,
     settings: settings::SettingsPageState,
+    main_y_scroll: ScrollHandle,
+    transfer_rail_expanded: bool,
+    transfer_rail_has_toggled: bool,
 }
 
 pub(super) struct WorkspaceRenderModel {
@@ -54,6 +59,9 @@ impl WorkspaceView {
             network,
             transfers,
             settings,
+            main_y_scroll: ScrollHandle::default(),
+            transfer_rail_expanded: true,
+            transfer_rail_has_toggled: false,
         }
     }
 
@@ -72,6 +80,7 @@ impl WorkspaceView {
             page.as_ref(),
             &recent_activity,
             controller.bridge_state(),
+            bootstrap_mode_label(controller.launch().mode),
             controller.launch().config_path.display().to_string(),
         );
 
@@ -104,5 +113,13 @@ impl Render for WorkspaceView {
             self.bootstrap_clipboard_history_if_needed(cx);
         }
         self.render_root(model, cx)
+    }
+}
+
+fn bootstrap_mode_label(mode: BootstrapMode) -> String {
+    match mode {
+        BootstrapMode::ExplicitPath => "Explicit path".to_string(),
+        BootstrapMode::RepoDevelopment => "Local development".to_string(),
+        BootstrapMode::UserDefault => "Default user config".to_string(),
     }
 }

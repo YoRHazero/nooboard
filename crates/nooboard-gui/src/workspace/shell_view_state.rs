@@ -11,6 +11,7 @@ pub struct WorkspaceShellViewState {
     pub headline: String,
     pub subheadline: String,
     pub revision_label: String,
+    pub bootstrap_mode_label: String,
     pub config_path_label: String,
     pub recent_activity: Vec<RecentActivityViewState>,
     pub state_stream_open: bool,
@@ -23,6 +24,7 @@ pub fn build_workspace_shell_view_state(
     workspace_view: Option<&WorkspaceViewState>,
     recent_activity: &[RecentActivityItem],
     bridge_state: &WorkspaceBridgeState,
+    bootstrap_mode_label: String,
     config_path_label: String,
 ) -> WorkspaceShellViewState {
     let (headline, subheadline, revision_label) = match (load_state, workspace_view) {
@@ -47,6 +49,7 @@ pub fn build_workspace_shell_view_state(
         headline,
         subheadline,
         revision_label,
+        bootstrap_mode_label,
         config_path_label,
         recent_activity: build_recent_activity_view_state(recent_activity),
         state_stream_open: bridge_state.state_stream_open,
@@ -70,6 +73,7 @@ mod tests {
             Some(&workspace_view),
             &[],
             &WorkspaceBridgeState::default(),
+            "Default user config".to_string(),
             "/tmp/nooboard.toml".to_string(),
         );
 
@@ -85,6 +89,7 @@ mod tests {
             None,
             &[],
             &WorkspaceBridgeState::default(),
+            "Explicit path".to_string(),
             "/tmp/nooboard.toml".to_string(),
         );
 
@@ -102,7 +107,7 @@ mod tests {
             },
             shell_metrics: view_state::WorkspaceShellMetricsViewState {
                 session_count_label: "0".to_string(),
-                transfer_count_label: "0".to_string(),
+                inbox_count_label: "0".to_string(),
             },
             home: view_state::HomePageViewState {
                 system_core: view_state::HomeSystemCoreViewState {

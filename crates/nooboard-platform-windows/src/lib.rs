@@ -1,6 +1,6 @@
 //! Windows clipboard backend for nooboard.
 //!
-//! This crate keeps Win32 clipboard details out of `nooboard-app` and mirrors the
+//! This crate keeps Win32 clipboard details out of the higher-level runtime and mirrors the
 //! existing macOS backend shape:
 //! - `read_text` reads `CF_UNICODETEXT`
 //! - `write_text` writes `CF_UNICODETEXT` via a Win32 clipboard owner window

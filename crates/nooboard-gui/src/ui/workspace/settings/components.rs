@@ -274,6 +274,10 @@ impl WorkspaceView {
     }
 
     pub(super) fn settings_readonly_path_card(&self, label: &str, value: String) -> gpui::Div {
+        self.settings_readonly_value_card(label, value)
+    }
+
+    pub(super) fn settings_readonly_value_card(&self, label: &str, value: String) -> gpui::Div {
         div()
             .v_flex()
             .gap(px(8.0))

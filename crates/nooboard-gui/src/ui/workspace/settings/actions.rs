@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use gpui::{AppContext as _, Context, PathPromptOptions, Window};
+use gpui::{AppContext as _, ClipboardItem, Context, PathPromptOptions, Window};
 use nooboard_core::StorageSettingsInput;
 
 use crate::{
@@ -16,6 +16,13 @@ use crate::{
 use super::state::SettingsSectionKey;
 
 impl WorkspaceView {
+    pub(super) fn copy_settings_config_path(&mut self, path: String, cx: &mut Context<Self>) {
+        cx.write_to_clipboard(ClipboardItem::new_string(path));
+        self.settings
+            .set_feedback("Copied config path to clipboard.".to_string());
+        cx.notify();
+    }
+
     pub(super) fn request_settings_toggle_lan_enabled(&mut self, cx: &mut Context<Self>) {
         self.settings.toggle_lan_enabled();
         cx.notify();

@@ -1,15 +1,22 @@
 use gpui::prelude::FluentBuilder as _;
-use gpui::{Context, Div, IntoElement, ParentElement, Styled, div, px};
+use gpui::{
+    AnyElement, Context, Div, InteractiveElement, IntoElement, ParentElement,
+    StatefulInteractiveElement, Styled, div, px,
+};
+use gpui_component::scroll::ScrollableElement;
 use gpui_component::{StyledExt, TitleBar};
 
 use crate::{ui::theme, workspace::route::WorkspaceRoute};
 
-use super::{WorkspaceRenderModel, WorkspaceView};
+use super::{
+    WorkspaceRenderModel, WorkspaceView,
+    shared::{MAIN_CANVAS_MIN_WIDTH, SIDEBAR_WIDTH},
+};
 
 impl WorkspaceView {
     fn sidebar(&self, cx: &mut Context<Self>) -> Div {
         div()
-            .w(px(216.0))
+            .w(px(SIDEBAR_WIDTH))
             .min_h_0()
             .bg(theme::bg_sidebar())
             .border_1()
@@ -96,11 +103,7 @@ impl WorkspaceView {
             })
     }
 
-    fn page_body(
-        &self,
-        model: &WorkspaceRenderModel,
-        cx: &mut Context<Self>,
-    ) -> Vec<gpui::AnyElement> {
+    fn page_body(&self, model: &WorkspaceRenderModel, cx: &mut Context<Self>) -> Vec<AnyElement> {
         match model.route {
             WorkspaceRoute::Home => self.home_page(model, cx),
             WorkspaceRoute::Clipboard => self.clipboard_page(model, cx),
@@ -110,9 +113,27 @@ impl WorkspaceView {
         }
     }
 
+    fn main_canvas(&self, model: &WorkspaceRenderModel, cx: &mut Context<Self>) -> Div {
+        div()
+            .w_full()
+            .min_w(px(MAIN_CANVAS_MIN_WIDTH))
+            .child(self.main_panel(model, cx))
+    }
+
     fn main_panel(&self, model: &WorkspaceRenderModel, cx: &mut Context<Self>) -> Div {
         div()
+            .w_full()
+            .v_flex()
+            .gap(px(18.0))
+            .child(self.header_panel(model))
+            .child(self.status_panel(model))
+            .children(self.page_body(model, cx))
+    }
+
+    fn main_viewport(&self, model: &WorkspaceRenderModel, cx: &mut Context<Self>) -> Div {
+        div()
             .flex_1()
+            .min_w(px(0.0))
             .min_h_0()
             .bg(theme::bg_canvas())
             .border_1()
@@ -120,14 +141,40 @@ impl WorkspaceView {
             .rounded(px(28.0))
             .child(
                 div()
-                    .v_flex()
+                    .relative()
                     .size_full()
-                    .gap(px(18.0))
-                    .p(px(24.0))
-                    .child(self.header_panel(model))
-                    .child(self.status_panel(model))
-                    .children(self.page_body(model, cx)),
+                    .min_h_0()
+                    .child(
+                        div()
+                            .id("workspace-main-y-scroll")
+                            .size_full()
+                            .track_scroll(&self.main_y_scroll)
+                            .overflow_y_scroll()
+                            .child(
+                                div().w_full().p(px(24.0)).child(
+                                    div()
+                                        .w_full()
+                                        .overflow_x_scrollbar()
+                                        .child(self.main_canvas(model, cx)),
+                                ),
+                            ),
+                    )
+                    .vertical_scrollbar(&self.main_y_scroll),
             )
+    }
+
+    fn workspace_shell(&self, model: &WorkspaceRenderModel, cx: &mut Context<Self>) -> Div {
+        div()
+            .flex()
+            .flex_row()
+            .flex_1()
+            .min_h_0()
+            .overflow_hidden()
+            .gap(px(18.0))
+            .p(px(18.0))
+            .child(self.sidebar(cx).h_full())
+            .child(self.main_viewport(model, cx).h_full())
+            .child(self.transfer_rail(model, cx))
     }
 
     pub(super) fn render_root(
@@ -143,7 +190,7 @@ impl WorkspaceView {
         let transfer_count = model
             .page
             .as_ref()
-            .map(|state| state.shell_metrics.transfer_count_label.clone())
+            .map(|state| state.shell_metrics.inbox_count_label.clone())
             .unwrap_or_else(|| "0".to_string());
 
         div()
@@ -161,12 +208,7 @@ impl WorkspaceView {
                         .items_center()
                         .px(px(14.0))
                         .bg(theme::bg_sidebar())
-                        .child(
-                            div()
-                                .text_size(px(13.0))
-                                .font_semibold()
-                                .child("Nooboard Control"),
-                        )
+                        .child(self.titlebar_brand())
                         .child(
                             div()
                                 .h_flex()
@@ -178,22 +220,13 @@ impl WorkspaceView {
                                     theme::accent_cyan(),
                                 ))
                                 .child(self.titlebar_chip(
-                                    "Transfers",
+                                    "Inbox",
                                     transfer_count,
                                     theme::accent_amber(),
                                 )),
                         ),
                 ),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_h_0()
-                    .gap(px(18.0))
-                    .p(px(18.0))
-                    .child(self.sidebar(cx))
-                    .child(self.main_panel(&model, cx)),
-            )
+            .child(self.workspace_shell(&model, cx))
     }
 }

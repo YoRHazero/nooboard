@@ -48,6 +48,7 @@ impl WorkspaceView {
                 .into_any_element(),
             self.storage_settings_panel(state, storage_dirty, cx)
                 .into_any_element(),
+            self.advanced_settings_panel(model, cx).into_any_element(),
         ]
     }
 }

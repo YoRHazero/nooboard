@@ -24,5 +24,5 @@ jobs:
       - name: Test real Windows clipboard backend
         run: cargo test -p nooboard-platform-windows -- --test-threads=1
 
-      - name: Link nooboard-app tests on Windows
-        run: cargo test --no-run -p nooboard-app
+      - name: Link nooboard-gui tests on Windows
+        run: cargo test --no-run -p nooboard-gui

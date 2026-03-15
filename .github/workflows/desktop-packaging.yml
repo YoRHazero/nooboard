@@ -1,4 +1,4 @@
-name: Desktop Packaging
+name: GUI Packaging
 
 on:
   workflow_dispatch:
@@ -28,7 +28,7 @@ jobs:
         run: cargo install cargo-packager --locked
 
       - name: Build macOS app bundle and DMG
-        working-directory: crates/nooboard-desktop
+        working-directory: crates/nooboard-gui
         run: cargo packager --release --formats app,dmg --out-dir ../../target/release/bundle --binaries-dir ../../target/release
 
       - name: Upload macOS packages
@@ -59,7 +59,7 @@ jobs:
         run: cargo install cargo-packager --locked
 
       - name: Build Windows installer
-        working-directory: crates/nooboard-desktop
+        working-directory: crates/nooboard-gui
         run: cargo packager --release --formats nsis --out-dir ../../target/release/bundle --binaries-dir ../../target/release
 
       - name: Upload Windows packages

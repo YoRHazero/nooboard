@@ -1,3 +1,4 @@
+mod advanced;
 mod clipboard;
 mod connection;
 mod storage;

@@ -41,7 +41,7 @@ pub struct WorkspaceIdentityViewState {
 #[derive(Clone)]
 pub struct WorkspaceShellMetricsViewState {
     pub session_count_label: String,
-    pub transfer_count_label: String,
+    pub inbox_count_label: String,
 }
 
 #[derive(Clone)]
@@ -67,12 +67,12 @@ pub fn build_workspace_view_state(
         },
         shell_metrics: WorkspaceShellMetricsViewState {
             session_count_label: snapshot.network.sessions.len().to_string(),
-            transfer_count_label: format!(
-                "{} active / {} pending / {} complete",
-                snapshot.network.transfers.active.len(),
-                snapshot.network.transfers.incoming_pending.len(),
-                snapshot.network.transfers.recent_completed.len()
-            ),
+            inbox_count_label: snapshot
+                .network
+                .transfers
+                .incoming_pending
+                .len()
+                .to_string(),
         },
         home: home::build_home_page_view_state(snapshot, latest_record),
         clipboard: clipboard::build_clipboard_workspace_view_state(snapshot, latest_record),

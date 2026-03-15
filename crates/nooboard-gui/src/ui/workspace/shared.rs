@@ -3,11 +3,16 @@ use gpui::{
     Styled, Window, div, px,
 };
 use gpui_component::button::{Button, ButtonVariants};
-use gpui_component::{Disableable, StyledExt};
+use gpui_component::{Disableable, Icon, IconName, StyledExt};
 
 use crate::{ui::theme, workspace::route::WorkspaceRoute};
 
 use super::WorkspaceView;
+
+pub(super) const SIDEBAR_WIDTH: f32 = 216.0;
+pub(super) const TRANSFER_RAIL_WIDTH: f32 = 336.0;
+pub(super) const TRANSFER_RAIL_COLLAPSED_WIDTH: f32 = 44.0;
+pub(super) const MAIN_CANVAS_MIN_WIDTH: f32 = 725.0;
 
 impl WorkspaceView {
     pub(super) fn current_route(&self, cx: &Context<Self>) -> WorkspaceRoute {
@@ -83,6 +88,40 @@ impl WorkspaceView {
                     .font_semibold()
                     .text_color(theme::fg_primary())
                     .child(value),
+            )
+    }
+
+    pub(super) fn titlebar_brand(&self) -> Div {
+        div()
+            .h_flex()
+            .items_center()
+            .gap(px(10.0))
+            .child(
+                div()
+                    .size(px(22.0))
+                    .rounded(px(8.0))
+                    .bg(theme::bg_panel_alt())
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        Icon::new(IconName::LayoutDashboard)
+                            .size(px(12.0))
+                            .text_color(theme::accent_cyan()),
+                    ),
+            )
+            .child(
+                div()
+                    .text_size(px(13.0))
+                    .font_semibold()
+                    .text_color(theme::fg_primary())
+                    .child("Nooboard Control"),
+            )
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .text_color(theme::fg_secondary())
+                    .child("mesh desktop"),
             )
     }
 

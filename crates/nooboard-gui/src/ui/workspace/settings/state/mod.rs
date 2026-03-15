@@ -147,6 +147,10 @@ impl SettingsPageState {
         self.feedback = Some(message);
     }
 
+    pub(in crate::ui::workspace) fn set_feedback(&mut self, message: String) {
+        self.feedback = Some(message);
+    }
+
     pub(in crate::ui::workspace) fn set_download_dir_value(
         &mut self,
         value: String,

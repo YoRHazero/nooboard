@@ -3909,24 +3909,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nooboard-app"
-version = "0.1.0"
-dependencies = [
- "if-addrs",
- "nooboard-config",
- "nooboard-platform",
- "nooboard-platform-macos",
- "nooboard-platform-windows",
- "nooboard-storage",
- "nooboard-sync",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "toml 1.0.3+spec-1.1.0",
- "uuid",
-]
-
-[[package]]
 name = "nooboard-config"
 version = "0.1.0"
 dependencies = [
@@ -3956,24 +3938,6 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
-]
-
-[[package]]
-name = "nooboard-desktop"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "gpui",
- "gpui-component",
- "gpui-component-assets",
- "gpui_platform",
- "nooboard-app",
- "nooboard-config",
- "time",
- "tokio",
- "uuid",
- "winres",
 ]
 
 [[package]]
@@ -4052,31 +4016,6 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "toml 1.0.3+spec-1.1.0",
- "uuid",
-]
-
-[[package]]
-name = "nooboard-sync"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "futures",
- "hex",
- "hmac",
- "if-addrs",
- "mdns-sd",
- "postcard",
- "rcgen",
- "rustls",
- "serde",
- "serde_bytes",
- "sha2",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "tracing",
  "uuid",
 ]
 

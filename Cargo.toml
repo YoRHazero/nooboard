@@ -2,15 +2,12 @@
 members = [
   "crates/nooboard-config",
   "crates/nooboard-core",
-  "crates/nooboard-app",
-  "crates/nooboard-desktop",
   "crates/nooboard-gui",
   "crates/nooboard-platform",
   "crates/nooboard-platform-macos",
   "crates/nooboard-platform-windows",
   "crates/nooboard-storage",
   "crates/nooboard-network",
-  "crates/nooboard-sync",
 ]
 resolver = "2"
 
