@@ -1,6 +1,6 @@
 use gpui::{
-    Context, Div, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
-    Window, div, px,
+    Context, Div, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+    Styled, Window, div, px,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::{Disableable, StyledExt};
@@ -8,8 +8,8 @@ use gpui_component::{Disableable, StyledExt};
 use crate::{
     ui::theme,
     workspace::{
-        actions::{self as workspace_actions, WorkspaceRoute},
         recent_activity::{RecentActivitySeverity, RecentActivityViewState},
+        route::WorkspaceRoute,
         view_state::WorkspaceMetricViewState,
     },
 };
@@ -196,7 +196,8 @@ impl WorkspaceView {
                         .into_any_element(),
                 ]
             } else {
-                items.iter()
+                items
+                    .iter()
                     .map(|item| {
                         div()
                             .text_size(px(12.0))
@@ -231,7 +232,13 @@ impl WorkspaceView {
             .border_1()
             .border_color(theme::border_soft())
             .rounded(px(18.0))
-            .child(div().mt(px(4.0)).size(px(8.0)).rounded(px(999.0)).bg(accent))
+            .child(
+                div()
+                    .mt(px(4.0))
+                    .size(px(8.0))
+                    .rounded(px(999.0))
+                    .bg(accent),
+            )
             .child(
                 div()
                     .v_flex()
@@ -264,17 +271,5 @@ impl WorkspaceView {
                             .child(item.title.clone()),
                     ),
             )
-    }
-
-    pub(super) fn start_network_action(&self, cx: &Context<Self>) {
-        workspace_actions::start_network(&self.controller, cx);
-    }
-
-    pub(super) fn stop_network_action(&self, cx: &Context<Self>) {
-        workspace_actions::stop_network(&self.controller, cx);
-    }
-
-    pub(super) fn adopt_latest_clipboard_action(&self, cx: &Context<Self>) {
-        workspace_actions::adopt_latest_clipboard(&self.controller, cx);
     }
 }

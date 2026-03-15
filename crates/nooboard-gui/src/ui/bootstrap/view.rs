@@ -1,5 +1,5 @@
 use gpui::{Context, IntoElement, ParentElement, Render, Styled, div, px};
-use gpui_component::{TITLE_BAR_HEIGHT, StyledExt};
+use gpui_component::{StyledExt, TITLE_BAR_HEIGHT};
 
 use crate::{
     bootstrap::BootstrapPreset,
@@ -185,9 +185,11 @@ impl Render for BootstrapChooserView {
                                 !view_state.confirm_enabled,
                                 cx,
                             )
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.confirm_selection(window, cx);
-                            })),
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
+                                    this.confirm_selection(window, cx);
+                                },
+                            )),
                         )
                         .child(
                             self.action_button(
@@ -197,25 +199,31 @@ impl Render for BootstrapChooserView {
                                 view_state.launch_in_flight,
                                 cx,
                             )
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.quit(window, cx);
-                            })),
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
+                                    this.quit(window, cx);
+                                },
+                            )),
                         ),
                 ),
         );
 
-        div().size_full().bg(theme::bg_app()).text_color(theme::fg_primary()).child({
-            let top_inset = TITLE_BAR_HEIGHT + px(16.0);
-            let bottom_inset = px(20.0);
-            div()
-                .size_full()
-                .px(px(20.0))
-                .pt(top_inset)
-                .pb(bottom_inset)
-                .flex()
-                .items_start()
-                .justify_center()
-                .child(panel)
-        })
+        div()
+            .size_full()
+            .bg(theme::bg_app())
+            .text_color(theme::fg_primary())
+            .child({
+                let top_inset = TITLE_BAR_HEIGHT + px(16.0);
+                let bottom_inset = px(20.0);
+                div()
+                    .size_full()
+                    .px(px(20.0))
+                    .pt(top_inset)
+                    .pb(bottom_inset)
+                    .flex()
+                    .items_start()
+                    .justify_center()
+                    .child(panel)
+            })
     }
 }

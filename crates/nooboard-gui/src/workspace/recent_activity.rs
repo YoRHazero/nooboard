@@ -19,10 +19,6 @@ pub enum RecentActivityKind {
         event_id: EventId,
         source: ClipboardRecordSource,
     },
-    ClipboardAdoptFailed {
-        event_id: EventId,
-        message: String,
-    },
     IncomingTransferOffered {
         ticket: TransferTicket,
     },
@@ -136,8 +132,7 @@ fn activity_severity(kind: &RecentActivityKind) -> RecentActivitySeverity {
         | RecentActivityKind::NetworkStarting
         | RecentActivityKind::NetworkRunning
         | RecentActivityKind::NetworkStopped => RecentActivitySeverity::Info,
-        RecentActivityKind::ClipboardAdoptFailed { .. }
-        | RecentActivityKind::NetworkConnectionFailed { .. }
+        RecentActivityKind::NetworkConnectionFailed { .. }
         | RecentActivityKind::GuiWarning { .. } => RecentActivitySeverity::Warning,
         RecentActivityKind::NetworkError { .. } | RecentActivityKind::GuiError { .. } => {
             RecentActivitySeverity::Error
@@ -148,7 +143,6 @@ fn activity_severity(kind: &RecentActivityKind) -> RecentActivitySeverity {
 fn activity_kind_label(item: &RecentActivityItem) -> &'static str {
     match item.kind {
         RecentActivityKind::ClipboardCommitted { .. } => "Clipboard",
-        RecentActivityKind::ClipboardAdoptFailed { .. } => "Clipboard Warning",
         RecentActivityKind::IncomingTransferOffered { .. } => "Incoming Transfer",
         RecentActivityKind::TransferCompleted { .. } => "Transfer Complete",
         RecentActivityKind::NetworkConnectionFailed { .. } => "Connection Failed",
@@ -168,9 +162,6 @@ fn activity_title(item: &RecentActivityItem) -> String {
                 "clipboard record {event_id} committed from {}",
                 clipboard_source_label(*source)
             )
-        }
-        RecentActivityKind::ClipboardAdoptFailed { event_id, message } => {
-            format!("clipboard record {event_id} was saved, but adopt failed: {message}")
         }
         RecentActivityKind::IncomingTransferOffered { ticket } => {
             format!("incoming transfer {ticket:?} is awaiting a decision")

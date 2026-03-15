@@ -38,37 +38,35 @@ impl GuiCli {
 }
 
 pub fn run(cli: GuiCli) {
-    application()
-        .with_assets(GuiAssets::new())
-        .run(move |cx| {
-            gpui_component::init(cx);
-            Theme::change(ThemeMode::Dark, None, cx);
-            let decision =
-                resolve_bootstrap(&cli.bootstrap_request()).expect("gui bootstrap must resolve");
+    application().with_assets(GuiAssets::new()).run(move |cx| {
+        gpui_component::init(cx);
+        Theme::change(ThemeMode::Dark, None, cx);
+        let decision =
+            resolve_bootstrap(&cli.bootstrap_request()).expect("gui bootstrap must resolve");
 
-            match decision {
-                BootstrapDecision::Launch(launch) => {
-                    open_workspace_window(LaunchHandle::Ready(launch), cx)
-                        .expect("gui workspace window must open");
-                }
-                BootstrapDecision::NeedsChooser(context) => {
-                    open_bootstrap_window(context, cx).expect("gui bootstrap chooser must open");
-                }
+        match decision {
+            BootstrapDecision::Launch(launch) => {
+                open_workspace_window(LaunchHandle::Ready(launch), cx)
+                    .expect("gui workspace window must open");
             }
-        });
+            BootstrapDecision::NeedsChooser(context) => {
+                open_bootstrap_window(context, cx).expect("gui bootstrap chooser must open");
+            }
+        }
+    });
 }
 
 fn open_bootstrap_window(context: BootstrapChooserContext, cx: &mut App) -> anyhow::Result<()> {
     let (launch_tx, launch_rx) = oneshot::channel::<BootstrapLaunch>();
-    let can_use_repo_development = inspect_repo_development().is_ok_and(|probe| {
-        matches!(probe, nooboard_core::RepoDevelopmentProbe::Available { .. })
-    });
+    let can_use_repo_development = inspect_repo_development()
+        .is_ok_and(|probe| matches!(probe, nooboard_core::RepoDevelopmentProbe::Available { .. }));
     let options = bootstrap_window_options(cx);
     let workspace_options = workspace_window_options(cx);
 
     cx.open_window(options, move |window, cx| {
-        let view =
-            cx.new(|_| BootstrapChooserView::new(context.clone(), can_use_repo_development, launch_tx));
+        let view = cx.new(|_| {
+            BootstrapChooserView::new(context.clone(), can_use_repo_development, launch_tx)
+        });
         cx.new(|cx| Root::new(view, window, cx))
     })?;
 

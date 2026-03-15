@@ -1,7 +1,7 @@
 use gpui::{AnyElement, Context, IntoElement, ParentElement, Styled, div, px};
 use gpui_component::StyledExt;
 
-use crate::ui::theme;
+use crate::{ui::theme, workspace::actions::network as network_actions};
 
 use super::{WorkspaceRenderModel, WorkspaceView};
 
@@ -12,13 +12,19 @@ impl WorkspaceView {
         cx: &Context<Self>,
     ) -> Vec<AnyElement> {
         let state = model.page.as_ref();
-        let network_status = state.map(|state| state.network_status.clone());
-        let lan_peers = state.map(|state| state.lan_peers.clone()).unwrap_or_default();
-        let direct_seeds = state.map(|state| state.direct_seeds.clone()).unwrap_or_default();
-        let pending_requests = state
-            .map(|state| state.pending_requests.clone())
+        let network_status = state.map(|state| state.network.status_label.clone());
+        let lan_peers = state
+            .map(|state| state.network.lan_peers.clone())
             .unwrap_or_default();
-        let sessions = state.map(|state| state.sessions.clone()).unwrap_or_default();
+        let direct_seeds = state
+            .map(|state| state.network.direct_seeds.clone())
+            .unwrap_or_default();
+        let pending_requests = state
+            .map(|state| state.network.pending_requests.clone())
+            .unwrap_or_default();
+        let sessions = state
+            .map(|state| state.network.sessions.clone())
+            .unwrap_or_default();
 
         vec![
             div()
@@ -27,17 +33,17 @@ impl WorkspaceView {
                 .child(self.toolbar_button(
                     "network-start",
                     "Start Network",
-                    state.is_some_and(|state| state.network_can_start),
+                    state.is_some_and(|state| state.network.can_start),
                     theme::accent_green(),
-                    |this, _, _, cx| this.start_network_action(cx),
+                    |this, _, _, cx| network_actions::start_network(&this.controller, cx),
                     cx,
                 ))
                 .child(self.toolbar_button(
                     "network-stop",
                     "Stop Network",
-                    state.is_some_and(|state| state.network_can_stop),
+                    state.is_some_and(|state| state.network.can_stop),
                     theme::accent_rose(),
-                    |this, _, _, cx| this.stop_network_action(cx),
+                    |this, _, _, cx| network_actions::stop_network(&this.controller, cx),
                     cx,
                 ))
                 .into_any_element(),

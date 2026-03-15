@@ -6,13 +6,13 @@ impl WorkspaceView {
     pub(super) fn transfers_page(&self, model: &WorkspaceRenderModel) -> Vec<AnyElement> {
         let state = model.page.as_ref();
         let incoming = state
-            .map(|state| state.incoming_transfers.clone())
+            .map(|state| state.transfers.incoming.clone())
             .unwrap_or_default();
         let active = state
-            .map(|state| state.active_transfers.clone())
+            .map(|state| state.transfers.active.clone())
             .unwrap_or_default();
         let completed = state
-            .map(|state| state.completed_transfers.clone())
+            .map(|state| state.transfers.completed.clone())
             .unwrap_or_default();
 
         vec![

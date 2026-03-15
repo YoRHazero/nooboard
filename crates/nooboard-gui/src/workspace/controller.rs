@@ -1,16 +1,18 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use gpui::{Context, Entity};
-use nooboard_core::{BootstrapLaunch, ClipboardRecord, EventId, NooboardCore, WorkspaceEvent, WorkspaceSnapshot};
+use nooboard_core::{
+    BootstrapLaunch, ClipboardRecord, NooboardCore, WorkspaceEvent, WorkspaceSnapshot,
+};
 
 use super::{
     LaunchHandle,
-    actions::WorkspaceRoute,
     core_bridge::{CoreBridge, CoreBridgeBoot},
     recent_activity::{
         RecentActivityItem, RecentActivityKind, recent_activity_from_network_status,
         recent_activity_from_workspace_event,
     },
+    route::WorkspaceRoute,
     runtime_state::{WorkspaceBridgeState, WorkspaceLoadState},
     subscriptions::{spawn_event_bridge, spawn_state_bridge},
 };
@@ -43,7 +45,11 @@ impl WorkspaceController {
         }
     }
 
-    pub fn initialize<T: 'static>(controller: &Entity<Self>, launch: LaunchHandle, cx: &Context<T>) {
+    pub fn initialize<T: 'static>(
+        controller: &Entity<Self>,
+        launch: LaunchHandle,
+        cx: &Context<T>,
+    ) {
         let controller = controller.downgrade();
 
         cx.spawn(async move |_, cx| {
@@ -129,7 +135,10 @@ impl WorkspaceController {
     }
 
     pub fn apply_snapshot(&mut self, snapshot: WorkspaceSnapshot) {
-        let previous_status = self.snapshot.as_ref().map(|current| current.network.status.clone());
+        let previous_status = self
+            .snapshot
+            .as_ref()
+            .map(|current| current.network.status.clone());
         let next_status = snapshot.network.status.clone();
         self.snapshot = Some(snapshot);
 
@@ -146,12 +155,6 @@ impl WorkspaceController {
         if let Some(activity) = recent_activity_from_workspace_event(&event) {
             self.push_recent_activity(activity);
         }
-    }
-
-    pub fn record_clipboard_adopt_failed(&mut self, event_id: EventId, message: String) {
-        self.push_recent_activity(RecentActivityItem::new(
-            RecentActivityKind::ClipboardAdoptFailed { event_id, message },
-        ));
     }
 
     pub fn record_bridge_warning(&mut self, message: String) {
@@ -199,7 +202,7 @@ mod tests {
 
     use nooboard_core::{
         BootstrapLaunch, BootstrapMode, ClipboardSettings, ClipboardState, ConnectionSettings,
-        EventId, LocalConnectionInfo, NetworkSettings, NetworkSnapshot, NetworkStatus, NoobId,
+        LocalConnectionInfo, NetworkSettings, NetworkSnapshot, NetworkStatus, NoobId,
         StorageSettings, TransferSettings, TransfersSnapshot, WorkspaceIdentity, WorkspaceSettings,
         WorkspaceSnapshot,
     };
@@ -231,19 +234,6 @@ mod tests {
         assert!(matches!(
             controller.recent_activity().front().map(|item| &item.kind),
             Some(RecentActivityKind::NetworkRunning)
-        ));
-    }
-
-    #[test]
-    fn clipboard_adopt_failure_is_tracked_as_recent_activity() {
-        let mut controller = WorkspaceController::new(LaunchHandle::Ready(sample_launch()));
-        let event_id = EventId::new();
-
-        controller.record_clipboard_adopt_failed(event_id, "clipboard backend unavailable".to_string());
-
-        assert!(matches!(
-            controller.recent_activity().front().map(|item| &item.kind),
-            Some(RecentActivityKind::ClipboardAdoptFailed { event_id: observed, .. }) if *observed == event_id
         ));
     }
 

@@ -43,9 +43,7 @@ impl BootstrapController {
         let chooser_title = match self.chooser_context.reason {
             BootstrapChooserReason::ExplicitChooserRequest => "Choose Configuration",
             BootstrapChooserReason::MissingDefaultConfig => "Missing Default Config",
-            BootstrapChooserReason::DefaultConfigVersionMismatch { .. } => {
-                "Update Configuration"
-            }
+            BootstrapChooserReason::DefaultConfigVersionMismatch { .. } => "Update Configuration",
         };
 
         BootstrapViewState {
@@ -55,7 +53,9 @@ impl BootstrapController {
             feedback: self.feedback.clone(),
             launch_in_flight: self.launch_in_flight,
             can_use_repo_development: self.can_use_repo_development,
-            confirm_enabled: self.chooser_state.confirm_enabled(self.can_use_repo_development)
+            confirm_enabled: self
+                .chooser_state
+                .confirm_enabled(self.can_use_repo_development)
                 && !self.launch_in_flight,
             browse_enabled: self.chooser_state.browse_enabled() && !self.launch_in_flight,
             rewrite_visible: self.chooser_state.rewrite_visible(),
@@ -159,11 +159,14 @@ impl BootstrapController {
             BootstrapPreset::DefaultConfig => {
                 prepare_default_config_from_chooser(&self.chooser_context).map(Some)
             }
-            BootstrapPreset::ExistingConfig => match self.chooser_state.existing_config.valid_path() {
-                Some(path) => prepare_existing_config_launch(path).map(Some),
-                None => Ok(None),
-            },
-            BootstrapPreset::CustomLocation => match self.chooser_state.custom_location.directory() {
+            BootstrapPreset::ExistingConfig => {
+                match self.chooser_state.existing_config.valid_path() {
+                    Some(path) => prepare_existing_config_launch(path).map(Some),
+                    None => Ok(None),
+                }
+            }
+            BootstrapPreset::CustomLocation => match self.chooser_state.custom_location.directory()
+            {
                 Some(directory) => prepare_custom_location_launch(directory).map(Some),
                 None => Ok(None),
             },

@@ -106,9 +106,23 @@ crates/nooboard-gui/
     runtime_state.rs
     recent_activity.rs
     shell_view_state.rs
-    view_state.rs
+    route.rs
+    view_state/
+      mod.rs
+      home.rs
+      clipboard.rs
+      network.rs
+      transfers.rs
+      settings.rs
+      shared.rs
     subscriptions.rs
-    actions.rs
+    actions/
+      mod.rs
+      clipboard.rs
+      network.rs
+      settings.rs
+      transfers.rs
+      spawn.rs
 
   src/ui/
     mod.rs
@@ -121,7 +135,24 @@ crates/nooboard-gui/
       mod.rs
       shell.rs
       home.rs
-      clipboard.rs
+      clipboard/
+        mod.rs
+        actions/
+          mod.rs
+          lifecycle.rs
+          history.rs
+          editing.rs
+          broadcast.rs
+        state/
+          mod.rs
+          history.rs
+          editor.rs
+          targets.rs
+        components.rs
+        view_state.rs
+        header.rs
+        history.rs
+        detail.rs
       network.rs
       transfers.rs
       settings.rs
@@ -135,6 +166,12 @@ Notes:
 - `bootstrap/` and `workspace/` outside `ui/` are logic modules, not render modules
 - route-specific render logic should live under `ui/workspace/*`, while top-level view types only
   assemble render models and shell layout
+- once a logic-layer module like `workspace/view_state` or `workspace/actions` starts spanning
+  multiple page/domain responsibilities, it should be expanded into submodules instead of growing
+  as a single file
+- if a route like clipboard or settings becomes materially larger than one cohesive file,
+  it should be expanded into `ui/workspace/<route>/` submodules instead of pushing more unrelated
+  concerns into a single route file
 
 ## 5. Phase Plan
 

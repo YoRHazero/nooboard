@@ -133,7 +133,8 @@ mod tests {
             .expect("component icon should load")
             .expect("component icon should exist");
 
-        let icon = std::str::from_utf8(icon.as_ref()).expect("component icon should be valid utf-8");
+        let icon =
+            std::str::from_utf8(icon.as_ref()).expect("component icon should be valid utf-8");
         assert!(icon.contains("<svg"), "component icon should be svg data");
     }
 

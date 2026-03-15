@@ -15,20 +15,28 @@ impl WorkspaceView {
                     .h_flex()
                     .flex_wrap()
                     .gap(px(12.0))
-                    .children(state.metrics.iter().map(|metric| self.metric_card(metric)))
+                    .children(
+                        state
+                            .home
+                            .metrics
+                            .iter()
+                            .map(|metric| self.metric_card(metric)),
+                    )
                     .into_any_element(),
             );
             sections.push(
                 self.list_card(
                     "Latest Clipboard",
                     &[
-                        state.latest_clipboard_preview.clone(),
+                        state.home.latest_clipboard_preview.clone(),
                         state
+                            .home
                             .latest_clipboard_event_id
                             .clone()
                             .map(|value| format!("Event: {value}"))
                             .unwrap_or_else(|| "Event: n/a".to_string()),
                         state
+                            .home
                             .latest_clipboard_source
                             .clone()
                             .map(|value| format!("Source: {value}"))

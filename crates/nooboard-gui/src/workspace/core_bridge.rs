@@ -22,7 +22,8 @@ impl CoreBridge {
     pub async fn launch(launch: &BootstrapLaunch) -> CoreResult<CoreBridgeBoot> {
         let core = Arc::new(NooboardCore::launch_default(launch)?);
         let snapshot = core.snapshot().await?;
-        let latest_committed_record = fetch_latest_committed_record(core.as_ref(), &snapshot).await?;
+        let latest_committed_record =
+            fetch_latest_committed_record(core.as_ref(), &snapshot).await?;
         let subscriptions = WorkspaceSubscriptions {
             state: core.subscribe_state().await?,
             events: core.subscribe_events().await?,

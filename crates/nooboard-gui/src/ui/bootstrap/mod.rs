@@ -18,11 +18,7 @@ impl BootstrapChooserView {
         launch_sender: oneshot::Sender<BootstrapLaunch>,
     ) -> Self {
         Self {
-            controller: BootstrapController::new(
-                context,
-                can_use_repo_development,
-                launch_sender,
-            ),
+            controller: BootstrapController::new(context, can_use_repo_development, launch_sender),
         }
     }
 }

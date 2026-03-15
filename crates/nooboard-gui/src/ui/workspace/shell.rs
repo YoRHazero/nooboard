@@ -1,13 +1,8 @@
-use gpui::{
-    Context, Div, IntoElement, ParentElement, Styled, div, px,
-};
 use gpui::prelude::FluentBuilder as _;
-use gpui_component::{TitleBar, StyledExt};
+use gpui::{Context, Div, IntoElement, ParentElement, Styled, div, px};
+use gpui_component::{StyledExt, TitleBar};
 
-use crate::{
-    ui::theme,
-    workspace::actions::WorkspaceRoute,
-};
+use crate::{ui::theme, workspace::route::WorkspaceRoute};
 
 use super::{WorkspaceRenderModel, WorkspaceView};
 
@@ -27,9 +22,19 @@ impl WorkspaceView {
                     .gap(px(10.0))
                     .p(px(18.0))
                     .child(self.nav_item("nav-home", "Home", WorkspaceRoute::Home, cx))
-                    .child(self.nav_item("nav-clipboard", "Clipboard", WorkspaceRoute::Clipboard, cx))
+                    .child(self.nav_item(
+                        "nav-clipboard",
+                        "Clipboard",
+                        WorkspaceRoute::Clipboard,
+                        cx,
+                    ))
                     .child(self.nav_item("nav-network", "Network", WorkspaceRoute::Network, cx))
-                    .child(self.nav_item("nav-transfers", "Transfers", WorkspaceRoute::Transfers, cx))
+                    .child(self.nav_item(
+                        "nav-transfers",
+                        "Transfers",
+                        WorkspaceRoute::Transfers,
+                        cx,
+                    ))
                     .child(self.nav_item("nav-settings", "Settings", WorkspaceRoute::Settings, cx)),
             )
     }
@@ -129,24 +134,12 @@ impl WorkspaceView {
         let session_count = model
             .page
             .as_ref()
-            .and_then(|state| {
-                state
-                    .metrics
-                    .iter()
-                    .find(|metric| metric.label == "Sessions")
-                    .map(|metric| metric.value.clone())
-            })
+            .map(|state| state.shell_metrics.session_count_label.clone())
             .unwrap_or_else(|| "0".to_string());
         let transfer_count = model
             .page
             .as_ref()
-            .and_then(|state| {
-                state
-                    .metrics
-                    .iter()
-                    .find(|metric| metric.label == "Transfers")
-                    .map(|metric| metric.value.clone())
-            })
+            .map(|state| state.shell_metrics.transfer_count_label.clone())
             .unwrap_or_else(|| "0".to_string());
 
         div()

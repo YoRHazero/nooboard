@@ -8,7 +8,7 @@ impl WorkspaceView {
         let settings_rows = model
             .page
             .as_ref()
-            .map(|state| state.settings_rows.clone())
+            .map(|state| state.settings.rows.clone())
             .unwrap_or_default();
 
         vec![

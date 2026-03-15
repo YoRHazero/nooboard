@@ -1,5 +1,7 @@
 use super::{
-    recent_activity::{RecentActivityItem, RecentActivityViewState, build_recent_activity_view_state},
+    recent_activity::{
+        RecentActivityItem, RecentActivityViewState, build_recent_activity_view_state,
+    },
     runtime_state::{WorkspaceBridgeState, WorkspaceLoadState},
     view_state::WorkspaceViewState,
 };
@@ -30,9 +32,9 @@ pub fn build_workspace_shell_view_state(
             "launch failed".to_string(),
         ),
         (_, Some(workspace_view)) => (
-            workspace_view.headline.clone(),
-            workspace_view.subheadline.clone(),
-            workspace_view.revision_label.clone(),
+            workspace_view.identity.headline.clone(),
+            workspace_view.identity.subheadline.clone(),
+            workspace_view.identity.revision_label.clone(),
         ),
         _ => (
             "Launching workspace".to_string(),
@@ -55,6 +57,8 @@ pub fn build_workspace_shell_view_state(
 
 #[cfg(test)]
 mod tests {
+    use crate::workspace::view_state;
+
     use super::*;
 
     #[test]
@@ -91,25 +95,41 @@ mod tests {
 
     fn sample_workspace_view() -> WorkspaceViewState {
         WorkspaceViewState {
-            headline: "desk-01".to_string(),
-            subheadline: "local-node".to_string(),
-            revision_label: "revision 7".to_string(),
-            network_status: "Running".to_string(),
-            network_can_start: false,
-            network_can_stop: true,
-            metrics: Vec::new(),
-            latest_clipboard_preview: String::new(),
-            latest_clipboard_event_id: None,
-            latest_clipboard_source: None,
-            can_adopt_latest: false,
-            lan_peers: Vec::new(),
-            direct_seeds: Vec::new(),
-            pending_requests: Vec::new(),
-            sessions: Vec::new(),
-            incoming_transfers: Vec::new(),
-            active_transfers: Vec::new(),
-            completed_transfers: Vec::new(),
-            settings_rows: Vec::new(),
+            identity: view_state::WorkspaceIdentityViewState {
+                headline: "desk-01".to_string(),
+                subheadline: "local-node".to_string(),
+                revision_label: "revision 7".to_string(),
+            },
+            shell_metrics: view_state::WorkspaceShellMetricsViewState {
+                session_count_label: "0".to_string(),
+                transfer_count_label: "0".to_string(),
+            },
+            home: view_state::HomePageViewState {
+                metrics: Vec::new(),
+                latest_clipboard_preview: String::new(),
+                latest_clipboard_event_id: None,
+                latest_clipboard_source: None,
+            },
+            clipboard: view_state::ClipboardWorkspaceViewState {
+                latest_record: None,
+                max_text_bytes: 0,
+                session_targets: Vec::new(),
+            },
+            network: view_state::NetworkPageViewState {
+                status_label: "Running".to_string(),
+                can_start: false,
+                can_stop: true,
+                lan_peers: Vec::new(),
+                direct_seeds: Vec::new(),
+                pending_requests: Vec::new(),
+                sessions: Vec::new(),
+            },
+            transfers: view_state::TransfersPageViewState {
+                incoming: Vec::new(),
+                active: Vec::new(),
+                completed: Vec::new(),
+            },
+            settings: view_state::SettingsPageViewState { rows: Vec::new() },
         }
     }
 }

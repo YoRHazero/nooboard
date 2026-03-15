@@ -1,8 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use nooboard_core::{
-    BootstrapChooserContext, CustomLocationProbe, ExistingConfigProbe,
-};
+use nooboard_core::{BootstrapChooserContext, CustomLocationProbe, ExistingConfigProbe};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BootstrapPreset {

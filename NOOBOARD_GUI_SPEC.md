@@ -89,11 +89,14 @@ The implementation MUST obey these internal structure rules:
 - `workspace/runtime_state.rs` SHOULD own GUI-local load/bridge status types.
 - `workspace/recent_activity.rs` SHOULD own recent-activity models and event/status-to-activity
   translation.
-- `workspace/view_state.rs` MUST only derive UI projection state from `WorkspaceSnapshot`.
+- `workspace/view_state/*` MUST only derive UI projection state from `WorkspaceSnapshot`, and
+  SHOULD be split by route/domain before one file accumulates unrelated page projections.
 - `workspace/shell_view_state.rs` SHOULD only compose shell/header/status projection from GUI-local
   runtime state plus snapshot-derived view state.
 - `workspace/subscriptions.rs` MUST only forward state and event subscriptions into GUI updates.
-- `workspace/actions.rs` MUST only define GUI actions and command entry points.
+- `workspace/route.rs` SHOULD hold route navigation types only.
+- `workspace/actions/*` MUST only define GUI actions and command entry points, and SHOULD be split
+  by mutable domain before they become a mixed command hub.
 - UI component modules under `ui/` MUST NOT call `NooboardCore` directly.
 - UI component modules under `ui/` MUST NOT own business-state mutation logic.
 
@@ -200,9 +203,23 @@ crates/nooboard-gui/
     runtime_state.rs
     recent_activity.rs
     shell_view_state.rs
-    view_state.rs
+    route.rs
+    view_state/
+      mod.rs
+      home.rs
+      clipboard.rs
+      network.rs
+      transfers.rs
+      settings.rs
+      shared.rs
     subscriptions.rs
-    actions.rs
+    actions/
+      mod.rs
+      clipboard.rs
+      network.rs
+      settings.rs
+      transfers.rs
+      spawn.rs
 
   src/ui/
     bootstrap/
@@ -213,7 +230,24 @@ crates/nooboard-gui/
       mod.rs
       shell.rs
       home.rs
-      clipboard.rs
+      clipboard/
+        mod.rs
+        actions/
+          mod.rs
+          lifecycle.rs
+          history.rs
+          editing.rs
+          broadcast.rs
+        state/
+          mod.rs
+          history.rs
+          editor.rs
+          targets.rs
+        components.rs
+        view_state.rs
+        header.rs
+        history.rs
+        detail.rs
       network.rs
       transfers.rs
       settings.rs
@@ -225,8 +259,13 @@ This structure is normative in intent:
 - bootstrap flow is separate from workspace flow
 - bridge logic is separate from view-state derivation
 - UI components are separate from command execution
+- logic-layer modules MAY expand into submodule directories when that is required to keep
+  route/domain responsibilities separated
 - route-level workspace visuals are split into shell/home/clipboard/network/transfers/settings/shared
   modules rather than collected in one render file
+- when a route grows beyond a single cohesive file, `ui/workspace/<route>/` MAY expand into a
+  submodule directory as long as route-local state, route-local view-state composition, and route
+  visuals stay contained within that route module boundary
 
 ## 5. Bootstrap Flow
 
