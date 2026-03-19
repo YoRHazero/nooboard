@@ -112,7 +112,7 @@ impl Render for WorkspaceView {
         if model.route == WorkspaceRoute::Clipboard {
             self.bootstrap_clipboard_history_if_needed(cx);
         }
-        self.render_root(model, cx)
+        self.render_root(model, window, cx)
     }
 }
 

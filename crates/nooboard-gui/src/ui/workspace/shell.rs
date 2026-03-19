@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, Context, Div, InteractiveElement, IntoElement, ParentElement,
-    StatefulInteractiveElement, Styled, div, px,
+    StatefulInteractiveElement, Styled, Window, div, px,
 };
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::{StyledExt, TitleBar};
@@ -103,34 +103,54 @@ impl WorkspaceView {
             })
     }
 
-    fn page_body(&self, model: &WorkspaceRenderModel, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    fn page_body(
+        &self,
+        model: &WorkspaceRenderModel,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
         match model.route {
             WorkspaceRoute::Home => self.home_page(model, cx),
-            WorkspaceRoute::Clipboard => self.clipboard_page(model, cx),
+            WorkspaceRoute::Clipboard => self.clipboard_page(model, window, cx),
             WorkspaceRoute::Network => self.network_page(model, cx),
             WorkspaceRoute::Transfers => self.transfers_page(model, cx),
             WorkspaceRoute::Settings => self.settings_page(model, cx),
         }
     }
 
-    fn main_canvas(&self, model: &WorkspaceRenderModel, cx: &mut Context<Self>) -> Div {
+    fn main_canvas(
+        &self,
+        model: &WorkspaceRenderModel,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
         div()
             .w_full()
             .min_w(px(MAIN_CANVAS_MIN_WIDTH))
-            .child(self.main_panel(model, cx))
+            .child(self.main_panel(model, window, cx))
     }
 
-    fn main_panel(&self, model: &WorkspaceRenderModel, cx: &mut Context<Self>) -> Div {
+    fn main_panel(
+        &self,
+        model: &WorkspaceRenderModel,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
         div()
             .w_full()
             .v_flex()
             .gap(px(18.0))
             .child(self.header_panel(model))
             .child(self.status_panel(model))
-            .children(self.page_body(model, cx))
+            .children(self.page_body(model, window, cx))
     }
 
-    fn main_viewport(&self, model: &WorkspaceRenderModel, cx: &mut Context<Self>) -> Div {
+    fn main_viewport(
+        &self,
+        model: &WorkspaceRenderModel,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
         div()
             .flex_1()
             .min_w(px(0.0))
@@ -155,7 +175,7 @@ impl WorkspaceView {
                                     div()
                                         .w_full()
                                         .overflow_x_scrollbar()
-                                        .child(self.main_canvas(model, cx)),
+                                        .child(self.main_canvas(model, window, cx)),
                                 ),
                             ),
                     )
@@ -163,7 +183,12 @@ impl WorkspaceView {
             )
     }
 
-    fn workspace_shell(&self, model: &WorkspaceRenderModel, cx: &mut Context<Self>) -> Div {
+    fn workspace_shell(
+        &self,
+        model: &WorkspaceRenderModel,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
         div()
             .flex()
             .flex_row()
@@ -173,13 +198,14 @@ impl WorkspaceView {
             .gap(px(18.0))
             .p(px(18.0))
             .child(self.sidebar(cx).h_full())
-            .child(self.main_viewport(model, cx).h_full())
+            .child(self.main_viewport(model, window, cx).h_full())
             .child(self.transfer_rail(model, cx))
     }
 
     pub(super) fn render_root(
         &self,
         model: WorkspaceRenderModel,
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let session_count = model
@@ -227,6 +253,6 @@ impl WorkspaceView {
                         ),
                 ),
             )
-            .child(self.workspace_shell(&model, cx))
+            .child(self.workspace_shell(&model, window, cx))
     }
 }

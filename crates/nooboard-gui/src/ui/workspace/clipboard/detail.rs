@@ -28,6 +28,7 @@ impl WorkspaceView {
     ) -> impl IntoElement {
         div()
             .flex_1()
+            .flex_shrink_0()
             .min_w(px(CLIPBOARD_DETAIL_MIN_WIDTH))
             .v_flex()
             .gap(px(16.0))
