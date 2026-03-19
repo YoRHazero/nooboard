@@ -15,6 +15,8 @@ pub enum StorageError {
     },
     #[error("invalid storage config: {0}")]
     InvalidConfig(String),
+    #[error("invalid history request: {0}")]
+    InvalidHistoryRequest(&'static str),
     #[error("limit is too large for SQLite: {0}")]
     LimitOutOfRange(usize),
 }

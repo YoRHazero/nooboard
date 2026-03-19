@@ -9,11 +9,12 @@ CREATE TABLE IF NOT EXISTS events (
     state TEXT NOT NULL CHECK (state IN ('active', 'tombstone'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_events_created_at
-ON events(created_at_ms DESC, event_id DESC);
+CREATE INDEX IF NOT EXISTS idx_events_history_state_created_at_event
+ON events(state, created_at_ms DESC, event_id DESC)
+WHERE content IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_events_applied_at
-ON events(applied_at_ms DESC, event_id DESC);
+CREATE INDEX IF NOT EXISTS idx_events_latest_state_applied_at
+ON events(state, applied_at_ms DESC, event_id DESC);
 
-CREATE INDEX IF NOT EXISTS idx_events_state_created_at
+CREATE INDEX IF NOT EXISTS idx_events_gc_state_created_at
 ON events(state, created_at_ms);

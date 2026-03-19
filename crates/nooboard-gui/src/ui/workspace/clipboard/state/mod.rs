@@ -6,8 +6,8 @@ mod targets;
 use gpui::{Context, Entity, Window};
 use gpui_component::input::InputState;
 use nooboard_core::{
-    ClipboardHistoryCursor, ClipboardHistoryPage, ClipboardRecord, EventId, SessionId,
-    SessionTarget,
+    ClipboardHistoryAnchor, ClipboardHistoryDirection, ClipboardHistoryPage, ClipboardRecord,
+    EventId, SessionId, SessionTarget,
 };
 
 use crate::{ui::workspace::WorkspaceView, workspace::view_state::ClipboardWorkspaceViewState};
@@ -63,10 +63,6 @@ impl ClipboardPageState {
         self.targets.broadcast_scope()
     }
 
-    pub(in crate::ui::workspace) fn history_records(&self) -> &[ClipboardRecord] {
-        self.history.records()
-    }
-
     pub(in crate::ui::workspace) fn history_load_state(&self) -> ClipboardHistoryLoadState {
         self.history.load_state()
     }
@@ -75,8 +71,24 @@ impl ClipboardPageState {
         self.history.bootstrapped()
     }
 
-    pub(in crate::ui::workspace) fn next_cursor(&self) -> Option<ClipboardHistoryCursor> {
-        self.history.next_cursor()
+    pub(in crate::ui::workspace) fn history_records(&self) -> Vec<ClipboardRecord> {
+        self.history.records()
+    }
+
+    pub(in crate::ui::workspace) fn older_anchor(&self) -> Option<ClipboardHistoryAnchor> {
+        self.history.older_anchor()
+    }
+
+    pub(in crate::ui::workspace) fn newer_anchor(&self) -> Option<ClipboardHistoryAnchor> {
+        self.history.newer_anchor()
+    }
+
+    pub(in crate::ui::workspace) fn has_newer_gap(&self) -> bool {
+        self.history.has_newer_gap()
+    }
+
+    pub(in crate::ui::workspace) fn has_older_gap(&self) -> bool {
+        self.history.has_older_gap()
     }
 
     pub(in crate::ui::workspace) fn selected_session_ids(
@@ -123,16 +135,28 @@ impl ClipboardPageState {
             .sync_read_record(selected_record.as_ref(), window, cx);
     }
 
-    pub(in crate::ui::workspace) fn can_load_more(&self) -> bool {
-        self.history.can_load_more()
+    pub(in crate::ui::workspace) fn can_load_older(&self) -> bool {
+        self.history.can_load_older()
     }
 
-    pub(in crate::ui::workspace) fn begin_history_load(&mut self, initial: bool) -> bool {
-        self.history.begin_load(initial)
+    pub(in crate::ui::workspace) fn can_load_newer(&self) -> bool {
+        self.history.can_load_newer()
     }
 
-    pub(in crate::ui::workspace) fn finish_history_load(&mut self, page: ClipboardHistoryPage) {
-        self.history.finish_load(page);
+    pub(in crate::ui::workspace) fn begin_history_load(
+        &mut self,
+        direction: ClipboardHistoryDirection,
+        initial: bool,
+    ) -> bool {
+        self.history.begin_load(direction, initial)
+    }
+
+    pub(in crate::ui::workspace) fn finish_history_load(
+        &mut self,
+        direction: ClipboardHistoryDirection,
+        page: ClipboardHistoryPage,
+    ) {
+        self.history.finish_load(direction, page);
     }
 
     pub(in crate::ui::workspace) fn fail_history_load(&mut self, message: String) {

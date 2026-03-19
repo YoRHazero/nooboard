@@ -26,9 +26,10 @@ pub use nooboard_network::{
 };
 pub use runtime::NooboardCore;
 pub use types::{
-    ClipboardHistoryCursor, ClipboardHistoryPage, ClipboardRecord, ClipboardRecordSource,
-    ClipboardSettings, ClipboardState, ConnectionSettings, EventId, EventRecvError,
-    EventSubscription, ListClipboardHistoryRequest, LocalConnectionInfo, NetworkSettings, NoobId,
-    StateRecvError, StateSubscription, StorageSettings, StorageSettingsInput, TransferSettings,
-    WorkspaceEvent, WorkspaceIdentity, WorkspaceSettings, WorkspaceSnapshot,
+    ClipboardHistoryAnchor, ClipboardHistoryDirection, ClipboardHistoryPage, ClipboardRecord,
+    ClipboardRecordSource, ClipboardSettings, ClipboardState, ConnectionSettings, EventId,
+    EventRecvError, EventSubscription, ListClipboardHistoryRequest, LocalConnectionInfo,
+    NetworkSettings, NoobId, StateRecvError, StateSubscription, StorageSettings,
+    StorageSettingsInput, TransferSettings, WorkspaceEvent, WorkspaceIdentity, WorkspaceSettings,
+    WorkspaceSnapshot,
 };

@@ -8,5 +8,8 @@ pub use config::{
     AppConfig, LifecycleConfig, STORAGE_SCHEMA_VERSION, StorageConfig, default_dev_config_path,
 };
 pub use error::StorageError;
-pub use model::{EventState, HistoryCursor, HistoryRecord, HistoryRecordSource};
+pub use model::{
+    EventState, HistoryAnchor, HistoryDirection, HistoryPage, HistoryRecord, HistoryRecordSource,
+    ListHistoryRequest,
+};
 pub use repository::SqliteEventRepository;

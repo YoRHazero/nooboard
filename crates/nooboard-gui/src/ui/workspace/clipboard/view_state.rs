@@ -1,4 +1,4 @@
-use nooboard_core::{ClipboardRecord, ClipboardRecordSource, SessionId};
+use nooboard_core::{ClipboardHistoryDirection, ClipboardRecord, ClipboardRecordSource, SessionId};
 use time::{OffsetDateTime, UtcOffset};
 
 use crate::workspace::view_state::ClipboardWorkspaceViewState;
@@ -13,7 +13,7 @@ pub(super) struct ClipboardPageViewState {
     pub latest_record: Option<ClipboardRecord>,
     pub selected_record: Option<ClipboardRecord>,
     pub latest_selected: bool,
-    pub history_rows: Vec<ClipboardHistoryRowViewState>,
+    pub history_rows: Vec<ClipboardHistoryListItemViewState>,
     pub target_rows: Vec<ClipboardTargetViewState>,
     pub detail_tab: ClipboardDetailTab,
     pub broadcast_scope: ClipboardBroadcastScope,
@@ -25,8 +25,6 @@ pub(super) struct ClipboardPageViewState {
     pub edit_dirty: bool,
     pub can_submit_edit: bool,
     pub can_enter_edit: bool,
-    pub history_load_state: ClipboardHistoryLoadState,
-    pub can_load_more: bool,
     pub feedback: Option<String>,
     pub submit_in_flight: bool,
     pub adopt_in_flight: bool,
@@ -37,6 +35,20 @@ pub(super) struct ClipboardPageViewState {
 pub(super) struct ClipboardHistoryRowViewState {
     pub record: ClipboardRecord,
     pub selected: bool,
+}
+
+#[derive(Clone)]
+pub(super) struct ClipboardHistoryGapViewState {
+    pub direction: ClipboardHistoryDirection,
+    pub label: String,
+    pub interactive: bool,
+    pub loading: bool,
+}
+
+#[derive(Clone)]
+pub(super) enum ClipboardHistoryListItemViewState {
+    Record(ClipboardHistoryRowViewState),
+    Gap(ClipboardHistoryGapViewState),
 }
 
 #[derive(Clone)]
@@ -71,8 +83,6 @@ pub(super) fn build_clipboard_page_view_state(
             edit_dirty: false,
             can_submit_edit: false,
             can_enter_edit: false,
-            history_load_state: ClipboardHistoryLoadState::Idle,
-            can_load_more: false,
             feedback: None,
             submit_in_flight: false,
             adopt_in_flight: false,
@@ -101,6 +111,40 @@ pub(super) fn build_clipboard_page_view_state(
         ClipboardBroadcastScope::SelectedSessions => state.selected_session_ids().len(),
     };
 
+    let mut history_rows = Vec::new();
+    if state.has_newer_gap() {
+        history_rows.push(ClipboardHistoryListItemViewState::Gap(
+            ClipboardHistoryGapViewState {
+                direction: ClipboardHistoryDirection::Newer,
+                label: "Newer history unloaded".to_string(),
+                interactive: state.can_load_newer(),
+                loading: state.history_load_state() == ClipboardHistoryLoadState::LoadingNewer,
+            },
+        ));
+    }
+    history_rows.extend(
+        state
+            .history_records()
+            .into_iter()
+            .filter(|record| Some(record.event_id) != latest_event_id)
+            .map(|record| {
+                ClipboardHistoryListItemViewState::Record(ClipboardHistoryRowViewState {
+                    selected: state.selection().matches(record.event_id, latest_event_id),
+                    record,
+                })
+            }),
+    );
+    if state.has_older_gap() {
+        history_rows.push(ClipboardHistoryListItemViewState::Gap(
+            ClipboardHistoryGapViewState {
+                direction: ClipboardHistoryDirection::Older,
+                label: "Older history unloaded".to_string(),
+                interactive: state.can_load_older(),
+                loading: state.history_load_state() == ClipboardHistoryLoadState::LoadingOlder,
+            },
+        ));
+    }
+
     ClipboardPageViewState {
         page_ready: true,
         latest_record,
@@ -109,16 +153,7 @@ pub(super) fn build_clipboard_page_view_state(
             state.selection(),
             super::state::ClipboardSelection::LatestCommitted
         ),
-        history_rows: state
-            .history_records()
-            .iter()
-            .filter(|record| Some(record.event_id) != latest_event_id)
-            .cloned()
-            .map(|record| ClipboardHistoryRowViewState {
-                selected: state.selection().matches(record.event_id, latest_event_id),
-                record,
-            })
-            .collect(),
+        history_rows,
         target_rows,
         detail_tab: state.detail_tab(),
         broadcast_scope: state.broadcast_scope(),
@@ -130,8 +165,6 @@ pub(super) fn build_clipboard_page_view_state(
         edit_dirty: state.is_edit_dirty(cx),
         can_submit_edit: state.can_submit_edit(page.max_text_bytes, cx),
         can_enter_edit: selected_event_id.is_some(),
-        history_load_state: state.history_load_state(),
-        can_load_more: state.can_load_more(),
         feedback: state.feedback().cloned(),
         submit_in_flight: state.submit_in_flight(),
         adopt_in_flight: state.adopt_in_flight_event_id() == selected_event_id,

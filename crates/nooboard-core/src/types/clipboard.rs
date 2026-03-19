@@ -21,33 +21,43 @@ pub struct ClipboardRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListClipboardHistoryRequest {
     pub limit: usize,
-    pub cursor: Option<ClipboardHistoryCursor>,
+    pub direction: ClipboardHistoryDirection,
+    pub anchor: Option<ClipboardHistoryAnchor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClipboardHistoryPage {
     pub records: Vec<ClipboardRecord>,
-    pub next_cursor: Option<ClipboardHistoryCursor>,
+    pub has_more: bool,
+    pub next_anchor: Option<ClipboardHistoryAnchor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ClipboardHistoryCursor {
+pub enum ClipboardHistoryDirection {
+    Older,
+    Newer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipboardHistoryAnchor {
     pub created_at_ms: i64,
     pub event_id: EventId,
 }
 
-impl ClipboardHistoryCursor {
-    pub(crate) fn to_storage_cursor(&self) -> nooboard_storage::HistoryCursor {
-        nooboard_storage::HistoryCursor {
+impl ClipboardHistoryAnchor {
+    pub(crate) fn to_storage_anchor(&self) -> nooboard_storage::HistoryAnchor {
+        nooboard_storage::HistoryAnchor {
             created_at_ms: self.created_at_ms,
             event_id: *self.event_id.as_uuid().as_bytes(),
         }
     }
+}
 
-    pub(crate) fn from_storage(value: &nooboard_storage::HistoryRecord) -> Self {
-        Self {
-            created_at_ms: value.created_at_ms,
-            event_id: EventId::from(uuid::Uuid::from_bytes(value.event_id)),
+impl ClipboardHistoryDirection {
+    pub(crate) fn to_storage_direction(&self) -> nooboard_storage::HistoryDirection {
+        match self {
+            Self::Older => nooboard_storage::HistoryDirection::Older,
+            Self::Newer => nooboard_storage::HistoryDirection::Newer,
         }
     }
 }

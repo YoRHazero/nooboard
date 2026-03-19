@@ -1,4 +1,5 @@
 use gpui::{Context, Window};
+use nooboard_core::ClipboardHistoryDirection;
 
 use crate::{ui::workspace::WorkspaceView, workspace::view_state::ClipboardWorkspaceViewState};
 
@@ -16,10 +17,14 @@ impl WorkspaceView {
         &mut self,
         cx: &mut Context<Self>,
     ) {
-        if self.clipboard.history_bootstrapped() || !self.clipboard.begin_history_load(true) {
+        if self.clipboard.history_bootstrapped()
+            || !self
+                .clipboard
+                .begin_history_load(ClipboardHistoryDirection::Older, true)
+        {
             return;
         }
 
-        self.request_clipboard_history_page(None, cx);
+        self.request_clipboard_history_page(ClipboardHistoryDirection::Older, None, cx);
     }
 }

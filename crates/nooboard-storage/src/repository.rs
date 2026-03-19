@@ -5,7 +5,10 @@ use rusqlite::{Connection, OptionalExtension, Row, params, types::Type};
 
 use crate::StorageError;
 use crate::config::{AppConfig, STORAGE_SCHEMA_VERSION, StorageConfig};
-use crate::model::{EventState, HistoryCursor, HistoryRecord, HistoryRecordSource};
+use crate::model::{
+    EventState, HistoryDirection, HistoryPage, HistoryRecord, HistoryRecordSource,
+    ListHistoryRequest,
+};
 use crate::sql_catalog::SqlCatalog;
 
 pub struct SqliteEventRepository {
@@ -81,37 +84,76 @@ impl SqliteEventRepository {
         Ok(true)
     }
 
-    pub fn list_history(
-        &self,
-        limit: usize,
-        cursor: Option<HistoryCursor>,
-    ) -> Result<Vec<HistoryRecord>, StorageError> {
-        if limit == 0 {
-            return Ok(Vec::new());
+    pub fn list_history(&self, request: ListHistoryRequest) -> Result<HistoryPage, StorageError> {
+        if request.limit == 0 {
+            return Ok(HistoryPage {
+                records: Vec::new(),
+                has_more: false,
+                next_anchor: None,
+            });
         }
 
-        let limit = i64::try_from(limit).map_err(|_| StorageError::LimitOutOfRange(limit))?;
-        match cursor {
-            None => {
-                let mut statement = self.conn.prepare(&self.sql.list_history)?;
-                let rows = statement
-                    .query_map(params![EventState::Active.as_str(), limit], map_history_row)?;
-                rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        let fetch_limit = request
+            .limit
+            .checked_add(1)
+            .ok_or(StorageError::LimitOutOfRange(request.limit))?;
+        let fetch_limit =
+            i64::try_from(fetch_limit).map_err(|_| StorageError::LimitOutOfRange(request.limit))?;
+
+        let mut records = match (request.direction, request.anchor) {
+            (HistoryDirection::Older, None) => {
+                let mut statement = self.conn.prepare(&self.sql.list_history_head)?;
+                let rows = statement.query_map(params![fetch_limit], map_history_row)?;
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(StorageError::from)?
             }
-            Some(cursor) => {
-                let mut statement = self.conn.prepare(&self.sql.list_history_with_cursor)?;
+            (HistoryDirection::Older, Some(anchor)) => {
+                let mut statement = self
+                    .conn
+                    .prepare(&self.sql.list_history_older_from_anchor)?;
                 let rows = statement.query_map(
-                    params![
-                        EventState::Active.as_str(),
-                        cursor.created_at_ms,
-                        &cursor.event_id[..],
-                        limit
-                    ],
+                    params![anchor.created_at_ms, &anchor.event_id[..], fetch_limit],
                     map_history_row,
                 )?;
-                rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(StorageError::from)?
             }
+            (HistoryDirection::Newer, Some(anchor)) => {
+                let mut statement = self
+                    .conn
+                    .prepare(&self.sql.list_history_newer_from_anchor)?;
+                let rows = statement.query_map(
+                    params![anchor.created_at_ms, &anchor.event_id[..], fetch_limit],
+                    map_history_row,
+                )?;
+                let mut rows = rows
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(StorageError::from)?;
+                rows.reverse();
+                rows
+            }
+            (HistoryDirection::Newer, None) => {
+                return Err(StorageError::InvalidHistoryRequest(
+                    "newer history paging requires an anchor",
+                ));
+            }
+        };
+
+        let has_more = records.len() > request.limit;
+        if has_more {
+            records.truncate(request.limit);
         }
+
+        let next_anchor = match request.direction {
+            HistoryDirection::Older => records.last().map(HistoryRecord::anchor),
+            HistoryDirection::Newer => records.first().map(HistoryRecord::anchor),
+        };
+
+        Ok(HistoryPage {
+            records,
+            has_more,
+            next_anchor,
+        })
     }
 
     pub fn get_event_by_id(
@@ -134,7 +176,13 @@ impl SqliteEventRepository {
         keyword: &str,
     ) -> Result<Vec<HistoryRecord>, StorageError> {
         if keyword.trim().is_empty() {
-            return self.list_history(limit, None);
+            return self
+                .list_history(ListHistoryRequest {
+                    limit,
+                    direction: HistoryDirection::Older,
+                    anchor: None,
+                })
+                .map(|page| page.records);
         }
         if limit == 0 {
             return Ok(Vec::new());
@@ -333,6 +381,7 @@ mod tests {
 
     use super::*;
     use crate::config::LifecycleConfig;
+    use crate::model::{HistoryAnchor, HistoryDirection, ListHistoryRequest};
 
     fn temp_db_root(name: &str) -> std::path::PathBuf {
         let millis = SystemTime::now()
@@ -380,6 +429,30 @@ mod tests {
         )
     }
 
+    fn head_request(limit: usize) -> ListHistoryRequest {
+        ListHistoryRequest {
+            limit,
+            direction: HistoryDirection::Older,
+            anchor: None,
+        }
+    }
+
+    fn older_request(limit: usize, anchor: HistoryAnchor) -> ListHistoryRequest {
+        ListHistoryRequest {
+            limit,
+            direction: HistoryDirection::Older,
+            anchor: Some(anchor),
+        }
+    }
+
+    fn newer_request(limit: usize, anchor: HistoryAnchor) -> ListHistoryRequest {
+        ListHistoryRequest {
+            limit,
+            direction: HistoryDirection::Newer,
+            anchor: Some(anchor),
+        }
+    }
+
     #[test]
     fn init_storage_removes_old_versions_when_retention_is_zero() -> Result<(), StorageError> {
         let config = make_config("retain-zero", LifecycleConfig::default(), 0);
@@ -421,12 +494,14 @@ mod tests {
             200
         )?);
 
-        let records = repository.list_history(10, None)?;
-        assert_eq!(records.len(), 2);
-        assert_eq!(records[0].content, "second");
-        assert_eq!(records[0].created_at_ms, 200);
-        assert_eq!(records[1].content, "first");
-        assert_eq!(records[1].created_at_ms, 100);
+        let page = repository.list_history(head_request(10))?;
+        assert!(!page.has_more);
+        assert_eq!(page.records.len(), 2);
+        assert_eq!(page.records[0].content, "second");
+        assert_eq!(page.records[0].created_at_ms, 200);
+        assert_eq!(page.records[1].content, "first");
+        assert_eq!(page.records[1].created_at_ms, 100);
+        assert_eq!(page.next_anchor, Some(page.records[1].anchor()));
 
         let _ = fs::remove_dir_all(repository.storage.db_root.clone());
         Ok(())
@@ -531,9 +606,9 @@ mod tests {
             200
         )?);
 
-        let records = repository.list_history(10, None)?;
-        assert_eq!(records.len(), 1);
-        assert_eq!(records[0].content, "dup");
+        let page = repository.list_history(head_request(10))?;
+        assert_eq!(page.records.len(), 1);
+        assert_eq!(page.records[0].content, "dup");
 
         let _ = fs::remove_dir_all(repository.storage.db_root.clone());
         Ok(())
@@ -582,16 +657,16 @@ mod tests {
             now_ms
         )?);
 
-        let records = repository.list_history(10, None)?;
-        assert_eq!(records.len(), 1);
-        assert_eq!(records[0].content, "fresh");
+        let page = repository.list_history(head_request(10))?;
+        assert_eq!(page.records.len(), 1);
+        assert_eq!(page.records[0].content, "fresh");
 
         let _ = fs::remove_dir_all(repository.storage.db_root.clone());
         Ok(())
     }
 
     #[test]
-    fn list_history_with_cursor_pages_from_new_to_old() -> Result<(), StorageError> {
+    fn list_history_pages_older_then_newer_without_duplication() -> Result<(), StorageError> {
         let mut repository =
             SqliteEventRepository::open(make_config("cursor-page", LifecycleConfig::default(), 0))?;
         repository.init_storage()?;
@@ -624,15 +699,100 @@ mod tests {
             300
         )?);
 
-        let first_page = repository.list_history(2, None)?;
-        assert_eq!(first_page.len(), 2);
-        assert_eq!(first_page[0].content, "third");
-        assert_eq!(first_page[1].content, "second");
+        let first_page = repository.list_history(head_request(2))?;
+        assert!(first_page.has_more);
+        assert_eq!(first_page.records.len(), 2);
+        assert_eq!(first_page.records[0].content, "third");
+        assert_eq!(first_page.records[1].content, "second");
 
-        let cursor = first_page[1].cursor();
-        let second_page = repository.list_history(2, Some(cursor))?;
-        assert_eq!(second_page.len(), 1);
-        assert_eq!(second_page[0].content, "first");
+        let older_anchor = first_page.next_anchor.expect("older anchor");
+        let second_page = repository.list_history(older_request(2, older_anchor))?;
+        assert!(!second_page.has_more);
+        assert_eq!(second_page.records.len(), 1);
+        assert_eq!(second_page.records[0].content, "first");
+
+        let newer_anchor = second_page.next_anchor.expect("newer anchor");
+        let newer_page = repository.list_history(newer_request(2, newer_anchor))?;
+        assert!(!newer_page.has_more);
+        assert_eq!(newer_page.records.len(), 2);
+        assert_eq!(newer_page.records[0].content, "third");
+        assert_eq!(newer_page.records[1].content, "second");
+
+        let first_ids = first_page
+            .records
+            .iter()
+            .map(|record| record.event_id)
+            .collect::<Vec<_>>();
+        let newer_ids = newer_page
+            .records
+            .iter()
+            .map(|record| record.event_id)
+            .collect::<Vec<_>>();
+        assert_eq!(newer_ids, first_ids);
+
+        let _ = fs::remove_dir_all(repository.storage.db_root.clone());
+        Ok(())
+    }
+
+    #[test]
+    fn list_history_rejects_newer_request_without_anchor() -> Result<(), StorageError> {
+        let mut repository = SqliteEventRepository::open(make_config(
+            "newer-no-anchor",
+            LifecycleConfig::default(),
+            0,
+        ))?;
+        repository.init_storage()?;
+        let error = repository
+            .list_history(ListHistoryRequest {
+                limit: 10,
+                direction: HistoryDirection::Newer,
+                anchor: None,
+            })
+            .expect_err("newer without anchor should fail");
+        assert!(matches!(
+            error,
+            StorageError::InvalidHistoryRequest("newer history paging requires an anchor")
+        ));
+
+        let _ = fs::remove_dir_all(repository.storage.db_root.clone());
+        Ok(())
+    }
+
+    #[test]
+    fn list_history_breaks_timestamp_ties_by_event_id() -> Result<(), StorageError> {
+        let mut repository = SqliteEventRepository::open(make_config(
+            "timestamp-tie",
+            LifecycleConfig::default(),
+            0,
+        ))?;
+        repository.init_storage()?;
+
+        let lower = uuid::Uuid::from_bytes([0; 16]);
+        let higher = uuid::Uuid::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+
+        assert!(append_user_submit(
+            &mut repository,
+            "lower",
+            Some(lower),
+            None,
+            None,
+            100,
+            100
+        )?);
+        assert!(append_user_submit(
+            &mut repository,
+            "higher",
+            Some(higher),
+            None,
+            None,
+            100,
+            100
+        )?);
+
+        let page = repository.list_history(head_request(10))?;
+        assert_eq!(page.records.len(), 2);
+        assert_eq!(page.records[0].content, "higher");
+        assert_eq!(page.records[1].content, "lower");
 
         let _ = fs::remove_dir_all(repository.storage.db_root.clone());
         Ok(())
@@ -659,11 +819,11 @@ mod tests {
             100
         )?);
 
-        let records = repository.list_history(10, None)?;
-        assert_eq!(records.len(), 1);
-        assert_eq!(records[0].event_id, *event_id.as_bytes());
-        assert_eq!(records[0].origin_noob_id, "remote-noob");
-        assert_eq!(records[0].origin_device_id, "remote-device");
+        let page = repository.list_history(head_request(10))?;
+        assert_eq!(page.records.len(), 1);
+        assert_eq!(page.records[0].event_id, *event_id.as_bytes());
+        assert_eq!(page.records[0].origin_noob_id, "remote-noob");
+        assert_eq!(page.records[0].origin_device_id, "remote-device");
 
         assert!(!append_user_submit(
             &mut repository,
@@ -675,8 +835,8 @@ mod tests {
             100
         )?);
 
-        let records = repository.list_history(10, None)?;
-        assert_eq!(records.len(), 1);
+        let page = repository.list_history(head_request(10))?;
+        assert_eq!(page.records.len(), 1);
 
         let _ = fs::remove_dir_all(repository.storage.db_root.clone());
         Ok(())

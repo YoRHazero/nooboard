@@ -1,6 +1,6 @@
 use crate::error::{CoreError, CoreResult};
 use crate::types::{
-    ClipboardHistoryCursor, ClipboardHistoryPage, ClipboardRecord, ClipboardRecordSource, EventId,
+    ClipboardHistoryAnchor, ClipboardHistoryPage, ClipboardRecord, ClipboardRecordSource, EventId,
     ListClipboardHistoryRequest,
 };
 
@@ -21,16 +21,24 @@ pub(crate) async fn list_clipboard_history(
     state: &WorkspaceState,
     request: ListClipboardHistoryRequest,
 ) -> CoreResult<ClipboardHistoryPage> {
-    let storage_cursor = request
-        .cursor
+    let storage_anchor = request
+        .anchor
         .as_ref()
-        .map(ClipboardHistoryCursor::to_storage_cursor);
-    let records = state
+        .map(ClipboardHistoryAnchor::to_storage_anchor);
+    let page = state
         .storage_runtime()
-        .list_history(request.limit, storage_cursor)
+        .list_history(nooboard_storage::ListHistoryRequest {
+            limit: request.limit,
+            direction: request.direction.to_storage_direction(),
+            anchor: storage_anchor,
+        })
         .await?;
-    let next_cursor = records.last().map(ClipboardHistoryCursor::from_storage);
-    let records = records
+    let next_anchor = page.next_anchor.map(|anchor| ClipboardHistoryAnchor {
+        created_at_ms: anchor.created_at_ms,
+        event_id: EventId::from(uuid::Uuid::from_bytes(anchor.event_id)),
+    });
+    let records = page
+        .records
         .into_iter()
         .map(|record| {
             let source = map_storage_source(record.source);
@@ -39,7 +47,8 @@ pub(crate) async fn list_clipboard_history(
         .collect();
     Ok(ClipboardHistoryPage {
         records,
-        next_cursor,
+        has_more: page.has_more,
+        next_anchor,
     })
 }
 

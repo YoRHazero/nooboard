@@ -4,8 +4,8 @@ mod settings;
 mod snapshot;
 
 pub use clipboard::{
-    ClipboardHistoryCursor, ClipboardHistoryPage, ClipboardRecord, ClipboardRecordSource,
-    ListClipboardHistoryRequest,
+    ClipboardHistoryAnchor, ClipboardHistoryDirection, ClipboardHistoryPage, ClipboardRecord,
+    ClipboardRecordSource, ListClipboardHistoryRequest,
 };
 pub use events::{EventRecvError, EventSubscription, WorkspaceEvent};
 pub use settings::{

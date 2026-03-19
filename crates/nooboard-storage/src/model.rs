@@ -58,8 +58,8 @@ impl HistoryRecord {
             .collect()
     }
 
-    pub fn cursor(&self) -> HistoryCursor {
-        HistoryCursor {
+    pub fn anchor(&self) -> HistoryAnchor {
+        HistoryAnchor {
             created_at_ms: self.created_at_ms,
             event_id: self.event_id,
         }
@@ -67,7 +67,27 @@ impl HistoryRecord {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HistoryCursor {
+pub enum HistoryDirection {
+    Older,
+    Newer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HistoryAnchor {
     pub created_at_ms: i64,
     pub event_id: [u8; 16],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListHistoryRequest {
+    pub limit: usize,
+    pub direction: HistoryDirection,
+    pub anchor: Option<HistoryAnchor>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryPage {
+    pub records: Vec<HistoryRecord>,
+    pub has_more: bool,
+    pub next_anchor: Option<HistoryAnchor>,
 }

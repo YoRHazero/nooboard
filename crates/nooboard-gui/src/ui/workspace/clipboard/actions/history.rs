@@ -1,6 +1,7 @@
 use gpui::{Context, Window};
 use nooboard_core::{
-    ClipboardHistoryCursor, ClipboardHistoryPage, EventId, ListClipboardHistoryRequest,
+    ClipboardHistoryAnchor, ClipboardHistoryDirection, ClipboardHistoryPage, EventId,
+    ListClipboardHistoryRequest,
 };
 
 use crate::{ui::workspace::WorkspaceView, workspace::actions::clipboard as clipboard_actions};
@@ -8,19 +9,46 @@ use crate::{ui::workspace::WorkspaceView, workspace::actions::clipboard as clipb
 const CLIPBOARD_HISTORY_LIMIT: usize = 24;
 
 impl WorkspaceView {
-    pub(in crate::ui::workspace) fn load_more_clipboard_history(&mut self, cx: &mut Context<Self>) {
-        if !self.clipboard.can_load_more() {
+    pub(in crate::ui::workspace) fn load_older_clipboard_history(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.clipboard.can_load_older() {
             return;
         }
 
-        let Some(cursor) = self.clipboard.next_cursor() else {
+        let Some(anchor) = self.clipboard.older_anchor() else {
             return;
         };
-        if !self.clipboard.begin_history_load(false) {
+        if !self
+            .clipboard
+            .begin_history_load(ClipboardHistoryDirection::Older, false)
+        {
             return;
         }
 
-        self.request_clipboard_history_page(Some(cursor), cx);
+        self.request_clipboard_history_page(ClipboardHistoryDirection::Older, Some(anchor), cx);
+    }
+
+    pub(in crate::ui::workspace) fn load_newer_clipboard_history(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.clipboard.can_load_newer() {
+            return;
+        }
+
+        let Some(anchor) = self.clipboard.newer_anchor() else {
+            return;
+        };
+        if !self
+            .clipboard
+            .begin_history_load(ClipboardHistoryDirection::Newer, false)
+        {
+            return;
+        }
+
+        self.request_clipboard_history_page(ClipboardHistoryDirection::Newer, Some(anchor), cx);
     }
 
     pub(in crate::ui::workspace) fn request_clipboard_select_latest(
@@ -86,14 +114,16 @@ impl WorkspaceView {
 
     pub(super) fn request_clipboard_history_page(
         &mut self,
-        cursor: Option<ClipboardHistoryCursor>,
+        direction: ClipboardHistoryDirection,
+        anchor: Option<ClipboardHistoryAnchor>,
         cx: &mut Context<Self>,
     ) {
         let Some(task) = clipboard_actions::list_clipboard_history_task(
             &self.controller,
             ListClipboardHistoryRequest {
                 limit: CLIPBOARD_HISTORY_LIMIT,
-                cursor,
+                direction: direction.clone(),
+                anchor,
             },
             cx,
         ) else {
@@ -108,7 +138,7 @@ impl WorkspaceView {
             let result = task.await;
             let _ = view.update(cx, |this, cx| {
                 match result {
-                    Ok(page) => this.finish_clipboard_history_page(page),
+                    Ok(page) => this.finish_clipboard_history_page(direction, page),
                     Err(error) => {
                         this.clipboard.fail_history_load(format!(
                             "Failed to load clipboard history: {error}"
@@ -122,9 +152,13 @@ impl WorkspaceView {
         .detach();
     }
 
-    fn finish_clipboard_history_page(&mut self, page: ClipboardHistoryPage) {
+    fn finish_clipboard_history_page(
+        &mut self,
+        direction: ClipboardHistoryDirection,
+        page: ClipboardHistoryPage,
+    ) {
         let loaded_empty = page.records.is_empty();
-        self.clipboard.finish_history_load(page);
+        self.clipboard.finish_history_load(direction, page);
         if loaded_empty && self.clipboard.history_records().is_empty() {
             self.clipboard.fail_history_load(
                 "No committed clipboard records have been stored yet.".to_string(),

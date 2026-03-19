@@ -1,7 +1,9 @@
 use std::sync::{Mutex, mpsc};
 use std::thread::JoinHandle;
 
-use nooboard_storage::{HistoryCursor, HistoryRecord, HistoryRecordSource, SqliteEventRepository};
+use nooboard_storage::{
+    HistoryPage, HistoryRecord, HistoryRecordSource, ListHistoryRequest, SqliteEventRepository,
+};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
@@ -24,9 +26,8 @@ enum StorageCommand {
         reply: oneshot::Sender<CoreResult<bool>>,
     },
     ListHistory {
-        limit: usize,
-        cursor: Option<HistoryCursor>,
-        reply: oneshot::Sender<CoreResult<Vec<HistoryRecord>>>,
+        request: ListHistoryRequest,
+        reply: oneshot::Sender<CoreResult<HistoryPage>>,
     },
     GetEventById {
         event_id: Uuid,
@@ -120,15 +121,10 @@ impl StorageRuntime {
 
     pub(crate) async fn list_history(
         &self,
-        limit: usize,
-        cursor: Option<HistoryCursor>,
-    ) -> CoreResult<Vec<HistoryRecord>> {
+        request: ListHistoryRequest,
+    ) -> CoreResult<HistoryPage> {
         self.request(
-            |reply| StorageCommand::ListHistory {
-                limit,
-                cursor,
-                reply,
-            },
+            |reply| StorageCommand::ListHistory { request, reply },
             "list_history",
         )
         .await
@@ -242,15 +238,8 @@ fn run_actor(
                     .map_err(Into::into);
                 let _ = reply.send(result);
             }
-            StorageCommand::ListHistory {
-                limit,
-                cursor,
-                reply,
-            } => {
-                let result = state
-                    .repository
-                    .list_history(limit, cursor)
-                    .map_err(Into::into);
+            StorageCommand::ListHistory { request, reply } => {
+                let result = state.repository.list_history(request).map_err(Into::into);
                 let _ = reply.send(result);
             }
             StorageCommand::GetEventById { event_id, reply } => {
@@ -273,7 +262,12 @@ impl ActorState {
     fn new(storage_config: nooboard_storage::AppConfig) -> CoreResult<(Self, Option<EventId>)> {
         let repository = open_repository(&storage_config)?;
         let latest_event_id = repository
-            .list_history(1, None)?
+            .list_history(ListHistoryRequest {
+                limit: 1,
+                direction: nooboard_storage::HistoryDirection::Older,
+                anchor: None,
+            })?
+            .records
             .into_iter()
             .next()
             .map(|record| EventId::from(Uuid::from_bytes(record.event_id)));

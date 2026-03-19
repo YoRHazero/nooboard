@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use nooboard_config::AppConfig;
 use nooboard_core::{
-    ClipboardRecordSource, ListClipboardHistoryRequest, NetworkStatus, SendFilesRequest,
-    SessionTarget, TransferOutcome,
+    ClipboardHistoryDirection, ClipboardRecordSource, ListClipboardHistoryRequest, NetworkStatus,
+    SendFilesRequest, SessionTarget, TransferOutcome,
 };
 use tokio::time::Duration;
 
@@ -51,10 +51,12 @@ async fn submit_text_and_adopt_round_trip() -> Result<(), TestError> {
     let history = core
         .list_clipboard_history(ListClipboardHistoryRequest {
             limit: 10,
-            cursor: None,
+            direction: ClipboardHistoryDirection::Older,
+            anchor: None,
         })
         .await?;
     assert_eq!(history.records.len(), 1);
+    assert!(!history.has_more);
 
     core.adopt_clipboard_record(event_id).await?;
     assert_eq!(backend.last_written().as_deref(), Some("hello"));
@@ -62,7 +64,8 @@ async fn submit_text_and_adopt_round_trip() -> Result<(), TestError> {
     let history_after_adopt = core
         .list_clipboard_history(ListClipboardHistoryRequest {
             limit: 10,
-            cursor: None,
+            direction: ClipboardHistoryDirection::Older,
+            anchor: None,
         })
         .await?;
     assert_eq!(history_after_adopt.records.len(), 1);
