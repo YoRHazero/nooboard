@@ -1,5 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 
+use gpui::{UniformListScrollHandle, point, px};
 use nooboard_core::{
     ClipboardHistoryAnchor, ClipboardHistoryDirection, ClipboardHistoryPage, ClipboardRecord,
     EventId,
@@ -7,6 +8,7 @@ use nooboard_core::{
 
 const MAX_HISTORY_PAGES: usize = 6;
 const DETAIL_CACHE_LIMIT: usize = 16;
+const HISTORY_PAGE_SIZE: usize = 24;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::ui::workspace) enum ClipboardSelection {
@@ -45,12 +47,14 @@ pub(super) struct ClipboardHistoryState {
     pages: VecDeque<LoadedHistoryPage>,
     detail_cache: HashMap<EventId, ClipboardRecord>,
     detail_cache_order: VecDeque<EventId>,
+    pending_new_records: VecDeque<ClipboardRecord>,
     older_anchor: Option<ClipboardHistoryAnchor>,
     newer_anchor: Option<ClipboardHistoryAnchor>,
     has_unloaded_older: bool,
     has_unloaded_newer: bool,
     load_state: ClipboardHistoryLoadState,
     bootstrapped: bool,
+    scroll_handle: UniformListScrollHandle,
 }
 
 impl ClipboardHistoryState {
@@ -60,12 +64,14 @@ impl ClipboardHistoryState {
             pages: VecDeque::new(),
             detail_cache: HashMap::new(),
             detail_cache_order: VecDeque::new(),
+            pending_new_records: VecDeque::new(),
             older_anchor: None,
             newer_anchor: None,
             has_unloaded_older: false,
             has_unloaded_newer: false,
             load_state: ClipboardHistoryLoadState::Idle,
             bootstrapped: false,
+            scroll_handle: UniformListScrollHandle::new(),
         }
     }
 
@@ -110,6 +116,55 @@ impl ClipboardHistoryState {
 
     pub(super) fn can_load_newer(&self) -> bool {
         self.has_newer_gap() && self.load_state == ClipboardHistoryLoadState::Idle
+    }
+
+    pub(super) fn scroll_handle(&self) -> UniformListScrollHandle {
+        self.scroll_handle.clone()
+    }
+
+    pub(super) fn pending_new_count(&self) -> usize {
+        self.pending_new_records.len()
+    }
+
+    pub(super) fn should_defer_latest_record(&self) -> bool {
+        self.bootstrapped && !self.is_near_top()
+    }
+
+    pub(super) fn accept_latest_record(&mut self, record: ClipboardRecord) {
+        if self.contains_record(record.event_id)
+            || self
+                .pending_new_records
+                .iter()
+                .any(|existing| existing.event_id == record.event_id)
+        {
+            return;
+        }
+
+        if self.should_defer_latest_record() {
+            self.queue_pending_new(record);
+        } else {
+            self.promote_record(record);
+        }
+    }
+
+    pub(super) fn reveal_pending_new(&mut self) {
+        while let Some(record) = self.pending_new_records.pop_back() {
+            self.promote_record(record);
+        }
+        self.scroll_handle
+            .0
+            .borrow()
+            .base_handle
+            .set_offset(point(px(0.0), px(0.0)));
+    }
+
+    pub(super) fn auto_reveal_pending_if_near_top(&mut self) -> bool {
+        if self.pending_new_records.is_empty() || !self.is_near_top() {
+            return false;
+        }
+
+        self.reveal_pending_new();
+        true
     }
 
     pub(super) fn begin_load(
@@ -214,6 +269,7 @@ impl ClipboardHistoryState {
                 records: vec![record],
             });
         }
+        self.rebalance_front_pages();
     }
 
     fn append_older_page(&mut self, page: ClipboardHistoryPage) {
@@ -235,6 +291,7 @@ impl ClipboardHistoryState {
         }
 
         self.pages.push_back(LoadedHistoryPage { records });
+        self.discard_loaded_pending_records();
         while self.pages.len() > MAX_HISTORY_PAGES {
             if let Some(evicted) = self.pages.pop_front() {
                 self.retain_selected_record(&evicted.records);
@@ -266,6 +323,7 @@ impl ClipboardHistoryState {
         }
 
         self.pages.push_front(LoadedHistoryPage { records });
+        self.discard_loaded_pending_records();
         while self.pages.len() > MAX_HISTORY_PAGES {
             if let Some(evicted) = self.pages.pop_back() {
                 self.retain_selected_record(&evicted.records);
@@ -322,6 +380,22 @@ impl ClipboardHistoryState {
         self.prune_detail_cache();
     }
 
+    fn queue_pending_new(&mut self, record: ClipboardRecord) {
+        self.pending_new_records
+            .retain(|existing| existing.event_id != record.event_id);
+        self.pending_new_records.push_front(record);
+    }
+
+    fn discard_loaded_pending_records(&mut self) {
+        let loaded_ids = self
+            .pages
+            .iter()
+            .flat_map(|page| page.records.iter().map(|record| record.event_id))
+            .collect::<Vec<_>>();
+        self.pending_new_records
+            .retain(|record| !loaded_ids.contains(&record.event_id));
+    }
+
     fn touch_detail_cache(&mut self, event_id: EventId) {
         self.detail_cache_order
             .retain(|existing| *existing != event_id);
@@ -343,6 +417,55 @@ impl ClipboardHistoryState {
                 break;
             }
             self.detail_cache.remove(&candidate);
+        }
+    }
+
+    fn is_near_top(&self) -> bool {
+        self.scroll_handle
+            .0
+            .borrow()
+            .base_handle
+            .logical_scroll_top()
+            .0
+            <= 1
+    }
+
+    fn rebalance_front_pages(&mut self) {
+        let mut index = 0;
+        let mut carry: Option<Vec<ClipboardRecord>> = None;
+
+        loop {
+            if let Some(carry_records) = carry.take() {
+                if let Some(page) = self.pages.get_mut(index) {
+                    page.records.splice(0..0, carry_records);
+                } else {
+                    self.pages.push_back(LoadedHistoryPage {
+                        records: carry_records,
+                    });
+                }
+            }
+
+            let Some(page) = self.pages.get_mut(index) else {
+                break;
+            };
+            if page.records.len() <= HISTORY_PAGE_SIZE {
+                index += 1;
+                if index >= self.pages.len() {
+                    break;
+                }
+                continue;
+            }
+
+            carry = Some(page.records.split_off(HISTORY_PAGE_SIZE));
+            index += 1;
+        }
+
+        while self.pages.len() > MAX_HISTORY_PAGES {
+            if let Some(evicted) = self.pages.pop_back() {
+                self.retain_selected_record(&evicted.records);
+                self.has_unloaded_older = true;
+                self.older_anchor = self.current_oldest_anchor();
+            }
         }
     }
 }

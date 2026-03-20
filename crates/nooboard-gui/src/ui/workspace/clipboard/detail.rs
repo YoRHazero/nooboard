@@ -1,8 +1,9 @@
 use gpui::{
-    Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
-    div, px,
+    AnyElement, AnyView, App, Context, InteractiveElement, IntoElement, ParentElement,
+    StatefulInteractiveElement, Styled, Window, div, px,
 };
 use gpui_component::input::Input;
+use gpui_component::tooltip::Tooltip;
 use gpui_component::{Sizable, StyledExt};
 
 use crate::ui::theme;
@@ -349,40 +350,33 @@ impl WorkspaceView {
         div()
             .h_flex()
             .gap(px(8.0))
-            .child(self.toolbar_button(
+            .child(self.clipboard_action_button(
                 "clipboard-action-adopt",
                 if snapshot.adopt_in_flight {
-                    "Adopting"
+                    "Using"
                 } else {
                     "Adopt"
                 },
+                "Write the selected committed record into the local clipboard.".to_string(),
                 snapshot.selected_record.is_some() && !snapshot.adopt_in_flight,
                 theme::accent_cyan(),
                 |this, _, _, cx| this.request_clipboard_adopt_selected(cx),
                 cx,
             ))
-            .child(self.toolbar_button(
+            .child(self.clipboard_action_button(
                 "clipboard-action-rebroadcast",
                 if snapshot.rebroadcast_in_flight {
                     "Sending"
                 } else {
-                    "Rebroadcast"
+                    "Send"
                 },
+                "Rebroadcast the selected committed record to the current session target scope."
+                    .to_string(),
                 can_rebroadcast
                     && snapshot.selected_record.is_some()
                     && !snapshot.rebroadcast_in_flight,
                 theme::accent_green(),
                 |this, _, _, cx| this.request_clipboard_rebroadcast_selected(cx),
-                cx,
-            ))
-            .child(self.toolbar_button(
-                "clipboard-action-edit",
-                "Edit",
-                snapshot.can_enter_edit,
-                theme::accent_amber(),
-                |this, _, window, cx| {
-                    this.request_clipboard_detail_tab(ClipboardDetailTab::Edit, window, cx);
-                },
                 cx,
             ))
     }
@@ -395,25 +389,92 @@ impl WorkspaceView {
         div()
             .h_flex()
             .gap(px(8.0))
-            .child(self.toolbar_button(
+            .child(self.clipboard_action_button(
                 "clipboard-action-save",
                 if snapshot.submit_in_flight {
                     "Saving"
                 } else {
-                    "Save As New"
+                    "Save"
                 },
+                "Save the edited text as a new committed clipboard record.".to_string(),
                 snapshot.can_submit_edit && !snapshot.submit_in_flight,
                 theme::accent_green(),
                 |this, _, window, cx| this.request_clipboard_submit_edit(window, cx),
                 cx,
             ))
-            .child(self.toolbar_button(
+            .child(self.clipboard_action_button(
                 "clipboard-action-cancel",
                 "Cancel",
+                "Leave edit mode and discard the current draft.".to_string(),
                 true,
                 theme::accent_rose(),
                 |this, _, window, cx| this.request_clipboard_cancel_edit(window, cx),
                 cx,
             ))
+    }
+
+    fn clipboard_action_button(
+        &self,
+        id: &'static str,
+        label: &str,
+        tooltip: String,
+        enabled: bool,
+        accent: gpui::Hsla,
+        on_click: impl Fn(&mut Self, &gpui::ClickEvent, &mut Window, &mut Context<Self>) + 'static,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let button = div()
+            .id(id)
+            .min_w(px(76.0))
+            .h(px(34.0))
+            .px(px(12.0))
+            .h_flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(12.0))
+            .bg(theme::bg_console())
+            .border_1()
+            .border_color(if enabled {
+                accent.opacity(0.28)
+            } else {
+                theme::border_soft()
+            })
+            .tooltip(move |window, cx| Self::clipboard_action_tooltip(tooltip.clone(), window, cx))
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .font_semibold()
+                    .text_color(if enabled {
+                        theme::fg_primary()
+                    } else {
+                        theme::fg_muted()
+                    })
+                    .child(label.to_string()),
+            );
+
+        if enabled {
+            button
+                .cursor_pointer()
+                .hover(move |this| {
+                    this.bg(accent.opacity(0.16))
+                        .border_color(accent.opacity(0.54))
+                })
+                .active(move |this| {
+                    this.bg(accent.opacity(0.22))
+                        .border_color(accent.opacity(0.70))
+                })
+                .on_click(cx.listener(on_click))
+                .into_any_element()
+        } else {
+            button.opacity(0.52).into_any_element()
+        }
+    }
+
+    fn clipboard_action_tooltip(text: String, window: &mut Window, cx: &mut App) -> AnyView {
+        Tooltip::new(text)
+            .bg(theme::bg_panel())
+            .text_color(theme::fg_primary())
+            .border_color(theme::border_base())
+            .build(window, cx)
     }
 }

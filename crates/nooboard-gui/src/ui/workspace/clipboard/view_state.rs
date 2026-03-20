@@ -13,6 +13,7 @@ pub(super) struct ClipboardPageViewState {
     pub latest_record: Option<ClipboardRecord>,
     pub selected_record: Option<ClipboardRecord>,
     pub latest_selected: bool,
+    pub pending_new_count: usize,
     pub history_rows: Vec<ClipboardHistoryListItemViewState>,
     pub target_rows: Vec<ClipboardTargetViewState>,
     pub detail_tab: ClipboardDetailTab,
@@ -71,6 +72,7 @@ pub(super) fn build_clipboard_page_view_state(
             latest_record: None,
             selected_record: None,
             latest_selected: false,
+            pending_new_count: 0,
             history_rows: Vec::new(),
             target_rows: Vec::new(),
             detail_tab: ClipboardDetailTab::Read,
@@ -153,6 +155,7 @@ pub(super) fn build_clipboard_page_view_state(
             state.selection(),
             super::state::ClipboardSelection::LatestCommitted
         ),
+        pending_new_count: state.pending_new_count(),
         history_rows,
         target_rows,
         detail_tab: state.detail_tab(),

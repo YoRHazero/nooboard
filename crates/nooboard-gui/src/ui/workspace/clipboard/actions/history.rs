@@ -9,6 +9,18 @@ use crate::{ui::workspace::WorkspaceView, workspace::actions::clipboard as clipb
 const CLIPBOARD_HISTORY_LIMIT: usize = 24;
 
 impl WorkspaceView {
+    pub(in crate::ui::workspace) fn reveal_pending_clipboard_history(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) {
+        if self.clipboard.pending_new_count() == 0 {
+            return;
+        }
+
+        self.clipboard.reveal_pending_new();
+        cx.notify();
+    }
+
     pub(in crate::ui::workspace) fn load_older_clipboard_history(
         &mut self,
         cx: &mut Context<Self>,

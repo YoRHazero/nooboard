@@ -75,6 +75,14 @@ impl ClipboardPageState {
         self.history.records()
     }
 
+    pub(in crate::ui::workspace) fn history_scroll_handle(&self) -> gpui::UniformListScrollHandle {
+        self.history.scroll_handle()
+    }
+
+    pub(in crate::ui::workspace) fn pending_new_count(&self) -> usize {
+        self.history.pending_new_count()
+    }
+
     pub(in crate::ui::workspace) fn older_anchor(&self) -> Option<ClipboardHistoryAnchor> {
         self.history.older_anchor()
     }
@@ -125,7 +133,7 @@ impl ClipboardPageState {
         };
 
         if let Some(record) = page.latest_record.clone() {
-            self.history.promote_record(record);
+            self.history.accept_latest_record(record);
         }
         self.targets
             .retain_connected_sessions(&page.session_targets);
@@ -141,6 +149,14 @@ impl ClipboardPageState {
 
     pub(in crate::ui::workspace) fn can_load_newer(&self) -> bool {
         self.history.can_load_newer()
+    }
+
+    pub(in crate::ui::workspace) fn reveal_pending_new(&mut self) {
+        self.history.reveal_pending_new();
+    }
+
+    pub(in crate::ui::workspace) fn auto_reveal_pending_if_near_top(&mut self) -> bool {
+        self.history.auto_reveal_pending_if_near_top()
     }
 
     pub(in crate::ui::workspace) fn begin_history_load(

@@ -2,7 +2,7 @@ use gpui::{
     AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
     StatefulInteractiveElement, Styled, div, px, uniform_list,
 };
-use gpui_component::StyledExt;
+use gpui_component::{StyledExt, scroll::ScrollableElement};
 
 use crate::ui::theme;
 
@@ -128,6 +128,10 @@ impl WorkspaceView {
                             .into_any_element()
                     }),
             )
+            .children((snapshot.pending_new_count > 0).then(|| {
+                self.clipboard_pending_new_banner(snapshot.pending_new_count, cx)
+                    .into_any_element()
+            }))
             .child(self.clipboard_history_window(snapshot, cx))
     }
 
@@ -150,15 +154,37 @@ impl WorkspaceView {
         }
 
         let rows = snapshot.history_rows.clone();
+        let scroll_handle = self.clipboard.history_scroll_handle();
+        let wheel_guard_handle = scroll_handle.clone();
         div()
             .w_full()
             .h(px(CLIPBOARD_PANEL_MIN_HEIGHT))
+            .relative()
             .overflow_hidden()
+            .on_scroll_wheel(move |_, _, cx| {
+                if wheel_guard_handle.is_scrollable() {
+                    cx.stop_propagation();
+                }
+            })
             .child(
                 uniform_list(
                     "clipboard-history-list",
                     rows.len(),
                     cx.processor(move |this, range: std::ops::Range<usize>, _, cx| {
+                        let near_top = range.start <= 1;
+                        let near_bottom = range.end >= rows.len().saturating_sub(1);
+
+                        if near_top {
+                            if this.clipboard.pending_new_count() > 0 {
+                                this.reveal_pending_clipboard_history(cx);
+                            } else {
+                                this.load_newer_clipboard_history(cx);
+                            }
+                        }
+                        if near_bottom {
+                            this.load_older_clipboard_history(cx);
+                        }
+
                         range
                             .map(|index| match &rows[index] {
                                 ClipboardHistoryListItemViewState::Record(row) => this
@@ -171,9 +197,51 @@ impl WorkspaceView {
                             .collect::<Vec<AnyElement>>()
                     }),
                 )
-                .h_full(),
+                .h_full()
+                .track_scroll(&scroll_handle),
             )
+            .vertical_scrollbar(&scroll_handle)
             .into_any_element()
+    }
+
+    fn clipboard_pending_new_banner(
+        &self,
+        pending_new_count: usize,
+        cx: &Context<Self>,
+    ) -> impl IntoElement {
+        let label = if pending_new_count == 1 {
+            "1 newer committed record is ready".to_string()
+        } else {
+            format!("{pending_new_count} newer committed records are ready")
+        };
+
+        div()
+            .id("clipboard-pending-new-banner")
+            .cursor_pointer()
+            .hover(|this| this.bg(theme::bg_panel_alt()))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.reveal_pending_clipboard_history(cx);
+            }))
+            .child(
+                clipboard_history_item_shell(false, theme::accent_cyan()).child(
+                    div()
+                        .v_flex()
+                        .gap(px(4.0))
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .font_semibold()
+                                .text_color(theme::fg_primary())
+                                .child(label),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.0))
+                                .text_color(theme::fg_muted())
+                                .child("Reveal them and jump back to the latest edge."),
+                        ),
+                ),
+            )
     }
 
     fn clipboard_history_item(
@@ -228,6 +296,7 @@ impl WorkspaceView {
                             div()
                                 .text_size(px(12.0))
                                 .line_height(px(18.0))
+                                .truncate()
                                 .text_color(theme::fg_primary())
                                 .child(clipboard_record_preview(&row.record.content, 92)),
                         ),

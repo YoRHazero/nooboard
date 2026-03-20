@@ -111,6 +111,7 @@ impl Render for WorkspaceView {
         );
         if model.route == WorkspaceRoute::Clipboard {
             self.bootstrap_clipboard_history_if_needed(cx);
+            self.clipboard.auto_reveal_pending_if_near_top();
         }
         self.render_root(model, window, cx)
     }
