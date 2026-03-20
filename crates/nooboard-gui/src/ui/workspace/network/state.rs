@@ -2,36 +2,39 @@ use std::collections::BTreeSet;
 
 use gpui::{AppContext as _, Context, Entity, Window};
 use gpui_component::input::InputState;
-use nooboard_core::{DirectRequestId, DirectSeedId, DirectSeedInfo, SessionId};
+use nooboard_core::{DirectRequestId, DirectSeedId, SessionId};
 
 use crate::{
     ui::workspace::WorkspaceView,
     workspace::view_state::{NetworkDirectSeedViewState, NetworkPageViewState},
 };
 
-#[derive(Clone)]
-pub struct NetworkSearchResult {
-    pub id: DirectSeedId,
-    pub label: String,
-    pub host: String,
-    pub port: u16,
-    pub endpoint_label: String,
-    pub enabled: bool,
-    pub learned_device_id: Option<String>,
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum DirectPanelTab {
+    Seeds,
+    Pending,
+    Sessions,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SeedPanelMode {
+    Create,
+    Search,
 }
 
 pub(in crate::ui::workspace) struct NetworkPageState {
     seed_label_input: Entity<InputState>,
     seed_host_input: Entity<InputState>,
     seed_port_input: Entity<InputState>,
-    search_input: Entity<InputState>,
+    seed_filter_input: Entity<InputState>,
+    direct_tab: DirectPanelTab,
+    seed_panel_mode: SeedPanelMode,
     draft_enabled: bool,
     editing_seed_id: Option<DirectSeedId>,
-    search_results: Vec<NetworkSearchResult>,
+    token_revealed: bool,
     pending_seed_ids: BTreeSet<DirectSeedId>,
     pending_request_ids: BTreeSet<DirectRequestId>,
     pending_session_ids: BTreeSet<SessionId>,
-    search_in_flight: bool,
     save_in_flight: bool,
     feedback: Option<String>,
 }
@@ -46,16 +49,17 @@ impl NetworkPageState {
             seed_host_input: cx
                 .new(|cx| InputState::new(window, cx).placeholder("relay.example.com")),
             seed_port_input: cx.new(|cx| InputState::new(window, cx).placeholder("17890")),
-            search_input: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("Search direct seeds by label or host")
+            seed_filter_input: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Filter by label or learned device id")
             }),
+            direct_tab: DirectPanelTab::Seeds,
+            seed_panel_mode: SeedPanelMode::Create,
             draft_enabled: true,
             editing_seed_id: None,
-            search_results: Vec::new(),
+            token_revealed: false,
             pending_seed_ids: BTreeSet::new(),
             pending_request_ids: BTreeSet::new(),
             pending_session_ids: BTreeSet::new(),
-            search_in_flight: false,
             save_in_flight: false,
             feedback: None,
         }
@@ -66,7 +70,7 @@ impl NetworkPageState {
             self.seed_label_input.clone(),
             self.seed_host_input.clone(),
             self.seed_port_input.clone(),
-            self.search_input.clone(),
+            self.seed_filter_input.clone(),
         ]
     }
 
@@ -82,8 +86,24 @@ impl NetworkPageState {
         self.seed_port_input.clone()
     }
 
-    pub(in crate::ui::workspace) fn search_input(&self) -> Entity<InputState> {
-        self.search_input.clone()
+    pub(in crate::ui::workspace) fn seed_filter_input(&self) -> Entity<InputState> {
+        self.seed_filter_input.clone()
+    }
+
+    pub(in crate::ui::workspace) fn direct_tab(&self) -> DirectPanelTab {
+        self.direct_tab
+    }
+
+    pub(in crate::ui::workspace) fn set_direct_tab(&mut self, tab: DirectPanelTab) {
+        self.direct_tab = tab;
+    }
+
+    pub(in crate::ui::workspace) fn seed_panel_mode(&self) -> SeedPanelMode {
+        self.seed_panel_mode
+    }
+
+    pub(in crate::ui::workspace) fn set_seed_panel_mode(&mut self, mode: SeedPanelMode) {
+        self.seed_panel_mode = mode;
     }
 
     pub(in crate::ui::workspace) fn draft_enabled(&self) -> bool {
@@ -94,16 +114,16 @@ impl NetworkPageState {
         self.editing_seed_id
     }
 
-    pub(in crate::ui::workspace) fn search_results(&self) -> &[NetworkSearchResult] {
-        &self.search_results
+    pub(in crate::ui::workspace) fn token_revealed(&self) -> bool {
+        self.token_revealed
+    }
+
+    pub(in crate::ui::workspace) fn toggle_token_revealed(&mut self) {
+        self.token_revealed = !self.token_revealed;
     }
 
     pub(in crate::ui::workspace) fn feedback(&self) -> Option<&String> {
         self.feedback.as_ref()
-    }
-
-    pub(in crate::ui::workspace) fn search_in_flight(&self) -> bool {
-        self.search_in_flight
     }
 
     pub(in crate::ui::workspace) fn save_in_flight(&self) -> bool {
@@ -134,8 +154,31 @@ impl NetworkPageState {
         self.seed_port_input.read(cx).value().to_string()
     }
 
-    pub(in crate::ui::workspace) fn search_query(&self, cx: &Context<WorkspaceView>) -> String {
-        self.search_input.read(cx).value().to_string()
+    pub(in crate::ui::workspace) fn seed_filter(&self, cx: &Context<WorkspaceView>) -> String {
+        self.seed_filter_input.read(cx).value().to_string()
+    }
+
+    pub(in crate::ui::workspace) fn filtered_direct_seeds(
+        &self,
+        page: &NetworkPageViewState,
+        cx: &Context<WorkspaceView>,
+    ) -> Vec<NetworkDirectSeedViewState> {
+        let query = self.seed_filter(cx).trim().to_lowercase();
+        if query.is_empty() {
+            return page.direct_seeds.clone();
+        }
+
+        page.direct_seeds
+            .iter()
+            .filter(|seed| {
+                seed.label.to_lowercase().contains(&query)
+                    || seed
+                        .learned_device_id
+                        .as_ref()
+                        .is_some_and(|device_id| device_id.to_lowercase().contains(&query))
+            })
+            .cloned()
+            .collect()
     }
 
     pub(in crate::ui::workspace) fn sync_from_workspace(
@@ -149,22 +192,16 @@ impl NetworkPageState {
         };
 
         if let Some(editing_seed_id) = self.editing_seed_id
-            && !page
-                .direct_seeds
-                .iter()
-                .any(|seed| seed.id == editing_seed_id)
+            && !page.direct_seeds.iter().any(|seed| seed.id == editing_seed_id)
         {
             self.clear_seed_draft(window, cx);
         }
         self.pending_seed_ids
             .retain(|id| page.direct_seeds.iter().any(|seed| seed.id == *id));
-        self.pending_request_ids.retain(|id| {
-            page.pending_requests
-                .iter()
-                .any(|request| request.id == *id)
-        });
+        self.pending_request_ids
+            .retain(|id| page.pending_requests.iter().any(|request| request.id == *id));
         self.pending_session_ids
-            .retain(|id| page.sessions.iter().any(|session| session.id == *id));
+            .retain(|id| page.direct_sessions.iter().any(|session| session.id == *id));
     }
 
     pub(in crate::ui::workspace) fn clear_seed_draft(
@@ -173,6 +210,7 @@ impl NetworkPageState {
         cx: &mut Context<WorkspaceView>,
     ) {
         self.editing_seed_id = None;
+        self.seed_panel_mode = SeedPanelMode::Create;
         self.draft_enabled = true;
         self.seed_label_input.update(cx, |input, cx| {
             input.set_value(String::new(), window, cx);
@@ -191,6 +229,8 @@ impl NetworkPageState {
         window: &mut Window,
         cx: &mut Context<WorkspaceView>,
     ) {
+        self.direct_tab = DirectPanelTab::Seeds;
+        self.seed_panel_mode = SeedPanelMode::Create;
         self.editing_seed_id = Some(seed.id);
         self.draft_enabled = seed.enabled;
         self.seed_label_input.update(cx, |input, cx| {
@@ -202,55 +242,22 @@ impl NetworkPageState {
         self.seed_port_input.update(cx, |input, cx| {
             input.set_value(seed.port.to_string(), window, cx);
         });
-        self.feedback = Some(format!(
-            "Loaded direct seed '{}' into the composer.",
-            seed.label
-        ));
+        self.feedback = Some(format!("Loaded direct seed '{}' into the editor.", seed.label));
     }
 
     pub(in crate::ui::workspace) fn toggle_draft_enabled(&mut self) {
         self.draft_enabled = !self.draft_enabled;
     }
 
-    pub(in crate::ui::workspace) fn begin_search(&mut self) {
-        self.search_in_flight = true;
-        self.feedback = Some("Searching configured direct seeds.".to_string());
-    }
-
-    pub(in crate::ui::workspace) fn finish_search(&mut self, results: Vec<DirectSeedInfo>) {
-        self.search_in_flight = false;
-        self.search_results = results
-            .into_iter()
-            .map(|seed| NetworkSearchResult {
-                id: seed.id,
-                label: seed.label,
-                host: seed.host.clone(),
-                port: seed.port,
-                endpoint_label: format!("{}:{}", seed.host, seed.port),
-                enabled: seed.enabled,
-                learned_device_id: seed.learned_device_id,
-            })
-            .collect();
-        self.feedback = Some(format!(
-            "Found {} direct seed result(s).",
-            self.search_results.len()
-        ));
-    }
-
-    pub(in crate::ui::workspace) fn fail_search(&mut self, message: String) {
-        self.search_in_flight = false;
-        self.feedback = Some(message);
-    }
-
     pub(in crate::ui::workspace) fn begin_save(&mut self) {
         self.save_in_flight = true;
-        self.feedback = Some("Saving direct seed configuration.".to_string());
+        self.feedback = Some("Saving direct preset.".to_string());
     }
 
     pub(in crate::ui::workspace) fn finish_save(&mut self, saved_id: DirectSeedId) {
         self.save_in_flight = false;
         self.editing_seed_id = Some(saved_id);
-        self.feedback = Some("Direct seed saved.".to_string());
+        self.feedback = Some("Direct preset saved.".to_string());
     }
 
     pub(in crate::ui::workspace) fn fail_save(&mut self, message: String) {
@@ -258,11 +265,7 @@ impl NetworkPageState {
         self.feedback = Some(message);
     }
 
-    pub(in crate::ui::workspace) fn mark_seed_pending(
-        &mut self,
-        id: DirectSeedId,
-        message: String,
-    ) {
+    pub(in crate::ui::workspace) fn mark_seed_pending(&mut self, id: DirectSeedId, message: String) {
         self.pending_seed_ids.insert(id);
         self.feedback = Some(message);
     }

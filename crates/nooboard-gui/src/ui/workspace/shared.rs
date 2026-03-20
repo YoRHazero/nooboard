@@ -1,9 +1,8 @@
 use gpui::{
     Context, Div, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
-    Styled, Window, div, px,
+    Styled, div, px,
 };
-use gpui_component::button::{Button, ButtonVariants};
-use gpui_component::{Disableable, Icon, IconName, StyledExt};
+use gpui_component::{Icon, IconName, StyledExt};
 
 use crate::{ui::theme, workspace::route::WorkspaceRoute};
 
@@ -149,31 +148,6 @@ impl WorkspaceView {
                     .font_semibold()
                     .text_color(theme::fg_secondary())
                     .child(format!("{label}: {}", if open { "open" } else { "closed" })),
-            )
-    }
-
-    pub(super) fn toolbar_button(
-        &self,
-        id: &'static str,
-        label: &str,
-        enabled: bool,
-        accent: gpui::Hsla,
-        on_click: impl Fn(&mut Self, &gpui::ClickEvent, &mut Window, &mut Context<Self>) + 'static,
-        cx: &Context<Self>,
-    ) -> Button {
-        Button::new(id)
-            .primary()
-            .disabled(!enabled)
-            .border_1()
-            .border_color(accent.opacity(0.24))
-            .on_click(cx.listener(on_click))
-            .child(
-                div()
-                    .px(px(14.0))
-                    .py(px(8.0))
-                    .text_size(px(12.0))
-                    .font_semibold()
-                    .child(label.to_string()),
             )
     }
 

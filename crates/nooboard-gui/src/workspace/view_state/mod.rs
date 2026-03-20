@@ -111,7 +111,7 @@ mod tests {
         let state = build_workspace_view_state(&snapshot, Some(&record));
 
         assert_eq!(state.identity.headline, "desk-01");
-        assert!(state.network.can_stop);
+        assert!(state.network.network_enabled);
         assert_eq!(state.home.system_core.local_device_id, "desk-01");
         assert_eq!(
             state.home.system_core.clipboard_control.adopt_event_id,

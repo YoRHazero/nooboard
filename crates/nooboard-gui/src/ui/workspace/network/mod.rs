@@ -8,4 +8,4 @@ mod seeds;
 mod sessions;
 mod state;
 
-pub(in crate::ui::workspace) use state::{NetworkPageState, NetworkSearchResult};
+pub(in crate::ui::workspace) use state::{DirectPanelTab, NetworkPageState, SeedPanelMode};

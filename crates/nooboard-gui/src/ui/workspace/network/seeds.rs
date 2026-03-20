@@ -1,6 +1,6 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::{Context, IntoElement, ParentElement, Styled, div, px};
-use gpui_component::{Disableable, StyledExt};
+use gpui_component::{Disableable, StyledExt, scroll::ScrollableElement};
 
 use crate::{
     ui::theme,
@@ -9,32 +9,76 @@ use crate::{
 
 use super::super::WorkspaceView;
 
+const DIRECT_LIST_HEIGHT: f32 = 420.0;
+
 impl WorkspaceView {
-    pub(in crate::ui::workspace::network) fn network_seed_panel(
+    pub(in crate::ui::workspace::network) fn network_seed_tab(
         &self,
         state: &NetworkPageViewState,
         cx: &Context<Self>,
     ) -> impl IntoElement {
-        self.network_panel_shell(
-            "Direct Seeds",
-            format!("{} configured", state.direct_seed_count),
-        )
-        .children(if state.direct_seeds.is_empty() {
-            vec![
-                self.network_empty_notice("No direct seeds configured.")
-                    .into_any_element(),
-            ]
-        } else {
-            state
-                .direct_seeds
-                .iter()
-                .cloned()
-                .map(|seed| self.network_seed_row(seed, cx).into_any_element())
-                .collect()
-        })
+        let seeds = self.network.filtered_direct_seeds(state, cx);
+        let filter_empty = self.network.seed_filter(cx).trim().is_empty();
+
+        div()
+            .v_flex()
+            .gap(px(14.0))
+            .child(self.network_seed_controls(cx))
+            .child(
+                div()
+                    .v_flex()
+                    .gap(px(10.0))
+                    .child(
+                        div()
+                            .h_flex()
+                            .items_center()
+                            .justify_between()
+                            .gap(px(12.0))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_semibold()
+                                    .text_color(theme::fg_secondary())
+                                    .child("SAVED PRESETS"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme::fg_muted())
+                                    .child(format!("{} visible", seeds.len())),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .h(px(DIRECT_LIST_HEIGHT))
+                            .overflow_y_scrollbar()
+                            .child(
+                                div()
+                                    .v_flex()
+                                    .gap(px(10.0))
+                                    .children(if seeds.is_empty() {
+                                        vec![
+                                            self.network_empty_notice(if filter_empty {
+                                                "No direct presets saved."
+                                            } else {
+                                                "No direct presets match the current filter."
+                                            })
+                                            .into_any_element(),
+                                        ]
+                                    } else {
+                                        seeds
+                                            .into_iter()
+                                            .map(|seed| {
+                                                self.network_seed_card(seed, cx).into_any_element()
+                                            })
+                                            .collect()
+                                    }),
+                            ),
+                    ),
+            )
     }
 
-    pub(in crate::ui::workspace::network) fn network_seed_row(
+    pub(in crate::ui::workspace::network) fn network_seed_card(
         &self,
         seed: NetworkDirectSeedViewState,
         cx: &Context<Self>,
@@ -112,11 +156,9 @@ impl WorkspaceView {
                                 cx,
                             )
                             .disabled(pending)
-                            .on_click(cx.listener(
-                                move |this, _, window, cx| {
-                                    this.request_network_edit_seed(&seed_for_edit, window, cx);
-                                },
-                            )),
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.request_network_edit_seed(&seed_for_edit, window, cx);
+                            })),
                         )
                         .child(
                             self.network_action_button(
@@ -125,26 +167,22 @@ impl WorkspaceView {
                                 theme::accent_green(),
                                 cx,
                             )
-                            .disabled(pending)
-                            .on_click(cx.listener(
-                                move |this, _, _, cx| {
-                                    this.request_network_connect_seed(&seed_for_connect, cx);
-                                },
-                            )),
+                            .disabled(pending || !seed.enabled)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.request_network_connect_seed(&seed_for_connect, cx);
+                            })),
                         )
                         .child(
                             self.network_action_button(
                                 format!("network-seed-remove-{}", seed.id),
-                                "Remove",
+                                "Delete",
                                 theme::accent_rose(),
                                 cx,
                             )
                             .disabled(pending)
-                            .on_click(cx.listener(
-                                move |this, _, _, cx| {
-                                    this.request_network_remove_seed(&seed_for_remove, cx);
-                                },
-                            )),
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.request_network_remove_seed(&seed_for_remove, cx);
+                            })),
                         ),
                 ),
         )

@@ -1,6 +1,6 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::{Context, IntoElement, ParentElement, Styled, div, px};
-use gpui_component::{Disableable, StyledExt};
+use gpui_component::{Disableable, StyledExt, scroll::ScrollableElement};
 
 use crate::{
     ui::theme,
@@ -9,29 +9,51 @@ use crate::{
 
 use super::super::WorkspaceView;
 
+const DIRECT_LIST_HEIGHT: f32 = 420.0;
+
 impl WorkspaceView {
-    pub(in crate::ui::workspace::network) fn network_session_panel(
+    pub(in crate::ui::workspace::network) fn network_session_tab(
         &self,
         state: &NetworkPageViewState,
         cx: &Context<Self>,
     ) -> impl IntoElement {
-        self.network_panel_shell("Sessions", format!("{} active", state.session_count))
-            .children(if state.sessions.is_empty() {
-                vec![
-                    self.network_empty_notice("No active sessions.")
-                        .into_any_element(),
-                ]
-            } else {
-                state
-                    .sessions
-                    .iter()
-                    .cloned()
-                    .map(|session| self.network_session_row(session, cx).into_any_element())
-                    .collect()
-            })
+        div()
+            .v_flex()
+            .gap(px(10.0))
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .text_color(theme::fg_muted())
+                    .child("Direct sessions are user-managed and can be disconnected from this tab."),
+            )
+            .child(
+                div()
+                    .h(px(DIRECT_LIST_HEIGHT))
+                    .overflow_y_scrollbar()
+                    .child(
+                        div()
+                            .v_flex()
+                            .gap(px(10.0))
+                            .children(if state.direct_sessions.is_empty() {
+                                vec![
+                                    self.network_empty_notice("No active direct sessions.")
+                                        .into_any_element(),
+                                ]
+                            } else {
+                                state
+                                    .direct_sessions
+                                    .iter()
+                                    .cloned()
+                                    .map(|session| {
+                                        self.network_session_card(session, cx).into_any_element()
+                                    })
+                                    .collect()
+                            }),
+                    ),
+            )
     }
 
-    pub(in crate::ui::workspace::network) fn network_session_row(
+    pub(in crate::ui::workspace::network) fn network_session_card(
         &self,
         session: NetworkSessionViewState,
         cx: &Context<Self>,
@@ -64,9 +86,9 @@ impl WorkspaceView {
                                         .child(session.peer_device_id.clone()),
                                 )
                                 .child(self.network_status_chip(
-                                    &session.mode_label,
-                                    &session.remote_addr_label,
-                                    theme::accent_cyan(),
+                                    "Direct",
+                                    "",
+                                    theme::accent_green(),
                                 )),
                         )
                         .child(
@@ -79,7 +101,7 @@ impl WorkspaceView {
                             div()
                                 .text_size(px(11.0))
                                 .text_color(theme::fg_muted())
-                                .child(format!("connected at {}", session.connected_at_label)),
+                                .child(format!("remote {}", session.remote_addr_label)),
                         )
                         .when_some(session.local_bind_addr_label.clone(), |this, value| {
                             this.child(
@@ -88,7 +110,13 @@ impl WorkspaceView {
                                     .text_color(theme::fg_muted())
                                     .child(format!("local bind {value}")),
                             )
-                        }),
+                        })
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .text_color(theme::fg_muted())
+                                .child(format!("connected at {}", session.connected_at_label)),
+                        ),
                 )
                 .child(
                     self.network_action_button(
