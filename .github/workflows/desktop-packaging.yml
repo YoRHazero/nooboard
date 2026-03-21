@@ -27,9 +27,33 @@ jobs:
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
 
-      - name: Build macOS app bundle and DMG
+      - name: Build macOS app bundle
         working-directory: crates/nooboard-gui
-        run: cargo packager --release --formats app,dmg --out-dir ../../target/release/bundle --binaries-dir ../../target/release
+        run: cargo packager --release --formats app --out-dir ../../target/release/bundle --binaries-dir ../../target/release
+
+      - name: Re-sign macOS app bundle for unsigned distribution
+        working-directory: crates/nooboard-gui
+        run: |
+          app_path=../../target/release/bundle/nooboard.app
+          codesign --force --deep --sign - "$app_path"
+          codesign --verify --deep --strict --verbose=4 "$app_path"
+
+      - name: Build unsigned DMG from signed app bundle
+        working-directory: crates/nooboard-gui
+        run: |
+          version="$(cargo pkgid -p nooboard-gui | sed 's/.*#.*@//')"
+          arch="$(uname -m)"
+          case "$arch" in
+            arm64) arch="aarch64" ;;
+          esac
+          app_path=../../target/release/bundle/nooboard.app
+          stage_dir=../../target/release/bundle/dmg-root
+          dmg_path="../../target/release/bundle/nooboard_${version}_${arch}.dmg"
+          rm -rf "$stage_dir"
+          mkdir -p "$stage_dir"
+          mv "$app_path" "$stage_dir/nooboard.app"
+          hdiutil create -volname "nooboard" -srcfolder "$stage_dir" -ov -format UDZO "$dmg_path"
+          rm -rf "$stage_dir"
 
       - name: Upload macOS packages
         uses: actions/upload-artifact@v4
