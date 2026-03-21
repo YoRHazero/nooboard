@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use super::state::SettingsSectionKey;
+use super::state::{SettingsSectionKey, StorageBytesUnit, StorageDurationUnit};
 
 impl WorkspaceView {
     pub(super) fn copy_settings_config_path(&mut self, path: String, cx: &mut Context<Self>) {
@@ -28,8 +28,118 @@ impl WorkspaceView {
         cx.notify();
     }
 
+    pub(super) fn request_settings_toggle_connection_token_mask(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.settings.toggle_token_masked(window, cx);
+        cx.notify();
+    }
+
     pub(super) fn request_settings_toggle_local_capture(&mut self, cx: &mut Context<Self>) {
         self.settings.toggle_local_capture_enabled();
+        cx.notify();
+    }
+
+    pub(super) fn request_reset_clipboard_settings(&mut self, cx: &mut Context<Self>) {
+        let Some(page) = self.current_settings_page(cx) else {
+            self.settings
+                .fail_apply("Settings snapshot is not ready yet.".to_string());
+            cx.notify();
+            return;
+        };
+
+        self.settings.reset_clipboard_from_workspace(&page.clipboard);
+        self.settings
+            .set_feedback("Reset clipboard draft to the latest WorkspaceSnapshot.".to_string());
+        cx.notify();
+    }
+
+    pub(super) fn request_reset_connection_settings(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(page) = self.current_settings_page(cx) else {
+            self.settings
+                .fail_apply("Settings snapshot is not ready yet.".to_string());
+            cx.notify();
+            return;
+        };
+
+        self.settings
+            .reset_connection_from_workspace(&page.connection, window, cx);
+        self.settings
+            .set_feedback("Reset connection draft to the latest WorkspaceSnapshot.".to_string());
+        cx.notify();
+    }
+
+    pub(super) fn request_reset_transfer_settings(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(page) = self.current_settings_page(cx) else {
+            self.settings
+                .fail_apply("Settings snapshot is not ready yet.".to_string());
+            cx.notify();
+            return;
+        };
+
+        self.settings
+            .reset_transfer_from_workspace(&page.transfers, window, cx);
+        self.settings
+            .set_feedback("Reset transfer draft to the latest WorkspaceSnapshot.".to_string());
+        cx.notify();
+    }
+
+    pub(super) fn request_reset_storage_settings(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(page) = self.current_settings_page(cx) else {
+            self.settings
+                .fail_apply("Settings snapshot is not ready yet.".to_string());
+            cx.notify();
+            return;
+        };
+
+        self.settings
+            .reset_storage_from_workspace(&page.storage, window, cx);
+        self.settings
+            .set_feedback("Reset storage draft to the latest WorkspaceSnapshot.".to_string());
+        cx.notify();
+    }
+
+    pub(super) fn request_select_history_window_unit(
+        &mut self,
+        unit: StorageDurationUnit,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.settings.select_history_window_unit(unit, window, cx);
+        cx.notify();
+    }
+
+    pub(super) fn request_select_dedup_window_unit(
+        &mut self,
+        unit: StorageDurationUnit,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.settings.select_dedup_window_unit(unit, window, cx);
+        cx.notify();
+    }
+
+    pub(super) fn request_select_max_text_bytes_unit(
+        &mut self,
+        unit: StorageBytesUnit,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.settings.select_max_text_bytes_unit(unit, window, cx);
         cx.notify();
     }
 
@@ -225,7 +335,14 @@ impl WorkspaceView {
     }
 
     pub(super) fn request_apply_storage_settings(&mut self, cx: &mut Context<Self>) {
-        let input = match self.parse_storage_settings_input(cx) {
+        let Some(page) = self.current_settings_page(cx) else {
+            self.settings
+                .fail_apply("Settings snapshot is not ready yet.".to_string());
+            cx.notify();
+            return;
+        };
+
+        let input = match self.parse_storage_settings_input(page.storage.gc_batch_size, cx) {
             Ok(input) => input,
             Err(message) => {
                 self.settings.fail_apply(message);
@@ -269,33 +386,22 @@ impl WorkspaceView {
 
     fn parse_storage_settings_input(
         &self,
+        current_gc_batch_size: usize,
         cx: &Context<Self>,
     ) -> Result<StorageSettingsInput, String> {
+        let history_window_days = self.settings.history_window_days(cx)?;
+        let dedup_window_days = self.settings.dedup_window_days(cx)?;
+        let max_text_bytes = self.settings.max_text_bytes(cx)?;
+
+        if dedup_window_days < history_window_days {
+            return Err("Dedup window must be greater than or equal to history window.".to_string());
+        }
+
         Ok(StorageSettingsInput {
-            history_window_days: self
-                .settings
-                .history_window_value(cx)
-                .trim()
-                .parse::<u32>()
-                .map_err(|_| "History window must be a valid u32 value.".to_string())?,
-            dedup_window_days: self
-                .settings
-                .dedup_window_value(cx)
-                .trim()
-                .parse::<u32>()
-                .map_err(|_| "Dedup window must be a valid u32 value.".to_string())?,
-            max_text_bytes: self
-                .settings
-                .max_text_bytes_value(cx)
-                .trim()
-                .parse::<usize>()
-                .map_err(|_| "Max text bytes must be a valid usize value.".to_string())?,
-            gc_batch_size: self
-                .settings
-                .gc_batch_size_value(cx)
-                .trim()
-                .parse::<usize>()
-                .map_err(|_| "GC batch size must be a valid usize value.".to_string())?,
+            history_window_days,
+            dedup_window_days,
+            max_text_bytes,
+            gc_batch_size: current_gc_batch_size,
         })
     }
 

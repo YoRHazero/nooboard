@@ -1,5 +1,5 @@
-use gpui::{Context, IntoElement, ParentElement, Styled, div};
-use gpui_component::{Disableable, StyledExt};
+use gpui::{Context, IntoElement, ParentElement, Styled, div, px};
+use gpui_component::StyledExt;
 
 use crate::{ui::theme, workspace::view_state::SettingsPageViewState};
 
@@ -15,31 +15,88 @@ impl WorkspaceView {
     ) -> impl IntoElement {
         let (status_label, status_accent) =
             self.settings_section_status(SettingsSectionKey::Clipboard, dirty);
+        let actions_enabled = dirty && self.settings.applying().is_none();
 
         self.settings_section_shell(
             "Clipboard",
             "Clipboard capture is local draft state until applied; the active switch comes from WorkspaceSnapshot.",
             self.settings_status_chip(status_label, status_accent),
         )
-        .child(self.settings_toggle_chip(
-            "settings-toggle-local-capture",
-            "Local Capture",
-            self.settings.local_capture_enabled(),
-            theme::accent_blue(),
-            "When disabled, local clipboard changes stay out of the sync graph.",
-            cx.listener(|this, _, _, cx| {
-                this.request_settings_toggle_local_capture(cx);
-            }),
-        ))
         .child(
             div()
-                .h_flex()
-                .items_center()
-                .justify_between()
-                .gap(gpui::px(12.0))
+                .v_flex()
+                .gap(px(8.0))
                 .child(
                     div()
-                        .text_size(gpui::px(11.0))
+                        .h_flex()
+                        .items_center()
+                        .justify_between()
+                        .gap(px(12.0))
+                        .px(px(14.0))
+                        .py(px(12.0))
+                        .bg(theme::bg_console())
+                        .border_1()
+                        .border_color(if self.settings.local_capture_enabled() {
+                            theme::accent_blue().opacity(0.34)
+                        } else {
+                            theme::border_soft()
+                        })
+                        .rounded(px(18.0))
+                        .child(
+                            div()
+                                .v_flex()
+                                .gap(px(4.0))
+                                .child(
+                                    div()
+                                        .text_size(px(12.0))
+                                        .font_semibold()
+                                        .text_color(theme::fg_primary())
+                                        .child("Local Capture"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(10.0))
+                                        .text_color(theme::fg_muted())
+                                        .line_clamp(2)
+                                        .text_ellipsis()
+                                        .child(
+                                            "When disabled, local clipboard changes stay out of the sync graph.",
+                                        ),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .h_flex()
+                                .items_center()
+                                .gap(px(10.0))
+                                .child(
+                                    div()
+                                        .text_size(px(11.0))
+                                        .font_semibold()
+                                        .text_color(if self.settings.local_capture_enabled() {
+                                            theme::accent_blue()
+                                        } else {
+                                            theme::fg_muted()
+                                        })
+                                        .child(if self.settings.local_capture_enabled() {
+                                            "On"
+                                        } else {
+                                            "Off"
+                                        }),
+                                )
+                                .child(self.settings_inline_switch(
+                                    "settings-toggle-local-capture",
+                                    self.settings.local_capture_enabled(),
+                                    theme::accent_blue(),
+                                    cx.listener(|this, _, _, cx| {
+                                        this.request_settings_toggle_local_capture(cx);
+                                    }),
+                                )),
+                        ),
+                )
+                .child(
+                    div()
+                        .text_size(px(11.0))
                         .text_color(theme::fg_muted())
                         .child(format!(
                             "Snapshot state: {}",
@@ -49,19 +106,36 @@ impl WorkspaceView {
                                 "disabled"
                             }
                         )),
-                )
-                .child(
-                    self.settings_action_button(
-                        "settings-apply-clipboard",
-                        "Apply Clipboard",
-                        theme::accent_blue(),
-                        cx,
-                    )
-                    .disabled(!dirty || self.settings.applying().is_some())
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.request_apply_clipboard_settings(cx);
-                    })),
                 ),
+        )
+        .child(
+            div()
+                .h_flex()
+                .justify_end()
+                .gap(px(8.0))
+                .child(self.settings_compact_action_button(
+                    "settings-reset-clipboard",
+                    "Reset",
+                    "Discard current clipboard edits and restore the latest snapshot values."
+                        .to_string(),
+                    actions_enabled,
+                    theme::accent_rose(),
+                    |this, _, _, cx| {
+                        this.request_reset_clipboard_settings(cx);
+                    },
+                    cx,
+                ))
+                .child(self.settings_compact_action_button(
+                    "settings-apply-clipboard",
+                    "Apply",
+                    "Persist the current clipboard draft through nooboard-core.".to_string(),
+                    actions_enabled,
+                    theme::accent_blue(),
+                    |this, _, _, cx| {
+                        this.request_apply_clipboard_settings(cx);
+                    },
+                    cx,
+                )),
         )
     }
 }

@@ -16,6 +16,7 @@ pub(super) struct ConnectionSettingsState {
     token_input: Entity<InputState>,
     listen_port_input: Entity<InputState>,
     lan_enabled: bool,
+    token_masked: bool,
     synced: Option<ConnectionSyncedValues>,
 }
 
@@ -30,6 +31,7 @@ impl ConnectionSettingsState {
             }),
             listen_port_input: cx.new(|cx| InputState::new(window, cx).placeholder("17890")),
             lan_enabled: true,
+            token_masked: true,
             synced: None,
         }
     }
@@ -98,8 +100,45 @@ impl ConnectionSettingsState {
         self.lan_enabled
     }
 
+    pub(super) fn token_masked(&self) -> bool {
+        self.token_masked
+    }
+
     pub(super) fn toggle_lan_enabled(&mut self) {
         self.lan_enabled = !self.lan_enabled;
+    }
+
+    pub(super) fn toggle_token_masked(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<WorkspaceView>,
+    ) {
+        self.token_masked = !self.token_masked;
+        let masked = self.token_masked;
+        self.token_input.update(cx, |input, cx| {
+            input.set_masked(masked, window, cx);
+        });
+    }
+
+    pub(super) fn reset_from_workspace(
+        &mut self,
+        page: &SettingsConnectionViewState,
+        window: &mut Window,
+        cx: &mut Context<WorkspaceView>,
+    ) {
+        let next = ConnectionSyncedValues {
+            device_id: page.device_id.clone(),
+            token: page.token.clone(),
+            listen_port: page.listen_port.to_string(),
+            lan_enabled: page.lan_enabled,
+        };
+        self.force_sync_all(&next, window, cx);
+        self.lan_enabled = next.lan_enabled;
+        self.token_masked = true;
+        self.token_input.update(cx, |input, cx| {
+            input.set_masked(true, window, cx);
+        });
+        self.synced = Some(next);
     }
 
     pub(super) fn device_id_value(&self, cx: &Context<WorkspaceView>) -> String {

@@ -6,12 +6,20 @@ mod transfers;
 use gpui::{Context, Entity, Window};
 use gpui_component::input::InputState;
 
-use crate::{ui::workspace::WorkspaceView, workspace::view_state::SettingsPageViewState};
+use crate::{
+    ui::workspace::WorkspaceView,
+    workspace::view_state::{
+        SettingsClipboardViewState, SettingsConnectionViewState, SettingsPageViewState,
+        SettingsStorageViewState, SettingsTransfersViewState,
+    },
+};
 
 use self::{
     clipboard::ClipboardSettingsState, connection::ConnectionSettingsState,
     storage::StorageSettingsState, transfers::TransferSettingsState,
 };
+
+pub(in crate::ui::workspace) use self::storage::{StorageBytesUnit, StorageDurationUnit};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SettingsSectionKey {
@@ -100,12 +108,12 @@ impl SettingsPageState {
         self.storage.max_text_bytes_input()
     }
 
-    pub(in crate::ui::workspace) fn gc_batch_size_input(&self) -> Entity<InputState> {
-        self.storage.gc_batch_size_input()
-    }
-
     pub(in crate::ui::workspace) fn lan_enabled(&self) -> bool {
         self.connection.lan_enabled()
+    }
+
+    pub(in crate::ui::workspace) fn token_masked(&self) -> bool {
+        self.connection.token_masked()
     }
 
     pub(in crate::ui::workspace) fn local_capture_enabled(&self) -> bool {
@@ -124,8 +132,50 @@ impl SettingsPageState {
         self.connection.toggle_lan_enabled();
     }
 
+    pub(in crate::ui::workspace) fn toggle_token_masked(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<WorkspaceView>,
+    ) {
+        self.connection.toggle_token_masked(window, cx);
+    }
+
     pub(in crate::ui::workspace) fn toggle_local_capture_enabled(&mut self) {
         self.clipboard.toggle_local_capture_enabled();
+    }
+
+    pub(in crate::ui::workspace) fn reset_connection_from_workspace(
+        &mut self,
+        page: &SettingsConnectionViewState,
+        window: &mut Window,
+        cx: &mut Context<WorkspaceView>,
+    ) {
+        self.connection.reset_from_workspace(page, window, cx);
+    }
+
+    pub(in crate::ui::workspace) fn reset_clipboard_from_workspace(
+        &mut self,
+        page: &SettingsClipboardViewState,
+    ) {
+        self.clipboard.reset_from_workspace(page);
+    }
+
+    pub(in crate::ui::workspace) fn reset_transfer_from_workspace(
+        &mut self,
+        page: &SettingsTransfersViewState,
+        window: &mut Window,
+        cx: &mut Context<WorkspaceView>,
+    ) {
+        self.transfers.reset_from_workspace(page, window, cx);
+    }
+
+    pub(in crate::ui::workspace) fn reset_storage_from_workspace(
+        &mut self,
+        page: &SettingsStorageViewState,
+        window: &mut Window,
+        cx: &mut Context<WorkspaceView>,
+    ) {
+        self.storage.reset_from_workspace(page, window, cx);
     }
 
     pub(in crate::ui::workspace) fn begin_apply(
@@ -182,31 +232,63 @@ impl SettingsPageState {
         self.transfers.download_dir_value(cx)
     }
 
-    pub(in crate::ui::workspace) fn history_window_value(
-        &self,
-        cx: &Context<WorkspaceView>,
-    ) -> String {
-        self.storage.history_window_value(cx)
+    pub(in crate::ui::workspace) fn history_window_unit(&self) -> StorageDurationUnit {
+        self.storage.history_window_unit()
     }
 
-    pub(in crate::ui::workspace) fn dedup_window_value(
-        &self,
-        cx: &Context<WorkspaceView>,
-    ) -> String {
-        self.storage.dedup_window_value(cx)
+    pub(in crate::ui::workspace) fn dedup_window_unit(&self) -> StorageDurationUnit {
+        self.storage.dedup_window_unit()
     }
 
-    pub(in crate::ui::workspace) fn max_text_bytes_value(
-        &self,
-        cx: &Context<WorkspaceView>,
-    ) -> String {
-        self.storage.max_text_bytes_value(cx)
+    pub(in crate::ui::workspace) fn max_text_bytes_unit(&self) -> StorageBytesUnit {
+        self.storage.max_text_bytes_unit()
     }
 
-    pub(in crate::ui::workspace) fn gc_batch_size_value(
+    pub(in crate::ui::workspace) fn select_history_window_unit(
+        &mut self,
+        unit: StorageDurationUnit,
+        window: &mut Window,
+        cx: &mut Context<WorkspaceView>,
+    ) {
+        self.storage.select_history_window_unit(unit, window, cx);
+    }
+
+    pub(in crate::ui::workspace) fn select_dedup_window_unit(
+        &mut self,
+        unit: StorageDurationUnit,
+        window: &mut Window,
+        cx: &mut Context<WorkspaceView>,
+    ) {
+        self.storage.select_dedup_window_unit(unit, window, cx);
+    }
+
+    pub(in crate::ui::workspace) fn select_max_text_bytes_unit(
+        &mut self,
+        unit: StorageBytesUnit,
+        window: &mut Window,
+        cx: &mut Context<WorkspaceView>,
+    ) {
+        self.storage.select_max_text_bytes_unit(unit, window, cx);
+    }
+
+    pub(in crate::ui::workspace) fn history_window_days(
         &self,
         cx: &Context<WorkspaceView>,
-    ) -> String {
-        self.storage.gc_batch_size_value(cx)
+    ) -> Result<u32, String> {
+        self.storage.history_window_days(cx)
+    }
+
+    pub(in crate::ui::workspace) fn dedup_window_days(
+        &self,
+        cx: &Context<WorkspaceView>,
+    ) -> Result<u32, String> {
+        self.storage.dedup_window_days(cx)
+    }
+
+    pub(in crate::ui::workspace) fn max_text_bytes(
+        &self,
+        cx: &Context<WorkspaceView>,
+    ) -> Result<usize, String> {
+        self.storage.max_text_bytes(cx)
     }
 }

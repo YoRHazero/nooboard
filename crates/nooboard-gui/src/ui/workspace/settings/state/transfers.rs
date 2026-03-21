@@ -58,4 +58,17 @@ impl TransferSettingsState {
     pub(super) fn download_dir_value(&self, cx: &Context<WorkspaceView>) -> String {
         self.download_dir_input.read(cx).value().to_string()
     }
+
+    pub(super) fn reset_from_workspace(
+        &mut self,
+        page: &SettingsTransfersViewState,
+        window: &mut Window,
+        cx: &mut Context<WorkspaceView>,
+    ) {
+        let next = page.download_dir.display().to_string();
+        self.download_dir_input.update(cx, |input, cx| {
+            input.set_value(next.clone(), window, cx);
+        });
+        self.synced_download_dir = Some(next);
+    }
 }

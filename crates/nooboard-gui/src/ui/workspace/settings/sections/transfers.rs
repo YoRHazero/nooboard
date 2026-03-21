@@ -1,6 +1,10 @@
-use gpui::{Context, IntoElement, ParentElement, Styled, div};
+use gpui::{
+    Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
+    div, px,
+};
+use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
-use gpui_component::{Disableable, Sizable, StyledExt};
+use gpui_component::{Disableable, IconName, Sizable, StyledExt};
 
 use crate::{ui::theme, workspace::view_state::SettingsPageViewState};
 
@@ -10,12 +14,13 @@ use super::super::state::SettingsSectionKey;
 impl WorkspaceView {
     pub(in crate::ui::workspace::settings) fn transfer_settings_panel(
         &self,
-        state: &SettingsPageViewState,
+        _state: &SettingsPageViewState,
         dirty: bool,
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let (status_label, status_accent) =
             self.settings_section_status(SettingsSectionKey::Transfers, dirty);
+        let actions_enabled = dirty && self.settings.applying().is_none();
 
         self.settings_section_shell(
             "Transfers",
@@ -23,47 +28,86 @@ impl WorkspaceView {
             self.settings_status_chip(status_label, status_accent),
         )
         .child(
-            self.settings_input_field(
-                "Download Directory",
-                "Changed locally first, then persisted through the transfer settings command.",
-                Input::new(&self.settings.download_dir_input())
-                    .small()
-                    .appearance(false)
-                    .bordered(false)
-                    .focus_bordered(false)
-                    .w_full(),
-            ),
+            div()
+                .min_w(px(240.0))
+                .flex_1()
+                .v_flex()
+                .gap(px(6.0))
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(theme::fg_secondary())
+                        .child("Download Directory"),
+                )
+                .child(
+                    div()
+                        .px(px(12.0))
+                        .py(px(10.0))
+                        .bg(theme::bg_console())
+                        .border_1()
+                        .border_color(theme::border_soft())
+                        .rounded(px(16.0))
+                        .child(
+                            Input::new(&self.settings.download_dir_input())
+                                .small()
+                                .appearance(false)
+                                .bordered(false)
+                                .focus_bordered(false)
+                                .suffix(
+                                    div()
+                                        .id("settings-browse-download-dir-shell")
+                                        .tooltip(move |window, cx| {
+                                            Self::settings_themed_tooltip(
+                                                "Choose download directory".to_string(),
+                                                window,
+                                                cx,
+                                            )
+                                        })
+                                        .child(
+                                            Button::new("settings-browse-download-dir")
+                                                .ghost()
+                                                .xsmall()
+                                                .icon(IconName::FolderOpen)
+                                                .disabled(
+                                                    self.settings.applying().is_some(),
+                                                )
+                                                .on_click(cx.listener(|this, _, window, cx| {
+                                                    this.pick_settings_download_dir(window, cx);
+                                                })),
+                                        ),
+                                )
+                                .w_full(),
+                        ),
+                ),
         )
-        .child(self.settings_path_summary(&state.transfers))
         .child(
             div()
                 .h_flex()
                 .justify_end()
-                .gap(gpui::px(8.0))
-                .child(
-                    self.settings_action_button(
-                        "settings-browse-download-dir",
-                        "Browse",
-                        theme::accent_amber(),
-                        cx,
-                    )
-                    .disabled(self.settings.applying().is_some())
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.pick_settings_download_dir(window, cx);
-                    })),
-                )
-                .child(
-                    self.settings_action_button(
+                .gap(px(8.0))
+                .child(self.settings_compact_action_button(
+                    "settings-reset-transfers",
+                    "Reset",
+                    "Discard current transfer edits and restore the latest snapshot values."
+                        .to_string(),
+                    actions_enabled,
+                    theme::accent_rose(),
+                    |this, _, window, cx| {
+                        this.request_reset_transfer_settings(window, cx);
+                    },
+                    cx,
+                ))
+                .child(self.settings_compact_action_button(
                         "settings-apply-transfers",
-                        "Apply Transfers",
+                        "Apply",
+                        "Persist the current transfer draft through nooboard-core.".to_string(),
+                        actions_enabled,
                         theme::accent_cyan(),
-                        cx,
-                    )
-                    .disabled(!dirty || self.settings.applying().is_some())
-                    .on_click(cx.listener(|this, _, _, cx| {
+                        |this, _, _, cx| {
                         this.request_apply_transfer_settings(cx);
-                    })),
-                ),
+                    },
+                        cx,
+                )),
         )
     }
 }

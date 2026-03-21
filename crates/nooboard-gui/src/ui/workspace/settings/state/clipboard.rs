@@ -30,4 +30,9 @@ impl ClipboardSettingsState {
     pub(super) fn toggle_local_capture_enabled(&mut self) {
         self.local_capture_enabled = !self.local_capture_enabled;
     }
+
+    pub(super) fn reset_from_workspace(&mut self, page: &SettingsClipboardViewState) {
+        self.local_capture_enabled = page.local_capture_enabled;
+        self.synced_local_capture_enabled = Some(page.local_capture_enabled);
+    }
 }

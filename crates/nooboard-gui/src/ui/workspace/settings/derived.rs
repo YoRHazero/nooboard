@@ -64,13 +64,16 @@ impl WorkspaceView {
         state: &SettingsPageViewState,
         cx: &Context<Self>,
     ) -> bool {
-        self.settings.history_window_value(cx).trim()
-            != state.storage.history_window_days.to_string()
-            || self.settings.dedup_window_value(cx).trim()
-                != state.storage.dedup_window_days.to_string()
-            || self.settings.max_text_bytes_value(cx).trim()
-                != state.storage.max_text_bytes.to_string()
-            || self.settings.gc_batch_size_value(cx).trim()
-                != state.storage.gc_batch_size.to_string()
+        self.settings
+            .history_window_days(cx)
+            .map_or(true, |value| value != state.storage.history_window_days)
+            || self
+                .settings
+                .dedup_window_days(cx)
+                .map_or(true, |value| value != state.storage.dedup_window_days)
+            || self
+                .settings
+                .max_text_bytes(cx)
+                .map_or(true, |value| value != state.storage.max_text_bytes)
     }
 }

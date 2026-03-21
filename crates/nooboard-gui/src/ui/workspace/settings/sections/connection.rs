@@ -1,6 +1,10 @@
-use gpui::{Context, IntoElement, ParentElement, Styled, div};
+use gpui::{
+    Context, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled,
+    div, px,
+};
+use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
-use gpui_component::{Disableable, Sizable, StyledExt};
+use gpui_component::{IconName, Sizable, StyledExt};
 
 use crate::{ui::theme, workspace::view_state::SettingsPageViewState};
 
@@ -16,6 +20,13 @@ impl WorkspaceView {
     ) -> impl IntoElement {
         let (status_label, status_accent) =
             self.settings_section_status(SettingsSectionKey::Connection, dirty);
+        let endpoint_label = state
+            .connection
+            .endpoint_label
+            .as_deref()
+            .unwrap_or("not bound");
+        let token_masked = self.settings.token_masked();
+        let actions_enabled = dirty && self.settings.applying().is_none();
 
         self.settings_section_shell(
             "Connection",
@@ -24,10 +35,15 @@ impl WorkspaceView {
         )
         .child(
             div()
-                .h_flex()
-                .flex_wrap()
-                .gap(gpui::px(12.0))
-                .child(self.settings_input_field(
+                .v_flex()
+                .gap(px(12.0))
+                .child(
+                    div()
+                        .h_flex()
+                        .flex_wrap()
+                        .gap(px(12.0))
+                        .child(self.settings_input_field_with_tooltip(
+                    "settings-connection-device-id",
                     "Device ID",
                     "Shown to peers and rendered in the shell header.",
                     Input::new(&self.settings.device_id_input())
@@ -37,7 +53,8 @@ impl WorkspaceView {
                         .focus_bordered(false)
                         .w_full(),
                 ))
-                .child(self.settings_input_field(
+                .child(self.settings_input_field_with_tooltip(
+                    "settings-connection-token",
                     "Network Token",
                     "Shared token required for authenticated peers.",
                     Input::new(&self.settings.token_input())
@@ -45,9 +62,43 @@ impl WorkspaceView {
                         .appearance(false)
                         .bordered(false)
                         .focus_bordered(false)
+                        .suffix(
+                            div()
+                                .id("settings-connection-token-visibility-shell")
+                                .tooltip({
+                                    let text = if token_masked {
+                                        "Show network token".to_string()
+                                    } else {
+                                        "Hide network token".to_string()
+                                    };
+                                    move |window, cx| {
+                                        Self::settings_themed_tooltip(
+                                            text.clone(),
+                                            window,
+                                            cx,
+                                        )
+                                    }
+                                })
+                                .child(
+                                    Button::new("settings-connection-token-visibility")
+                                        .ghost()
+                                        .xsmall()
+                                        .icon(if token_masked {
+                                            IconName::Eye
+                                        } else {
+                                            IconName::EyeOff
+                                        })
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.request_settings_toggle_connection_token_mask(
+                                                window, cx,
+                                            );
+                                        })),
+                                ),
+                        )
                         .w_full(),
                 ))
-                .child(self.settings_input_field(
+                .child(self.settings_input_field_with_tooltip(
+                    "settings-connection-port",
                     "Listen Port",
                     "LAN discovery and direct-connect binds use this port.",
                     Input::new(&self.settings.listen_port_input())
@@ -56,61 +107,148 @@ impl WorkspaceView {
                         .bordered(false)
                         .focus_bordered(false)
                         .w_full(),
-                ))
-                .child(self.settings_toggle_chip(
-                    "settings-toggle-lan-enabled",
-                    "LAN Discovery",
-                    self.settings.lan_enabled(),
-                    theme::accent_green(),
-                    "Advertise this node on the local network.",
-                    cx.listener(|this, _, _, cx| {
-                        this.request_settings_toggle_lan_enabled(cx);
-                    }),
                 )),
-        )
-        .child(
-            div()
-                .h_flex()
-                .flex_wrap()
-                .items_center()
-                .justify_between()
-                .gap(gpui::px(12.0))
+                )
                 .child(
                     div()
                         .h_flex()
                         .flex_wrap()
-                        .gap(gpui::px(8.0))
-                        .child(self.settings_meta_chip(
-                            "Endpoint",
-                            state
-                                .connection
-                                .endpoint_label
-                                .as_deref()
-                                .unwrap_or("not bound"),
-                            theme::accent_cyan(),
-                        ))
-                        .child(self.settings_meta_chip(
-                            "Current Token",
-                            if state.connection.token.is_empty() {
-                                "unset"
-                            } else {
-                                "configured"
-                            },
-                            theme::accent_blue(),
-                        )),
-                )
-                .child(
-                    self.settings_action_button(
-                        "settings-apply-connection",
-                        "Apply Connection",
-                        theme::accent_cyan(),
-                        cx,
-                    )
-                    .disabled(!dirty || self.settings.applying().is_some())
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.request_apply_connection_settings(cx);
-                    })),
+                        .items_stretch()
+                        .gap(px(12.0))
+                        .child(
+                            div()
+                                .min_w(px(260.0))
+                                .flex_1()
+                                .v_flex()
+                                .gap(px(8.0))
+                                .p(px(14.0))
+                                .bg(theme::bg_console())
+                                .border_1()
+                                .border_color(theme::border_soft())
+                                .rounded(px(18.0))
+                                .child(
+                                    div()
+                                        .h_flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .gap(px(12.0))
+                                        .child(
+                                            div()
+                                                .text_size(px(12.0))
+                                                .font_semibold()
+                                                .text_color(theme::fg_primary())
+                                                .child("Endpoint"),
+                                        )
+                                        .child(self.settings_status_chip(
+                                            "Current",
+                                            theme::accent_cyan(),
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(11.0))
+                                        .text_color(theme::fg_secondary())
+                                        .line_clamp(2)
+                                        .text_ellipsis()
+                                        .child(endpoint_label.to_string()),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .min_w(px(260.0))
+                                .flex_1()
+                                .h_flex()
+                                .items_center()
+                                .justify_between()
+                                .gap(px(12.0))
+                                .px(px(14.0))
+                                .py(px(12.0))
+                                .bg(theme::bg_console())
+                                .border_1()
+                                .border_color(if self.settings.lan_enabled() {
+                                    theme::accent_green().opacity(0.34)
+                                } else {
+                                    theme::border_soft()
+                                })
+                                .rounded(px(18.0))
+                                .child(
+                                    div()
+                                        .h_flex()
+                                        .items_center()
+                                        .gap(px(8.0))
+                                        .child(
+                                            div()
+                                                .text_size(px(12.0))
+                                                .font_semibold()
+                                                .text_color(theme::fg_primary())
+                                                .child("LAN Discovery"),
+                                        )
+                                        .child(self.settings_info_tooltip_icon(
+                                            "settings-connection-lan",
+                                            "Advertise this node on the local network and allow nearby peers to discover it via mDNS.".to_string(),
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .h_flex()
+                                        .items_center()
+                                        .gap(px(10.0))
+                                        .child(
+                                            div()
+                                                .text_size(px(11.0))
+                                                .font_semibold()
+                                                .text_color(if self.settings.lan_enabled() {
+                                                    theme::accent_green()
+                                                } else {
+                                                    theme::fg_muted()
+                                                })
+                                                .child(if self.settings.lan_enabled() {
+                                                    "On"
+                                                } else {
+                                                    "Off"
+                                                }),
+                                        )
+                                        .child(self.settings_inline_switch(
+                                            "settings-toggle-lan-enabled",
+                                            self.settings.lan_enabled(),
+                                            theme::accent_green(),
+                                            cx.listener(|this, _, _, cx| {
+                                                this.request_settings_toggle_lan_enabled(cx);
+                                            }),
+                                        )),
+                                ),
+                        ),
                 ),
+        )
+        .child(
+            div()
+                .h_flex()
+                .justify_end()
+                .gap(px(8.0))
+                .child(self.settings_compact_action_button(
+                    "settings-reset-connection",
+                    "Reset",
+                    "Discard current connection edits and restore the latest snapshot values."
+                        .to_string(),
+                    actions_enabled,
+                    theme::accent_rose(),
+                    |this, _, window, cx| {
+                        this.request_reset_connection_settings(window, cx);
+                    },
+                    cx,
+                ))
+                .child(self.settings_compact_action_button(
+                        "settings-apply-connection",
+                        "Apply",
+                        "Persist the current connection draft through nooboard-core."
+                            .to_string(),
+                        actions_enabled,
+                        theme::accent_cyan(),
+                        |this, _, _, cx| {
+                        this.request_apply_connection_settings(cx);
+                    },
+                        cx,
+                )),
         )
     }
 }
