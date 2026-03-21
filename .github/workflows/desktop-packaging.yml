@@ -41,7 +41,9 @@ jobs:
       - name: Build unsigned DMG from signed app bundle
         working-directory: crates/nooboard-gui
         run: |
-          version="$(cargo pkgid -p nooboard-gui | sed 's/.*#.*@//')"
+          pkgid="$(cargo pkgid -p nooboard-gui)"
+          version="${pkgid##*@}"
+          version="${version##*#}"
           arch="$(uname -m)"
           case "$arch" in
             arm64) arch="aarch64" ;;
