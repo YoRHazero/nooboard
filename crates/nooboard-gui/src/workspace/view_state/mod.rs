@@ -35,7 +35,6 @@ pub use transfers::{
 pub struct WorkspaceIdentityViewState {
     pub headline: String,
     pub subheadline: String,
-    pub revision_label: String,
 }
 
 #[derive(Clone)]
@@ -63,7 +62,6 @@ pub fn build_workspace_view_state(
         identity: WorkspaceIdentityViewState {
             headline: snapshot.identity.device_id.clone(),
             subheadline: snapshot.identity.noob_id.to_string(),
-            revision_label: format!("revision {}", snapshot.revision),
         },
         shell_metrics: WorkspaceShellMetricsViewState {
             session_count_label: snapshot.network.sessions.len().to_string(),

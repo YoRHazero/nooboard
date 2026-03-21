@@ -67,12 +67,6 @@ impl WorkspaceView {
                 div()
                     .text_size(px(12.0))
                     .text_color(theme::fg_muted())
-                    .child(model.shell.revision_label.clone()),
-            )
-            .child(
-                div()
-                    .text_size(px(12.0))
-                    .text_color(theme::fg_muted())
                     .child(model.shell.config_path_label.clone()),
             )
     }

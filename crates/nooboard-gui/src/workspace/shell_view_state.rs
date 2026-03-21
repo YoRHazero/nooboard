@@ -10,7 +10,6 @@ use super::{
 pub struct WorkspaceShellViewState {
     pub headline: String,
     pub subheadline: String,
-    pub revision_label: String,
     pub bootstrap_mode_label: String,
     pub config_path_label: String,
     pub recent_activity: Vec<RecentActivityViewState>,
@@ -27,28 +26,23 @@ pub fn build_workspace_shell_view_state(
     bootstrap_mode_label: String,
     config_path_label: String,
 ) -> WorkspaceShellViewState {
-    let (headline, subheadline, revision_label) = match (load_state, workspace_view) {
-        (WorkspaceLoadState::Failed(message), _) => (
-            "Workspace launch failed".to_string(),
-            message.clone(),
-            "launch failed".to_string(),
-        ),
+    let (headline, subheadline) = match (load_state, workspace_view) {
+        (WorkspaceLoadState::Failed(message), _) => {
+            ("Workspace launch failed".to_string(), message.clone())
+        }
         (_, Some(workspace_view)) => (
             workspace_view.identity.headline.clone(),
             workspace_view.identity.subheadline.clone(),
-            workspace_view.identity.revision_label.clone(),
         ),
         _ => (
             "Launching workspace".to_string(),
             "Waiting for nooboard-core snapshot".to_string(),
-            "initializing".to_string(),
         ),
     };
 
     WorkspaceShellViewState {
         headline,
         subheadline,
-        revision_label,
         bootstrap_mode_label,
         config_path_label,
         recent_activity: build_recent_activity_view_state(recent_activity),
@@ -79,7 +73,6 @@ mod tests {
 
         assert_eq!(shell.headline, "desk-01");
         assert_eq!(shell.subheadline, "local-node");
-        assert_eq!(shell.revision_label, "revision 7");
     }
 
     #[test]
@@ -95,7 +88,6 @@ mod tests {
 
         assert_eq!(shell.headline, "Workspace launch failed");
         assert_eq!(shell.subheadline, "bad config");
-        assert_eq!(shell.revision_label, "launch failed");
     }
 
     fn sample_workspace_view() -> WorkspaceViewState {
@@ -103,7 +95,6 @@ mod tests {
             identity: view_state::WorkspaceIdentityViewState {
                 headline: "desk-01".to_string(),
                 subheadline: "local-node".to_string(),
-                revision_label: "revision 7".to_string(),
             },
             shell_metrics: view_state::WorkspaceShellMetricsViewState {
                 session_count_label: "0".to_string(),

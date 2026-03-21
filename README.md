@@ -1,30 +1,61 @@
-# nooboard
+<h1>nooboard <img src="icons/nooboard-no-bkg.png" alt="nooboard icon" width="36" /></h1>
 
-In the AI era, copy and paste are used more frequently than ever. Sometimes a loooooooong prompt that took half an hour to refine can disappear because I selected the wrong text and hit `Ctrl+C` at the wrong moment. And when I want to copy text on one device and paste it on another device, the flow is still more troublesome than it should be. That is why this project exists.
+`nooboard` is a tool to synchronize clipboard content and files across devices, built in Rust.
 
-`nooboard` is an experimental local-first clipboard and transfer board built in Rust. It is
-designed around a `nooboard-core` runtime and a GPUI frontend that works with:
+Built around a `nooboard-core` runtime and a GPUI frontend, `nooboard` currently includes:
 
-- clipboard history and rebroadcast
-- peer discovery, direct seeds, and session control in LAN/direct modes
-- file transfer workflows (Implemented but I haven't fully tested it yet)
-- local-first settings and config bootstrap
+- clipboard history, and support for reusing the content of past entries. (Tested, works well)
+- peer discovery in local networks, and direct P2P sessions for clipboard sync. (Testing)
+- file transfer workflows (Implemented, but not fully tested yet)
 
-Note: this project is developed with heavy AI assistance and supervised by a noob Rustacean. The GPUI part in particular is currently verified more by "does it work?" than by full source-level understanding.
+Today, `nooboard` targets macOS and Windows. Linux support is not planned for now, because I cannot imagine a Linux Desktop user, let alone a Linux Desktop user who will want to use `nooboard`. 
 
-This project supports both macOS and Windows. Linux support is not planned for now, because it's hard for me to imagine a Linux user who needs this kind of app, but I might add it in the future if there is demand.
+Transparency note: this project is developed with heavy AI assistance and supervised by a noob rustacean. The GPUI layer in particular is still validated more through working behavior and iteration than through complete source-level understanding.
 
-The project is still under active development, but the current GUI already exposes the main
-clipboard, network, transfers, and settings flows through a unified core contract.
+## Screenshots
 
-## Quick start
+### Home
+
+The home screen acts as a command center for your day-to-day flow, bringing clipboard activity, transfer status, and system signals into one focused view.
+
+![nooboard home screen](docs/images/nooboard-home.png)
+
+### History
+
+The history view turns recent clipboard records into a reusable timeline, making it easier to recover valuable text, revisit past work, and rebroadcast entries when needed.
+
+![nooboard history screen](docs/images/nooboard-history.png)
+
+### Network
+
+The network screen surfaces nearby peers, active sessions, and direct connection controls in one place, designed for a smoother cross-device workflow.
+
+![nooboard network screen](docs/images/nooboard-network.png)
+
+## Install
+
+The latest macOS and Windows packages are published in the repository's Releases section on the GitHub project page.
+
+- macOS: download the latest `.dmg`, open it, and drag `nooboard` into `Applications`
+- Windows: download the latest installer from the same release
+
+### macOS note
+
+Current macOS releases are distributed without Apple notarization, so the first launch may be blocked by Gatekeeper.
+
+1. Open `nooboard` once after moving it to `Applications`.
+2. Open `System Settings` > `Privacy & Security`.
+3. Scroll to the bottom of the page and approve `nooboard` with `Open Anyway`.
+4. If macOS still blocks the app, right-click `nooboard` in `Applications` and choose `Open`.
+
+## Build From Source
 
 Requirements:
 
 - Rust stable
 - `cargo`
 
-Run the GUI app:
+Run the GUI during development:
 
 ```bash
 cargo run -p nooboard-gui
@@ -38,47 +69,28 @@ Build a standalone release binary:
 cargo build -p nooboard-gui --release
 ```
 
-The GUI assets are embedded into the binary, so `target/release/nooboard-gui` can run without the
-source-tree `assets/` directory.
+The GUI assets are embedded into the binary, so `target/release/nooboard-gui` can run without the source-tree `assets/` directory.
 
 ## Configuration
 
-Default config path:
+By default, `nooboard` looks for its config file here:
 
 - macOS: `~/.nooboard/nooboard.toml`
 - Windows: `%USERPROFILE%\.nooboard\nooboard.toml`
 
-You can also launch with an explicit config file:
+Launch with an explicit config file:
 
 ```bash
 cargo run -p nooboard-gui -- --config /absolute/path/to/nooboard.toml
 ```
 
-Or force the chooser:
+Force the chooser:
 
 ```bash
 cargo run -p nooboard-gui -- --choose-config
 ```
 
-## Repository structure
-
-- `crates/nooboard-config`
-  - config schema, bootstrap resolution, template generation, and config CLI
-- `crates/nooboard-core`
-  - bootstrap resolution, workspace runtime, subscriptions, and frontend-facing command API
-- `crates/nooboard-gui`
-  - the GPUI frontend
-- `crates/nooboard-network`
-  - LAN/direct session runtime and transfer protocol
-- `crates/nooboard-storage`
-  - local persistence
-
-## Development
-
-Development-specific commands, bootstrap modes, spec documents, and config generation details
-live in [`.dev-docs/`](./.dev-docs/), starting with [`DEVELOPMENT.md`](./.dev-docs/DEVELOPMENT.md).
-
-## Packaging
+## Release Packaging
 
 Local packaging uses [`cargo-packager`](https://docs.rs/cargo-packager/latest/cargo_packager/):
 
@@ -86,7 +98,7 @@ Local packaging uses [`cargo-packager`](https://docs.rs/cargo-packager/latest/ca
 cargo install cargo-packager --locked
 ```
 
-Build macOS packages:
+Build macOS packages locally:
 
 ```bash
 cd crates/nooboard-gui
@@ -97,7 +109,7 @@ cargo packager \
   --binaries-dir ../../target/release
 ```
 
-Build Windows installers:
+Build Windows installers locally:
 
 ```bash
 cd crates/nooboard-gui
@@ -111,10 +123,33 @@ cargo packager \
 Notes:
 
 - Packaging is currently set up for macOS and Windows only.
-- `cargo packager` is wired to run `cargo build -p nooboard-gui --release` before bundling, so the packaging command itself is the main entrypoint.
-- The generated packages are unsigned. For external distribution, macOS still needs Developer ID signing and notarization, and Windows should add code signing later.
-- GitHub Actions can build the same unsigned packages through [`desktop-packaging.yml`](./.github/workflows/desktop-packaging.yml).
-- Pushing a `v*` tag now also creates or updates the matching GitHub Release and uploads the generated `.dmg` and Windows installer assets.
+- `cargo packager` runs `cargo build -p nooboard-gui --release` before bundling, so the packaging command is the main local entrypoint.
+
+## Project Layout
+
+### High-Level Call Graph
+
+```mermaid
+graph TD
+    GUI["nooboard-gui"] --> CORE["nooboard-core"]
+    CORE --> CONFIG["nooboard-config"]
+    CORE --> STORAGE["nooboard-storage"]
+    CORE --> NETWORK["nooboard-network"]
+    CORE --> PLATFORM["nooboard-platform"]
+    PLATFORM --> MACOS["nooboard-platform-macos"]
+    PLATFORM --> WINDOWS["nooboard-platform-windows"]
+```
+
+At a high level, the GUI talks to `nooboard-core`, and `nooboard-core` owns the integration points for configuration, storage, networking, and platform services. Platform-specific behavior is routed through `nooboard-platform` and then implemented by the macOS and Windows crates.
+
+- `crates/nooboard-gui`: the GPUI frontend and packaged desktop app
+- `crates/nooboard-core`: the main runtime and integration layer exposed to the GUI
+- `crates/nooboard-config`: config schema, bootstrap resolution, template generation, and the config CLI
+- `crates/nooboard-storage`: local persistence
+- `crates/nooboard-network`: LAN/direct session runtime and transfer protocol
+- `crates/nooboard-platform`: platform abstraction layer shared by the core runtime
+- `crates/nooboard-platform-macos`: macOS-specific platform integration
+- `crates/nooboard-platform-windows`: Windows-specific platform integration
 
 ## License
 
