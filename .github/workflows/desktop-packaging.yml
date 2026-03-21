@@ -54,6 +54,7 @@ jobs:
           rm -rf "$stage_dir"
           mkdir -p "$stage_dir"
           mv "$app_path" "$stage_dir/nooboard.app"
+          ln -s /Applications "$stage_dir/Applications"
           hdiutil create -volname "nooboard" -srcfolder "$stage_dir" -ov -format UDZO "$dmg_path"
           rm -rf "$stage_dir"
 
