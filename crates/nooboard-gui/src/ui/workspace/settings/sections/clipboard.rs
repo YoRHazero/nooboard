@@ -19,7 +19,7 @@ impl WorkspaceView {
 
         self.settings_section_shell(
             "Clipboard",
-            "Clipboard capture is local draft state until applied; the active switch comes from WorkspaceSnapshot.",
+            "Choose whether text copied on this device is shared automatically.",
             self.settings_status_chip(status_label, status_accent),
         )
         .child(
@@ -51,7 +51,7 @@ impl WorkspaceView {
                                         .text_size(px(12.0))
                                         .font_semibold()
                                         .text_color(theme::fg_primary())
-                                        .child("Local Capture"),
+                                        .child("Share Local Clipboard"),
                                 )
                                 .child(
                                     div()
@@ -59,9 +59,7 @@ impl WorkspaceView {
                                         .text_color(theme::fg_muted())
                                         .line_clamp(2)
                                         .text_ellipsis()
-                                        .child(
-                                            "When disabled, local clipboard changes stay out of the sync graph.",
-                                        ),
+                                        .child("When off, items copied on this device stay local."),
                                 ),
                         )
                         .child(
@@ -99,11 +97,11 @@ impl WorkspaceView {
                         .text_size(px(11.0))
                         .text_color(theme::fg_muted())
                         .child(format!(
-                            "Snapshot state: {}",
+                            "Saved setting: {}",
                             if state.clipboard.local_capture_enabled {
-                                "enabled"
+                                "On"
                             } else {
-                                "disabled"
+                                "Off"
                             }
                         )),
                 ),
@@ -116,7 +114,7 @@ impl WorkspaceView {
                 .child(self.settings_compact_action_button(
                     "settings-reset-clipboard",
                     "Reset",
-                    "Discard current clipboard edits and restore the latest snapshot values."
+                    "Undo the changes in this section."
                         .to_string(),
                     actions_enabled,
                     theme::accent_rose(),
@@ -128,7 +126,7 @@ impl WorkspaceView {
                 .child(self.settings_compact_action_button(
                     "settings-apply-clipboard",
                     "Apply",
-                    "Persist the current clipboard draft through nooboard-core.".to_string(),
+                    "Save the changes in this section.".to_string(),
                     actions_enabled,
                     theme::accent_blue(),
                     |this, _, _, cx| {

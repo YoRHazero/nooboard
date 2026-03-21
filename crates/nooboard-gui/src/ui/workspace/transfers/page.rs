@@ -12,8 +12,8 @@ impl WorkspaceView {
             return vec![
                 self.list_card(
                     "Transfers",
-                    &["Waiting for workspace snapshot.".to_string()],
-                    "Waiting for workspace snapshot.",
+                    &["Loading your transfers.".to_string()],
+                    "Loading your transfers.",
                 )
                 .into_any_element(),
             ];

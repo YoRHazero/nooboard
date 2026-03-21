@@ -23,9 +23,9 @@ impl WorkspaceView {
             .collect::<Vec<_>>();
 
         self.transfers_panel_shell(
-            "Send Composer",
+            "Send Files",
             format!(
-                "{} staged · {} selected target(s)",
+                "{} selected · {} device(s) chosen",
                 self.transfers.staged_files().len(),
                 self.transfers.selected_session_ids().len()
             ),
@@ -61,7 +61,7 @@ impl WorkspaceView {
                         .line_clamp(2)
                         .text_ellipsis()
                         .child(self.transfers.feedback().cloned().unwrap_or_else(|| {
-                            "Stage local files, select connected targets, then submit transfer tickets."
+                            "Add files here, choose one or more connected devices, then send."
                                 .to_string()
                         })),
                 )
@@ -71,7 +71,7 @@ impl WorkspaceView {
                         if self.transfers.send_in_flight() {
                             "Sending..."
                         } else {
-                            "Send staged files"
+                            "Send Files"
                         },
                         theme::accent_cyan(),
                         cx,
@@ -116,9 +116,7 @@ impl WorkspaceView {
                 div()
                     .text_size(px(12.0))
                     .text_color(theme::fg_muted())
-                    .child(
-                        "Only staged files live here. Active progress comes from the workspace snapshot.",
-                    ),
+                    .child("Files added here are ready to send. Progress appears below once sending starts."),
             )
             .child(
                 div()
@@ -193,10 +191,7 @@ impl WorkspaceView {
                     .text_color(theme::fg_muted())
                     .line_clamp(1)
                     .text_ellipsis()
-                    .child(format!(
-                        "{} · modified {}",
-                        item.size_label, item.modified_at_label
-                    )),
+                    .child(format!("{} · Modified {}", item.size_label, item.modified_at_label)),
             )
             .child(
                 div()

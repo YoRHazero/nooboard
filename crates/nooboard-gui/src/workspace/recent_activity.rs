@@ -143,36 +143,33 @@ fn activity_severity(kind: &RecentActivityKind) -> RecentActivitySeverity {
 fn activity_kind_label(item: &RecentActivityItem) -> &'static str {
     match item.kind {
         RecentActivityKind::ClipboardCommitted { .. } => "Clipboard",
-        RecentActivityKind::IncomingTransferOffered { .. } => "Incoming Transfer",
+        RecentActivityKind::IncomingTransferOffered { .. } => "Incoming File",
         RecentActivityKind::TransferCompleted { .. } => "Transfer Complete",
-        RecentActivityKind::NetworkConnectionFailed { .. } => "Connection Failed",
-        RecentActivityKind::NetworkStarting => "Network Starting",
-        RecentActivityKind::NetworkRunning => "Network Running",
-        RecentActivityKind::NetworkStopped => "Network Stopped",
-        RecentActivityKind::NetworkError { .. } => "Network Error",
-        RecentActivityKind::GuiWarning { .. } => "GUI Warning",
-        RecentActivityKind::GuiError { .. } => "GUI Error",
+        RecentActivityKind::NetworkConnectionFailed { .. } => "Connection Problem",
+        RecentActivityKind::NetworkStarting => "Network",
+        RecentActivityKind::NetworkRunning => "Network",
+        RecentActivityKind::NetworkStopped => "Network",
+        RecentActivityKind::NetworkError { .. } => "Network Problem",
+        RecentActivityKind::GuiWarning { .. } => "App Warning",
+        RecentActivityKind::GuiError { .. } => "App Error",
     }
 }
 
 fn activity_title(item: &RecentActivityItem) -> String {
     match &item.kind {
-        RecentActivityKind::ClipboardCommitted { event_id, source } => {
-            format!(
-                "clipboard record {event_id} committed from {}",
-                clipboard_source_label(*source)
-            )
+        RecentActivityKind::ClipboardCommitted { source, .. } => {
+            format!("Saved a clipboard item from {}", clipboard_source_label(*source))
         }
         RecentActivityKind::IncomingTransferOffered { ticket } => {
-            format!("incoming transfer {ticket:?} is awaiting a decision")
+            format!("A file is waiting for your approval ({ticket:?})")
         }
         RecentActivityKind::TransferCompleted { ticket, outcome } => {
-            format!("transfer {ticket:?} completed with {outcome:?}")
+            format!("A transfer finished ({ticket:?}, {}).", transfer_outcome_label(*outcome))
         }
         RecentActivityKind::NetworkConnectionFailed { failure } => failure.detail.clone(),
-        RecentActivityKind::NetworkStarting => "network runtime is starting".to_string(),
-        RecentActivityKind::NetworkRunning => "network runtime is running".to_string(),
-        RecentActivityKind::NetworkStopped => "network runtime is stopped".to_string(),
+        RecentActivityKind::NetworkStarting => "Starting network sharing.".to_string(),
+        RecentActivityKind::NetworkRunning => "Network sharing is on.".to_string(),
+        RecentActivityKind::NetworkStopped => "Network sharing is off.".to_string(),
         RecentActivityKind::NetworkError { message } => message.clone(),
         RecentActivityKind::GuiWarning { message } | RecentActivityKind::GuiError { message } => {
             message.clone()
@@ -182,9 +179,18 @@ fn activity_title(item: &RecentActivityItem) -> String {
 
 fn clipboard_source_label(source: ClipboardRecordSource) -> &'static str {
     match source {
-        ClipboardRecordSource::LocalCapture => "Local Capture",
-        ClipboardRecordSource::RemoteSync => "Remote Sync",
-        ClipboardRecordSource::UserSubmit => "User Submit",
+        ClipboardRecordSource::LocalCapture => "this device",
+        ClipboardRecordSource::RemoteSync => "another device",
+        ClipboardRecordSource::UserSubmit => "manual save",
+    }
+}
+
+fn transfer_outcome_label(outcome: TransferOutcome) -> &'static str {
+    match outcome {
+        TransferOutcome::Succeeded => "completed",
+        TransferOutcome::Rejected => "rejected",
+        TransferOutcome::Cancelled => "cancelled",
+        TransferOutcome::Failed => "failed",
     }
 }
 
@@ -231,7 +237,7 @@ mod tests {
         let view = build_recent_activity_view_state(&items);
 
         assert_eq!(view.len(), 5);
-        assert_eq!(view[0].label, "GUI Warning");
+        assert_eq!(view[0].label, "App Warning");
         assert_eq!(view[0].title, "warning-0");
     }
 

@@ -106,9 +106,9 @@ impl WorkspaceView {
                             .text_size(px(11.0))
                             .text_color(theme::fg_muted())
                             .child(if editing {
-                                "Editing an existing direct preset."
+                                "Editing a saved device."
                             } else {
-                                "Create a reusable direct preset for manual connections."
+                                "Save a device so you can reconnect to it quickly later."
                             }),
                     )
                     .child(
@@ -152,7 +152,7 @@ impl WorkspaceView {
                 div()
                     .text_size(px(11.0))
                     .text_color(theme::fg_muted())
-                    .child("Filter saved presets by label or learned device id."),
+                    .child("Search saved devices by name or learned device code."),
             )
             .child(
                 self.network_input_field(

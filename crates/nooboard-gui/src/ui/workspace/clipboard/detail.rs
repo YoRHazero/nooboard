@@ -70,9 +70,9 @@ impl WorkspaceView {
                                             ))
                                             .child(clipboard_badge(
                                                 if snapshot.latest_selected {
-                                                    "Latest committed"
+                                                    "Latest saved"
                                                 } else {
-                                                    "Pinned record"
+                                                    "Pinned item"
                                                 },
                                                 theme::accent_amber(),
                                             )),
@@ -102,13 +102,13 @@ impl WorkspaceView {
                                     .text_size(px(14.0))
                                     .font_semibold()
                                     .text_color(theme::fg_primary())
-                                    .child("No committed clipboard record selected"),
+                                    .child("No clipboard item selected"),
                             )
                             .child(
                                 div()
                                     .text_size(px(12.0))
                                     .text_color(theme::fg_muted())
-                                    .child("Load history or wait for the next committed record."),
+                                    .child("Choose an item from history or wait for the next one."),
                             )
                                 }
                             })
@@ -318,9 +318,7 @@ impl WorkspaceView {
                         div()
                             .text_size(px(11.0))
                             .text_color(theme::fg_muted())
-                            .child(
-                                "Saving creates a new record. nooboard-core then updates the workspace snapshot.",
-                            ),
+                            .child("Saving creates a new clipboard item."),
                     )
                     .child(
                         div()
@@ -357,7 +355,7 @@ impl WorkspaceView {
                 } else {
                     "Adopt"
                 },
-                "Write the selected committed record into the local clipboard.".to_string(),
+                "Copy the selected item back to this device's clipboard.".to_string(),
                 snapshot.selected_record.is_some() && !snapshot.adopt_in_flight,
                 theme::accent_cyan(),
                 |this, _, _, cx| this.request_clipboard_adopt_selected(cx),
@@ -370,8 +368,7 @@ impl WorkspaceView {
                 } else {
                     "Send"
                 },
-                "Rebroadcast the selected committed record to the current session target scope."
-                    .to_string(),
+                "Send the selected item to the devices chosen above.".to_string(),
                 can_rebroadcast
                     && snapshot.selected_record.is_some()
                     && !snapshot.rebroadcast_in_flight,
@@ -396,7 +393,7 @@ impl WorkspaceView {
                 } else {
                     "Save"
                 },
-                "Save the edited text as a new committed clipboard record.".to_string(),
+                "Save your edits as a new clipboard item.".to_string(),
                 snapshot.can_submit_edit && !snapshot.submit_in_flight,
                 theme::accent_green(),
                 |this, _, window, cx| this.request_clipboard_submit_edit(window, cx),
@@ -405,7 +402,7 @@ impl WorkspaceView {
             .child(self.clipboard_action_button(
                 "clipboard-action-cancel",
                 "Cancel",
-                "Leave edit mode and discard the current draft.".to_string(),
+                "Leave edit mode without saving changes.".to_string(),
                 true,
                 theme::accent_rose(),
                 |this, _, window, cx| this.request_clipboard_cancel_edit(window, cx),

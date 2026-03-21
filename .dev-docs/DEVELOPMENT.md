@@ -1,0 +1,111 @@
+# Development
+
+This file collects developer-oriented workflow notes that do not belong on the GitHub landing page.
+
+## Workspace
+
+- `crates/nooboard-config`
+  - config schema, bootstrap resolution, template generation, and the `nooboard-config` CLI
+- `crates/nooboard-core`
+  - bootstrap resolution, workspace runtime, subscriptions, clipboard/storage/network orchestration,
+    and frontend-facing command API
+- `crates/nooboard-gui`
+  - the GPUI frontend
+- `crates/nooboard-network`
+  - peer discovery, direct connect, sessions, text sync, and transfers
+- `crates/nooboard-storage`
+  - local persistence
+- `crates/nooboard-platform`
+  - platform integration abstractions
+
+## Network rewrite
+
+The authoritative implementation contract for the future `nooboard-network` crate lives in
+[`NOOBOARD_NETWORK_SPEC.md`](./NOOBOARD_NETWORK_SPEC.md).
+
+When implementing or reviewing the network rewrite, treat that document as the single source of
+truth. If code and spec differ, update the spec first or change the code.
+
+## Core rewrite
+
+The authoritative implementation contract for the future `nooboard-core` crate lives in
+[`NOOBOARD_CORE_SPEC.md`](./NOOBOARD_CORE_SPEC.md).
+
+When implementing or reviewing the application core rewrite, treat that document as the single
+source of truth. If code and spec differ, update the spec first or change the code.
+
+## GUI rewrite
+
+The authoritative implementation contract for the future `nooboard-gui` crate lives in
+[`NOOBOARD_GUI_SPEC.md`](./NOOBOARD_GUI_SPEC.md).
+
+When implementing or reviewing the GUI rewrite, treat that document as the single source of truth.
+If code and spec differ, update the spec first or change the code.
+
+## GUI bootstrap
+
+Desktop bootstrap resolution currently follows this order:
+
+1. `--choose-config`
+2. `--config /path/to/nooboard.toml`
+3. `--dev`
+4. `NOOBOARD_CONFIG=/path/to/nooboard.toml`
+5. default config path
+6. bootstrap chooser if the default config file does not exist
+
+Useful launch modes:
+
+```bash
+cargo run -p nooboard-gui
+cargo run -p nooboard-gui -- --choose-config
+cargo run -p nooboard-gui -- --config /absolute/path/to/nooboard.toml
+cargo run -p nooboard-gui -- --dev
+```
+
+## Config generation
+
+The repository includes a small config CLI in the `nooboard-config` package.
+
+Create a production config:
+
+```bash
+cargo run -p nooboard-config --bin nooboard-config -- init --profile production
+```
+
+Create a development config in a custom location:
+
+```bash
+cargo run -p nooboard-config --bin nooboard-config -- init --profile development --output .dev-data
+```
+
+`--output` accepts either:
+
+- a directory, which will receive `nooboard.toml`
+- a file path, which will be written directly
+
+If `--output` is omitted, the CLI targets `./nooboard.toml` and asks for confirmation before writing or overwriting.
+
+## Local development setup
+
+Repository-local development setup uses:
+
+- config: `<repo>/.dev-data/nooboard.toml`
+- device id: `nooboard-dev`
+- token: `token-for-network`
+
+Launch the GUI app against the local development setup:
+
+```bash
+cargo run -p nooboard-gui -- --dev
+```
+
+If the repository-local development config does not exist yet, it is created automatically. If it exists but is invalid, startup fails explicitly instead of silently rewriting it.
+
+## Checks
+
+Run the most common checks with:
+
+```bash
+cargo check
+cargo test -p nooboard-config -p nooboard-core -p nooboard-network -p nooboard-gui
+```

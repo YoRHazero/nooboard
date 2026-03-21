@@ -119,8 +119,8 @@ impl Render for WorkspaceView {
 
 fn bootstrap_mode_label(mode: BootstrapMode) -> String {
     match mode {
-        BootstrapMode::ExplicitPath => "Explicit path".to_string(),
+        BootstrapMode::ExplicitPath => "Chosen settings file".to_string(),
         BootstrapMode::RepoDevelopment => "Local development".to_string(),
-        BootstrapMode::UserDefault => "Default user config".to_string(),
+        BootstrapMode::UserDefault => "Default settings file".to_string(),
     }
 }

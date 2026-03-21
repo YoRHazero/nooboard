@@ -25,8 +25,8 @@ impl WorkspaceView {
             return vec![
                 self.list_card(
                     "Network",
-                    &["Waiting for workspace snapshot.".to_string()],
-                    "Waiting for workspace snapshot.",
+                    &["Loading your network status.".to_string()],
+                    "Loading your network status.",
                 )
                 .into_any_element(),
             ];
@@ -61,7 +61,7 @@ impl WorkspaceView {
 
         self.network_panel_shell(
             "Network",
-            "Read-only local identity and runtime controls for direct and LAN connectivity.",
+            "View this device's connection details and control nearby sync and direct connections.",
         )
         .child(
             div()
@@ -74,7 +74,7 @@ impl WorkspaceView {
                     theme::accent_cyan(),
                 ))
                 .child(self.network_meta_pill(
-                    "Noob ID",
+                    "Device Code",
                     &state.local_noob_id,
                     theme::accent_blue(),
                 ))
@@ -165,7 +165,7 @@ impl WorkspaceView {
                         .child(
                             self.network_action_button(
                                 "network-open-settings",
-                                "Open Settings",
+                                "Edit Settings",
                                 theme::accent_cyan(),
                                 cx,
                             )
@@ -177,10 +177,10 @@ impl WorkspaceView {
                 .child(
                     self.network_toggle_switch(
                         "network-runtime-toggle",
-                        "Network Runtime",
+                        "Network Sharing",
                         state.network_enabled,
                         theme::accent_green(),
-                        "Start or stop the runtime that owns LAN sync and direct connections.",
+                        "Turn nearby sync and direct connections on or off.",
                         cx.listener(|this, _, _, cx| {
                             this.request_network_toggle_runtime(cx);
                         }),
@@ -191,7 +191,7 @@ impl WorkspaceView {
             div()
                 .text_size(px(11.0))
                 .text_color(theme::fg_muted())
-                .child(format!("Runtime status: {}", state.status_label)),
+                .child(format!("Status: {}", state.status_label)),
         )
         .child(
             div()
@@ -200,12 +200,12 @@ impl WorkspaceView {
                 .gap(px(10.0))
                 .items_center()
                 .child(self.network_metric_chip(
-                    "Seeds",
+                    "Saved",
                     state.direct_seed_count.to_string(),
                     theme::accent_blue(),
                 ))
                 .child(self.network_metric_chip(
-                    "Pending",
+                    "Requests",
                     state.pending_request_count.to_string(),
                     theme::accent_amber(),
                 ))
@@ -215,7 +215,7 @@ impl WorkspaceView {
                     theme::accent_green(),
                 ))
                 .child(self.network_metric_chip(
-                    "LAN",
+                    "Nearby",
                     state.connected_lan_peer_count.to_string(),
                     theme::accent_cyan(),
                 )),
@@ -241,7 +241,7 @@ impl WorkspaceView {
     ) -> impl IntoElement {
         self.network_panel_shell(
             "Direct Connect",
-            "Saved presets, pending approvals, and active direct sessions.",
+            "Manage saved devices, incoming requests, and active direct connections.",
         )
         .child(
             div()
@@ -250,7 +250,7 @@ impl WorkspaceView {
                 .gap(px(8.0))
                 .child(self.network_segment_button(
                     "network-direct-tab-seeds",
-                    "Seeds",
+                    "Saved",
                     self.network.direct_tab() == DirectPanelTab::Seeds,
                     cx.listener(|this, _, _, cx| {
                         this.request_network_set_direct_tab(DirectPanelTab::Seeds, cx);
@@ -258,7 +258,7 @@ impl WorkspaceView {
                 ))
                 .child(self.network_segment_button(
                     "network-direct-tab-pending",
-                    "Pending",
+                    "Requests",
                     self.network.direct_tab() == DirectPanelTab::Pending,
                     cx.listener(|this, _, _, cx| {
                         this.request_network_set_direct_tab(DirectPanelTab::Pending, cx);
@@ -266,7 +266,7 @@ impl WorkspaceView {
                 ))
                 .child(self.network_segment_button(
                     "network-direct-tab-sessions",
-                    "Sessions",
+                    "Connected",
                     self.network.direct_tab() == DirectPanelTab::Sessions,
                     cx.listener(|this, _, _, cx| {
                         this.request_network_set_direct_tab(DirectPanelTab::Sessions, cx);

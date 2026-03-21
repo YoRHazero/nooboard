@@ -246,7 +246,7 @@ impl ClipboardPageState {
 
     pub(in crate::ui::workspace) fn start_submit(&mut self) {
         self.editor.start_submit();
-        self.feedback = Some("Saving edited clipboard content as a new record.".to_string());
+        self.feedback = Some("Saving your edits as a new clipboard item.".to_string());
     }
 
     pub(in crate::ui::workspace) fn finish_submit(
@@ -268,7 +268,7 @@ impl ClipboardPageState {
 
     pub(in crate::ui::workspace) fn start_adopt(&mut self, event_id: EventId) {
         self.targets.start_adopt(event_id);
-        self.feedback = Some("Adopting selected committed record locally.".to_string());
+        self.feedback = Some("Copying the selected item to this device.".to_string());
     }
 
     pub(in crate::ui::workspace) fn finish_adopt(&mut self, event_id: EventId, message: String) {
@@ -278,7 +278,7 @@ impl ClipboardPageState {
 
     pub(in crate::ui::workspace) fn start_rebroadcast(&mut self, event_id: EventId) {
         self.targets.start_rebroadcast(event_id);
-        self.feedback = Some("Rebroadcasting selected record to connected sessions.".to_string());
+        self.feedback = Some("Sending the selected item to connected devices.".to_string());
     }
 
     pub(in crate::ui::workspace) fn finish_rebroadcast(

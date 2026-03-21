@@ -16,13 +16,13 @@ impl ClipboardInputs {
             InputState::new(window, cx)
                 .multi_line(true)
                 .rows(14)
-                .placeholder("Selected committed clipboard content will appear here.")
+                .placeholder("The selected clipboard item will appear here.")
         });
         let edit_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .multi_line(true)
                 .rows(14)
-                .placeholder("Edit a committed clipboard record and save it as a new event.")
+                .placeholder("Edit a clipboard item and save it as a new one.")
         });
 
         Self {

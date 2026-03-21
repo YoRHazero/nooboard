@@ -33,7 +33,7 @@ pub fn set_device_id_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to set device id",
+        "couldn't save the device name",
         move |core| async move { core.set_device_id(value).await },
     )
 }
@@ -46,7 +46,7 @@ pub fn set_network_token_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to set network token",
+        "couldn't save the network token",
         move |core| async move { core.set_network_token(value).await },
     )
 }
@@ -59,7 +59,7 @@ pub fn set_network_listen_port_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to set listen port",
+        "couldn't save the connection port",
         move |core| async move { core.set_network_listen_port(value).await },
     )
 }
@@ -72,7 +72,7 @@ pub fn set_lan_enabled_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to set LAN enabled",
+        "couldn't update nearby discovery",
         move |core| async move { core.set_lan_enabled(value).await },
     )
 }
@@ -85,7 +85,7 @@ pub fn set_local_capture_enabled_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to set local capture",
+        "couldn't update local clipboard sharing",
         move |core| async move { core.set_local_capture_enabled(value).await },
     )
 }
@@ -98,7 +98,7 @@ pub fn set_download_dir_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to set download directory",
+        "couldn't save the download folder",
         move |core| async move { core.set_download_dir(value).await },
     )
 }
@@ -111,7 +111,7 @@ pub fn set_storage_settings_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to set storage settings",
+        "couldn't save storage settings",
         move |core| async move { core.set_storage_settings(input).await },
     )
 }
@@ -124,7 +124,7 @@ pub fn apply_connection_settings_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to apply connection settings",
+        "couldn't save connection settings",
         move |core| async move {
             if input.device_id != input.current_device_id {
                 core.set_device_id(input.device_id.clone()).await?;
@@ -151,7 +151,7 @@ pub fn apply_clipboard_settings_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to apply clipboard settings",
+        "couldn't save clipboard settings",
         move |core| async move {
             if input.local_capture_enabled != input.current_local_capture_enabled {
                 core.set_local_capture_enabled(input.local_capture_enabled)

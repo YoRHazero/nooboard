@@ -114,7 +114,7 @@ impl WorkspaceView {
                     Ok(record) => this.clipboard.cache_record(record),
                     Err(error) => {
                         this.clipboard
-                            .fail_history_load(format!("Failed to load clipboard record: {error}"));
+                            .fail_history_load(format!("Couldn't load this clipboard item: {error}"));
                     }
                 }
                 cx.notify();
@@ -140,7 +140,7 @@ impl WorkspaceView {
             cx,
         ) else {
             self.clipboard
-                .fail_history_load("Clipboard core bridge is not ready yet.".to_string());
+                .fail_history_load("Clipboard history is still loading.".to_string());
             cx.notify();
             return;
         };
@@ -153,7 +153,7 @@ impl WorkspaceView {
                     Ok(page) => this.finish_clipboard_history_page(direction, page),
                     Err(error) => {
                         this.clipboard.fail_history_load(format!(
-                            "Failed to load clipboard history: {error}"
+                            "Couldn't load clipboard history: {error}"
                         ));
                     }
                 }
@@ -173,7 +173,7 @@ impl WorkspaceView {
         self.clipboard.finish_history_load(direction, page);
         if loaded_empty && self.clipboard.history_records().is_empty() {
             self.clipboard.fail_history_load(
-                "No committed clipboard records have been stored yet.".to_string(),
+                "No saved clipboard items yet.".to_string(),
             );
         }
     }

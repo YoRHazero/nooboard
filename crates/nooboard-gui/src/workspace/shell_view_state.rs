@@ -28,15 +28,15 @@ pub fn build_workspace_shell_view_state(
 ) -> WorkspaceShellViewState {
     let (headline, subheadline) = match (load_state, workspace_view) {
         (WorkspaceLoadState::Failed(message), _) => {
-            ("Workspace launch failed".to_string(), message.clone())
+            ("Couldn't open nooboard".to_string(), message.clone())
         }
         (_, Some(workspace_view)) => (
             workspace_view.identity.headline.clone(),
             workspace_view.identity.subheadline.clone(),
         ),
         _ => (
-            "Launching workspace".to_string(),
-            "Waiting for nooboard-core snapshot".to_string(),
+            "Opening nooboard".to_string(),
+            "Loading your device and sync status".to_string(),
         ),
     };
 
@@ -86,7 +86,7 @@ mod tests {
             "/tmp/nooboard.toml".to_string(),
         );
 
-        assert_eq!(shell.headline, "Workspace launch failed");
+        assert_eq!(shell.headline, "Couldn't open nooboard");
         assert_eq!(shell.subheadline, "bad config");
     }
 

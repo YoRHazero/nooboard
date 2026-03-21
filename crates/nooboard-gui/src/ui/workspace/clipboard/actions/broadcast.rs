@@ -55,13 +55,13 @@ impl WorkspaceView {
                     Ok(()) => {
                         this.clipboard.finish_adopt(
                             record.event_id,
-                            "Selected record adopted locally.".to_string(),
+                            "Copied the selected item to this device's clipboard.".to_string(),
                         );
                     }
                     Err(error) => {
                         this.clipboard.finish_adopt(
                             record.event_id,
-                            format!("Failed to adopt selected record: {error}"),
+                            format!("Couldn't copy the selected item: {error}"),
                         );
                     }
                 }
@@ -108,13 +108,13 @@ impl WorkspaceView {
                     Ok(()) => {
                         this.clipboard.finish_rebroadcast(
                             record.event_id,
-                            "Rebroadcast queued for the selected session target.".to_string(),
+                            "The selected item is being sent to the chosen devices.".to_string(),
                         );
                     }
                     Err(error) => {
                         this.clipboard.finish_rebroadcast(
                             record.event_id,
-                            format!("Failed to rebroadcast selected record: {error}"),
+                            format!("Couldn't send the selected item: {error}"),
                         );
                     }
                 }

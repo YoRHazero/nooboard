@@ -21,7 +21,7 @@ pub fn start_network_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to start network",
+        "couldn't start network sharing",
         |core| async move { core.start_network().await },
     )
 }
@@ -39,7 +39,7 @@ pub fn stop_network_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to stop network",
+        "couldn't stop network sharing",
         |core| async move { core.stop_network().await },
     )
 }
@@ -52,7 +52,7 @@ pub fn upsert_direct_seed_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to upsert direct seed",
+        "couldn't save a device",
         move |core| async move { core.upsert_direct_seed(input).await },
     )
 }
@@ -65,7 +65,7 @@ pub fn remove_direct_seed_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to remove direct seed",
+        "couldn't remove a device",
         move |core| async move { core.remove_direct_seed(id).await },
     )
 }
@@ -78,7 +78,7 @@ pub fn connect_direct_seed_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to connect direct seed",
+        "couldn't connect to a device",
         move |core| async move { core.connect_direct_seed(id).await },
     )
 }
@@ -91,7 +91,7 @@ pub fn search_direct_seeds_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to search direct seeds",
+        "couldn't search saved devices",
         move |core| async move { core.search_direct_seeds(&query).await },
     )
 }
@@ -104,7 +104,7 @@ pub fn approve_direct_request_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to approve direct request",
+        "couldn't approve a connection request",
         move |core| async move { core.approve_direct_request(id).await },
     )
 }
@@ -117,7 +117,7 @@ pub fn reject_direct_request_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to reject direct request",
+        "couldn't reject a connection request",
         move |core| async move { core.reject_direct_request(id).await },
     )
 }
@@ -130,7 +130,7 @@ pub fn disconnect_session_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to disconnect session",
+        "couldn't disconnect from a device",
         move |core| async move { core.disconnect_session(id).await },
     )
 }

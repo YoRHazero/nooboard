@@ -23,7 +23,7 @@ impl WorkspaceView {
                 div()
                     .text_size(px(11.0))
                     .text_color(theme::fg_muted())
-                    .child("Incoming direct requests require explicit approval before a session is created."),
+                    .child("Approve a request before a direct connection is opened."),
             )
             .child(
                 div()
@@ -35,7 +35,7 @@ impl WorkspaceView {
                             .gap(px(10.0))
                             .children(if state.pending_requests.is_empty() {
                                 vec![
-                                    self.network_empty_notice("No pending direct requests.")
+                                    self.network_empty_notice("No connection requests waiting.")
                                         .into_any_element(),
                                 ]
                             } else {
@@ -102,7 +102,7 @@ impl WorkspaceView {
                                 .text_size(px(11.0))
                                 .text_color(theme::fg_muted())
                                 .child(format!(
-                                    "{} · expires at {}",
+                                    "{} · Expires at {}",
                                     request.remote_addr_label, request.expires_label
                                 )),
                         ),

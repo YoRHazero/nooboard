@@ -24,7 +24,7 @@ impl WorkspaceView {
                 div()
                     .text_size(px(11.0))
                     .text_color(theme::fg_muted())
-                    .child("Direct sessions are user-managed and can be disconnected from this tab."),
+                    .child("These direct connections stay open until you disconnect them here."),
             )
             .child(
                 div()
@@ -36,7 +36,7 @@ impl WorkspaceView {
                             .gap(px(10.0))
                             .children(if state.direct_sessions.is_empty() {
                                 vec![
-                                    self.network_empty_notice("No active direct sessions.")
+                                    self.network_empty_notice("No active direct connections.")
                                         .into_any_element(),
                                 ]
                             } else {
@@ -101,21 +101,21 @@ impl WorkspaceView {
                             div()
                                 .text_size(px(11.0))
                                 .text_color(theme::fg_muted())
-                                .child(format!("remote {}", session.remote_addr_label)),
+                                .child(format!("Remote {}", session.remote_addr_label)),
                         )
                         .when_some(session.local_bind_addr_label.clone(), |this, value| {
                             this.child(
                                 div()
                                     .text_size(px(11.0))
                                     .text_color(theme::fg_muted())
-                                    .child(format!("local bind {value}")),
+                                    .child(format!("Local address {value}")),
                             )
                         })
                         .child(
                             div()
                                 .text_size(px(11.0))
                                 .text_color(theme::fg_muted())
-                                .child(format!("connected at {}", session.connected_at_label)),
+                                .child(format!("Connected at {}", session.connected_at_label)),
                         ),
                 )
                 .child(

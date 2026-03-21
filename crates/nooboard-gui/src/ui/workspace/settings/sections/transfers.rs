@@ -24,7 +24,7 @@ impl WorkspaceView {
 
         self.settings_section_shell(
             "Transfers",
-            "Incoming files are saved into the configured download directory.",
+            "Choose where files from other devices are saved.",
             self.settings_status_chip(status_label, status_accent),
         )
         .child(
@@ -37,7 +37,7 @@ impl WorkspaceView {
                     div()
                         .text_size(px(11.0))
                         .text_color(theme::fg_secondary())
-                        .child("Download Directory"),
+                        .child("Save Incoming Files To"),
                 )
                 .child(
                     div()
@@ -88,7 +88,7 @@ impl WorkspaceView {
                 .child(self.settings_compact_action_button(
                     "settings-reset-transfers",
                     "Reset",
-                    "Discard current transfer edits and restore the latest snapshot values."
+                    "Undo the changes in this section."
                         .to_string(),
                     actions_enabled,
                     theme::accent_rose(),
@@ -100,7 +100,7 @@ impl WorkspaceView {
                 .child(self.settings_compact_action_button(
                         "settings-apply-transfers",
                         "Apply",
-                        "Persist the current transfer draft through nooboard-core.".to_string(),
+                        "Save the changes in this section.".to_string(),
                         actions_enabled,
                         theme::accent_cyan(),
                         |this, _, _, cx| {

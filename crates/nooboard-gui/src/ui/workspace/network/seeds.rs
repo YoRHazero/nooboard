@@ -39,7 +39,7 @@ impl WorkspaceView {
                                     .text_size(px(12.0))
                                     .font_semibold()
                                     .text_color(theme::fg_secondary())
-                                    .child("SAVED PRESETS"),
+                                    .child("SAVED DEVICES"),
                             )
                             .child(
                                 div()
@@ -59,9 +59,9 @@ impl WorkspaceView {
                                     .children(if seeds.is_empty() {
                                         vec![
                                             self.network_empty_notice(if filter_empty {
-                                                "No direct presets saved."
+                                                "No saved devices yet."
                                             } else {
-                                                "No direct presets match the current filter."
+                                                "No saved devices match your search."
                                             })
                                             .into_any_element(),
                                         ]
@@ -126,11 +126,11 @@ impl WorkspaceView {
                             div()
                                 .text_size(px(11.0))
                                 .text_color(theme::fg_muted())
-                                .child(
+                                        .child(
                                     seed.learned_device_id
                                         .clone()
-                                        .map(|value| format!("learned device {value}"))
-                                        .unwrap_or_else(|| "no learned device id yet".to_string()),
+                                        .map(|value| format!("Learned device code {value}"))
+                                        .unwrap_or_else(|| "No learned device code yet".to_string()),
                                 ),
                         )
                         .when_some(seed.last_connected_addr_label.clone(), |this, value| {
@@ -138,7 +138,7 @@ impl WorkspaceView {
                                 div()
                                     .text_size(px(11.0))
                                     .text_color(theme::fg_muted())
-                                    .child(format!("last connected {value}")),
+                                    .child(format!("Last connected {value}")),
                             )
                         }),
                 )

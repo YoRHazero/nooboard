@@ -28,7 +28,7 @@ impl WorkspaceView {
             .map(|snapshot| snapshot.network.status.clone())
         else {
             self.network
-                .set_feedback("Workspace snapshot is not ready yet.");
+                .set_feedback("Network details are still loading.");
             cx.notify();
             return;
         };
@@ -46,13 +46,13 @@ impl WorkspaceView {
 
         let Some(task) = task else {
             self.network
-                .set_feedback("Network core bridge is not ready yet.");
+                .set_feedback("Network details are still loading.");
             cx.notify();
             return;
         };
 
         self.network
-            .set_feedback(format!("Requesting runtime to {action_label} network."));
+            .set_feedback(format!("{} network sharing...", if action_label == "start" { "Starting" } else { "Stopping" }));
         cx.notify();
 
         let view = cx.entity().downgrade();
@@ -60,8 +60,12 @@ impl WorkspaceView {
             let result = task.await;
             let _ = view.update(cx, |this, cx| {
                 let message = match result {
-                    Ok(()) => format!("Network {action_label} request applied."),
-                    Err(error) => format!("Failed to {action_label} network: {error}"),
+                    Ok(()) if action_label == "start" => "Network sharing started.".to_string(),
+                    Ok(()) => "Network sharing stopped.".to_string(),
+                    Err(error) if action_label == "start" => {
+                        format!("Couldn't start network sharing: {error}")
+                    }
+                    Err(error) => format!("Couldn't stop network sharing: {error}"),
                 };
                 this.network.set_feedback(message);
                 cx.notify();
@@ -79,7 +83,7 @@ impl WorkspaceView {
             .map(|snapshot| snapshot.settings.network.lan_enabled)
         else {
             self.network
-                .set_feedback("Workspace snapshot is not ready yet.");
+                .set_feedback("Network details are still loading.");
             cx.notify();
             return;
         };
@@ -88,7 +92,7 @@ impl WorkspaceView {
         let Some(task) = settings_actions::set_lan_enabled_task(&self.controller, next_enabled, cx)
         else {
             self.network
-                .set_feedback("Network core bridge is not ready yet.");
+                .set_feedback("Network details are still loading.");
             cx.notify();
             return;
         };
@@ -160,7 +164,7 @@ impl WorkspaceView {
     ) {
         self.network.clear_seed_draft(window, cx);
         self.network
-            .set_feedback("Cleared the direct preset editor.");
+            .set_feedback("Cleared the saved device form.");
         cx.notify();
     }
 
@@ -176,14 +180,14 @@ impl WorkspaceView {
 
         if label.is_empty() || host.is_empty() || port_text.is_empty() {
             self.network
-                .fail_save("Label, host, and port are required for a direct preset.".to_string());
+                .fail_save("Name, host, and port are required.".to_string());
             cx.notify();
             return;
         }
 
         let Ok(port) = port_text.parse::<u16>() else {
             self.network
-                .fail_save("Direct preset port must be a valid u16 value.".to_string());
+                .fail_save("Port must be a valid number.".to_string());
             cx.notify();
             return;
         };
@@ -200,7 +204,7 @@ impl WorkspaceView {
             cx,
         ) else {
             self.network
-                .fail_save("Network core bridge is not ready yet.".to_string());
+                .fail_save("Network details are still loading.".to_string());
             cx.notify();
             return;
         };
@@ -216,7 +220,7 @@ impl WorkspaceView {
                     Ok(saved_id) => this.network.finish_save(saved_id),
                     Err(error) => {
                         this.network
-                            .fail_save(format!("Failed to save direct preset: {error}"));
+                            .fail_save(format!("Couldn't save this device: {error}"));
                     }
                 }
                 cx.notify();
@@ -234,13 +238,13 @@ impl WorkspaceView {
         let Some(task) = network_actions::remove_direct_seed_task(&self.controller, seed.id, cx)
         else {
             self.network
-                .set_feedback("Network core bridge is not ready yet.");
+                .set_feedback("Network details are still loading.");
             cx.notify();
             return;
         };
 
         self.network
-            .mark_seed_pending(seed.id, format!("Removing direct preset '{}'.", seed.label));
+            .mark_seed_pending(seed.id, format!("Removing saved device '{}'.", seed.label));
         cx.notify();
 
         let id = seed.id;
@@ -252,10 +256,10 @@ impl WorkspaceView {
                 match result {
                     Ok(()) => this
                         .network
-                        .finish_seed_pending(id, format!("Removed direct preset '{}'.", label)),
+                        .finish_seed_pending(id, format!("Removed saved device '{}'.", label)),
                     Err(error) => this.network.finish_seed_pending(
                         id,
-                        format!("Failed to remove direct preset '{label}': {error}"),
+                        format!("Couldn't remove saved device '{label}': {error}"),
                     ),
                 }
                 cx.notify();
@@ -273,14 +277,14 @@ impl WorkspaceView {
         let Some(task) = network_actions::connect_direct_seed_task(&self.controller, seed.id, cx)
         else {
             self.network
-                .set_feedback("Network core bridge is not ready yet.");
+                .set_feedback("Network details are still loading.");
             cx.notify();
             return;
         };
 
         self.network.mark_seed_pending(
             seed.id,
-            format!("Connecting to direct preset '{}'.", seed.label),
+            format!("Connecting to saved device '{}'.", seed.label),
         );
         cx.notify();
 
@@ -292,12 +296,12 @@ impl WorkspaceView {
             let _ = view.update(cx, |this, cx| {
                 let message = match result {
                     Ok(ConnectDirectOutcome::Started) => {
-                        format!("Started direct connection for '{}'.", label)
+                        format!("Connecting to '{}'.", label)
                     }
                     Ok(ConnectDirectOutcome::AlreadyConnected(session_id)) => {
-                        format!("'{}' is already connected on session {}.", label, session_id)
+                        format!("'{}' is already connected (session {}).", label, session_id)
                     }
-                    Err(error) => format!("Failed to connect direct preset '{}': {error}", label),
+                    Err(error) => format!("Couldn't connect to '{}': {error}", label),
                 };
                 this.network.finish_seed_pending(id, message);
                 cx.notify();
@@ -316,7 +320,7 @@ impl WorkspaceView {
             network_actions::approve_direct_request_task(&self.controller, request.id, cx)
         else {
             self.network
-                .set_feedback("Network core bridge is not ready yet.");
+                .set_feedback("Network details are still loading.");
             cx.notify();
             return;
         };
@@ -354,7 +358,7 @@ impl WorkspaceView {
             network_actions::reject_direct_request_task(&self.controller, request.id, cx)
         else {
             self.network
-                .set_feedback("Network core bridge is not ready yet.");
+                .set_feedback("Network details are still loading.");
             cx.notify();
             return;
         };
@@ -391,14 +395,14 @@ impl WorkspaceView {
         let Some(task) = network_actions::disconnect_session_task(&self.controller, session.id, cx)
         else {
             self.network
-                .set_feedback("Network core bridge is not ready yet.");
+                .set_feedback("Network details are still loading.");
             cx.notify();
             return;
         };
 
         self.network.mark_session_pending(
             session.id,
-            format!("Disconnecting direct session with '{}'.", session.peer_device_id),
+            format!("Disconnecting from '{}'.", session.peer_device_id),
         );
         cx.notify();
 
@@ -409,11 +413,8 @@ impl WorkspaceView {
             let result = task.await;
             let _ = view.update(cx, |this, cx| {
                 let message = match result {
-                    Ok(()) => format!("Disconnected direct session with '{}'.", device_id),
-                    Err(error) => format!(
-                        "Failed to disconnect direct session with '{}': {error}",
-                        device_id
-                    ),
+                    Ok(()) => format!("Disconnected from '{}'.", device_id),
+                    Err(error) => format!("Couldn't disconnect from '{}': {error}", device_id),
                 };
                 this.network.finish_session_pending(id, message);
                 cx.notify();

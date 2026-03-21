@@ -19,7 +19,7 @@ impl WorkspaceView {
 
         self.settings_section_shell(
             "Advanced",
-            "Inspect the active bootstrap mode and configuration file currently driving the app.",
+            "Reference details about how nooboard was opened.",
             self.settings_status_chip("Current", theme::accent_green()),
         )
         .child(
@@ -28,18 +28,18 @@ impl WorkspaceView {
                 .flex_wrap()
                 .gap(gpui::px(12.0))
                 .child(self.settings_readonly_value_card(
-                    "Bootstrap Mode",
+                    "Launch Mode",
                     model.shell.bootstrap_mode_label.clone(),
                 ))
                 .child(self.settings_readonly_value_card_with_action(
-                    "Config Path",
+                    "Config File",
                     config_path.clone(),
                     Some(
                         div()
                             .id("settings-copy-config-path-shell")
                             .tooltip(move |window: &mut Window, cx| {
                                 Self::settings_themed_tooltip(
-                                    "Copy config path".to_string(),
+                                    "Copy config file path".to_string(),
                                     window,
                                     cx,
                                 )

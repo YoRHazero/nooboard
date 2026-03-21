@@ -168,7 +168,7 @@ impl WorkspaceController {
         self.bridge_state.state_stream_open = false;
         self.bridge_state.last_error = Some(reason.clone());
         self.push_recent_activity(RecentActivityItem::new(RecentActivityKind::GuiError {
-            message: format!("workspace state stream closed: {reason}"),
+            message: format!("Live sync updates stopped: {reason}"),
         }));
     }
 
@@ -176,7 +176,7 @@ impl WorkspaceController {
         self.bridge_state.event_stream_open = false;
         self.bridge_state.last_error = Some(reason.clone());
         self.push_recent_activity(RecentActivityItem::new(RecentActivityKind::GuiError {
-            message: format!("workspace event stream closed: {reason}"),
+            message: format!("Live activity updates stopped: {reason}"),
         }));
     }
 

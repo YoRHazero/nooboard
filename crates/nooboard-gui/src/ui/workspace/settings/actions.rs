@@ -19,7 +19,7 @@ impl WorkspaceView {
     pub(super) fn copy_settings_config_path(&mut self, path: String, cx: &mut Context<Self>) {
         cx.write_to_clipboard(ClipboardItem::new_string(path));
         self.settings
-            .set_feedback("Copied config path to clipboard.".to_string());
+            .set_feedback("Config file path copied.".to_string());
         cx.notify();
     }
 
@@ -45,14 +45,14 @@ impl WorkspaceView {
     pub(super) fn request_reset_clipboard_settings(&mut self, cx: &mut Context<Self>) {
         let Some(page) = self.current_settings_page(cx) else {
             self.settings
-                .fail_apply("Settings snapshot is not ready yet.".to_string());
+                .fail_apply("Settings are still loading.".to_string());
             cx.notify();
             return;
         };
 
         self.settings.reset_clipboard_from_workspace(&page.clipboard);
         self.settings
-            .set_feedback("Reset clipboard draft to the latest WorkspaceSnapshot.".to_string());
+            .set_feedback("Clipboard settings restored.".to_string());
         cx.notify();
     }
 
@@ -63,7 +63,7 @@ impl WorkspaceView {
     ) {
         let Some(page) = self.current_settings_page(cx) else {
             self.settings
-                .fail_apply("Settings snapshot is not ready yet.".to_string());
+                .fail_apply("Settings are still loading.".to_string());
             cx.notify();
             return;
         };
@@ -71,7 +71,7 @@ impl WorkspaceView {
         self.settings
             .reset_connection_from_workspace(&page.connection, window, cx);
         self.settings
-            .set_feedback("Reset connection draft to the latest WorkspaceSnapshot.".to_string());
+            .set_feedback("Connection settings restored.".to_string());
         cx.notify();
     }
 
@@ -82,7 +82,7 @@ impl WorkspaceView {
     ) {
         let Some(page) = self.current_settings_page(cx) else {
             self.settings
-                .fail_apply("Settings snapshot is not ready yet.".to_string());
+                .fail_apply("Settings are still loading.".to_string());
             cx.notify();
             return;
         };
@@ -90,7 +90,7 @@ impl WorkspaceView {
         self.settings
             .reset_transfer_from_workspace(&page.transfers, window, cx);
         self.settings
-            .set_feedback("Reset transfer draft to the latest WorkspaceSnapshot.".to_string());
+            .set_feedback("Transfer settings restored.".to_string());
         cx.notify();
     }
 
@@ -101,7 +101,7 @@ impl WorkspaceView {
     ) {
         let Some(page) = self.current_settings_page(cx) else {
             self.settings
-                .fail_apply("Settings snapshot is not ready yet.".to_string());
+                .fail_apply("Settings are still loading.".to_string());
             cx.notify();
             return;
         };
@@ -109,7 +109,7 @@ impl WorkspaceView {
         self.settings
             .reset_storage_from_workspace(&page.storage, window, cx);
         self.settings
-            .set_feedback("Reset storage draft to the latest WorkspaceSnapshot.".to_string());
+            .set_feedback("Storage settings restored.".to_string());
         cx.notify();
     }
 
@@ -186,13 +186,13 @@ impl WorkspaceView {
     pub(super) fn request_apply_connection_settings(&mut self, cx: &mut Context<Self>) {
         let Some(page) = self.current_settings_page(cx) else {
             self.settings
-                .fail_apply("Settings snapshot is not ready yet.".to_string());
+                .fail_apply("Settings are still loading.".to_string());
             cx.notify();
             return;
         };
         let Ok(listen_port) = self.settings.listen_port_value(cx).trim().parse::<u16>() else {
             self.settings
-                .fail_apply("Listen port must be a valid u16 value.".to_string());
+                .fail_apply("Port must be a valid number.".to_string());
             cx.notify();
             return;
         };
@@ -212,14 +212,14 @@ impl WorkspaceView {
             cx,
         ) else {
             self.settings
-                .fail_apply("Settings core bridge is not ready yet.".to_string());
+                .fail_apply("Settings are still loading.".to_string());
             cx.notify();
             return;
         };
 
         self.settings.begin_apply(
             SettingsSectionKey::Connection,
-            "Applying connection settings.".to_string(),
+            "Saving connection settings.".to_string(),
         );
         cx.notify();
 
@@ -230,10 +230,10 @@ impl WorkspaceView {
                 match result {
                     Ok(()) => this
                         .settings
-                        .finish_apply("Applied connection settings.".to_string()),
+                        .finish_apply("Connection settings saved.".to_string()),
                     Err(error) => this
                         .settings
-                        .fail_apply(format!("Failed to apply connection settings: {error}")),
+                        .fail_apply(format!("Couldn't save connection settings: {error}")),
                 }
                 cx.notify();
             });
@@ -245,7 +245,7 @@ impl WorkspaceView {
     pub(super) fn request_apply_clipboard_settings(&mut self, cx: &mut Context<Self>) {
         let Some(page) = self.current_settings_page(cx) else {
             self.settings
-                .fail_apply("Settings snapshot is not ready yet.".to_string());
+                .fail_apply("Settings are still loading.".to_string());
             cx.notify();
             return;
         };
@@ -259,14 +259,14 @@ impl WorkspaceView {
             cx,
         ) else {
             self.settings
-                .fail_apply("Settings core bridge is not ready yet.".to_string());
+                .fail_apply("Settings are still loading.".to_string());
             cx.notify();
             return;
         };
 
         self.settings.begin_apply(
             SettingsSectionKey::Clipboard,
-            "Applying clipboard settings.".to_string(),
+            "Saving clipboard settings.".to_string(),
         );
         cx.notify();
 
@@ -277,10 +277,10 @@ impl WorkspaceView {
                 match result {
                     Ok(()) => this
                         .settings
-                        .finish_apply("Applied clipboard settings.".to_string()),
+                        .finish_apply("Clipboard settings saved.".to_string()),
                     Err(error) => this
                         .settings
-                        .fail_apply(format!("Failed to apply clipboard settings: {error}")),
+                        .fail_apply(format!("Couldn't save clipboard settings: {error}")),
                 }
                 cx.notify();
             });
@@ -304,14 +304,14 @@ impl WorkspaceView {
             cx,
         ) else {
             self.settings
-                .fail_apply("Settings core bridge is not ready yet.".to_string());
+                .fail_apply("Settings are still loading.".to_string());
             cx.notify();
             return;
         };
 
         self.settings.begin_apply(
             SettingsSectionKey::Transfers,
-            "Applying transfer settings.".to_string(),
+            "Saving transfer settings.".to_string(),
         );
         cx.notify();
 
@@ -322,10 +322,10 @@ impl WorkspaceView {
                 match result {
                     Ok(()) => this
                         .settings
-                        .finish_apply("Applied transfer settings.".to_string()),
+                        .finish_apply("Transfer settings saved.".to_string()),
                     Err(error) => this
                         .settings
-                        .fail_apply(format!("Failed to apply transfer settings: {error}")),
+                        .fail_apply(format!("Couldn't save transfer settings: {error}")),
                 }
                 cx.notify();
             });
@@ -337,7 +337,7 @@ impl WorkspaceView {
     pub(super) fn request_apply_storage_settings(&mut self, cx: &mut Context<Self>) {
         let Some(page) = self.current_settings_page(cx) else {
             self.settings
-                .fail_apply("Settings snapshot is not ready yet.".to_string());
+                .fail_apply("Settings are still loading.".to_string());
             cx.notify();
             return;
         };
@@ -354,14 +354,14 @@ impl WorkspaceView {
         let Some(task) = settings_actions::set_storage_settings_task(&self.controller, input, cx)
         else {
             self.settings
-                .fail_apply("Settings core bridge is not ready yet.".to_string());
+                .fail_apply("Settings are still loading.".to_string());
             cx.notify();
             return;
         };
 
         self.settings.begin_apply(
             SettingsSectionKey::Storage,
-            "Applying storage settings.".to_string(),
+            "Saving storage settings.".to_string(),
         );
         cx.notify();
 
@@ -372,10 +372,10 @@ impl WorkspaceView {
                 match result {
                     Ok(()) => this
                         .settings
-                        .finish_apply("Applied storage settings.".to_string()),
+                        .finish_apply("Storage settings saved.".to_string()),
                     Err(error) => this
                         .settings
-                        .fail_apply(format!("Failed to apply storage settings: {error}")),
+                        .fail_apply(format!("Couldn't save storage settings: {error}")),
                 }
                 cx.notify();
             });
@@ -394,7 +394,10 @@ impl WorkspaceView {
         let max_text_bytes = self.settings.max_text_bytes(cx)?;
 
         if dedup_window_days < history_window_days {
-            return Err("Dedup window must be greater than or equal to history window.".to_string());
+            return Err(
+                "Duplicate check window must be at least as long as history retention."
+                    .to_string(),
+            );
         }
 
         Ok(StorageSettingsInput {

@@ -88,27 +88,27 @@ impl WorkspaceView {
         cx: &mut Context<Self>,
     ) -> gpui::Div {
         let network_tooltip = if snapshot.network_control.can_stop {
-            ("Stop network service", "pause sync discovery and transfers")
+            ("Stop network sharing", "pause nearby sync and file transfers")
         } else if snapshot.network_control.can_start {
             (
-                "Start network service",
-                "enable sync discovery and transfers",
+                "Start network sharing",
+                "turn on nearby sync and file transfers",
             )
         } else {
             (
-                "Network action unavailable",
-                "wait for the workspace runtime to settle",
+                "Network controls unavailable",
+                "wait a moment for nooboard to finish loading",
             )
         };
         let clipboard_tooltip = if snapshot.clipboard_control.adopt_event_id.is_some() {
             (
-                "Adopt latest clipboard",
-                "write the latest committed text into the local clipboard",
+                "Use latest clipboard item",
+                "copy the newest saved text back to this device",
             )
         } else {
             (
-                "No committed clipboard",
-                "wait for the first committed clipboard record to arrive",
+                "No clipboard item yet",
+                "wait for the first saved clipboard item to appear",
             )
         };
         let network_active = snapshot.network_control.can_stop;

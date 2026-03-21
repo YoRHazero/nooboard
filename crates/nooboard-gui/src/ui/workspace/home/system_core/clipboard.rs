@@ -36,7 +36,7 @@ impl WorkspaceView {
             })
             .tooltip(move |window, cx| {
                 Self::themed_tooltip(
-                    "Write committed text to the local clipboard".into(),
+                    "Copy this item back to your clipboard".into(),
                     window,
                     cx,
                 )
@@ -86,12 +86,11 @@ impl WorkspaceView {
                     .into_any_element()
             }
             None => clipboard_read_board(
-                "No committed record".to_string(),
-                "waiting for clipboard commit".to_string(),
+                "No saved clipboard item".to_string(),
+                "waiting for your first clipboard item".to_string(),
                 theme::border_soft(),
                 clipboard_action_placeholder(theme::border_soft()).into_any_element(),
-                "The Home panel shows the latest committed clipboard record available from \
-                 nooboard-core."
+                "The Home page shows the most recent clipboard item available on this device."
                     .to_string(),
             )
             .into_any_element(),

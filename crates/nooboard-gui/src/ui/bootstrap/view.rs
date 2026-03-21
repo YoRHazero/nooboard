@@ -146,7 +146,7 @@ impl Render for BootstrapChooserView {
                         .text_size(px(12.0))
                         .text_color(theme::fg_muted())
                         .child(format!(
-                            "Repo development preset: {}",
+                            "Development setup in this repo: {}",
                             if view_state.can_use_repo_development {
                                 "available"
                             } else {

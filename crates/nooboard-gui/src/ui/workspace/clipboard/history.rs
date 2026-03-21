@@ -39,7 +39,7 @@ impl WorkspaceView {
                             .text_size(px(14.0))
                             .font_semibold()
                             .text_color(theme::fg_primary())
-                            .child("Committed History"),
+                            .child("Clipboard History"),
                     )
                     .child(
                         div()
@@ -64,7 +64,7 @@ impl WorkspaceView {
                                     .text_size(px(10.0))
                                     .font_semibold()
                                     .text_color(theme::fg_muted())
-                                    .child("Latest committed"),
+                                    .child("Latest saved"),
                             )
                             .child(
                                 div()
@@ -149,7 +149,7 @@ impl WorkspaceView {
                 .py(px(18.0))
                 .text_size(px(11.0))
                 .text_color(theme::fg_muted())
-                .child("No earlier committed records are loaded yet.")
+                .child("No earlier clipboard items are loaded yet.")
                 .into_any_element();
         }
 
@@ -210,9 +210,9 @@ impl WorkspaceView {
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let label = if pending_new_count == 1 {
-            "1 newer committed record is ready".to_string()
+            "1 newer clipboard item is ready".to_string()
         } else {
-            format!("{pending_new_count} newer committed records are ready")
+            format!("{pending_new_count} newer clipboard items are ready")
         };
 
         div()

@@ -72,13 +72,13 @@ impl WorkspaceView {
                     div()
                         .text_size(px(11.0))
                         .text_color(theme::fg_muted())
-                        .child("Clipboard history is rendered from core queries; latest status still follows WorkspaceSnapshot.")
+                        .child("History is loaded from saved clipboard items, and new activity updates automatically.")
                         .into_any_element()
                 } else {
                     div()
                         .text_size(px(11.0))
                         .text_color(theme::fg_muted())
-                        .child("Clipboard workspace is still loading.")
+                        .child("Loading clipboard history.")
                         .into_any_element()
                 })
                 .into_any_element(),

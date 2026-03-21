@@ -69,17 +69,14 @@ impl WorkspaceView {
                     .text_size(px(24.0))
                     .font_semibold()
                     .text_color(theme::fg_primary())
-                    .child("Waiting for workspace snapshot"),
+                    .child("Loading your device"),
             )
             .child(
                 div()
                     .text_size(px(13.0))
                     .line_height(px(20.0))
                     .text_color(theme::fg_secondary())
-                    .child(
-                        "The Home surface switches to the full desktop system-core layout as soon \
-                         as nooboard-core publishes the first workspace snapshot.",
-                    ),
+                    .child("Home will appear as soon as nooboard finishes loading your device and sync information."),
             )
     }
 }

@@ -13,7 +13,7 @@ pub fn send_files_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to send files",
+        "couldn't send files",
         move |core| async move { core.send_files(request).await },
     )
 }
@@ -26,7 +26,7 @@ pub fn decide_incoming_transfer_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to decide incoming transfer",
+        "couldn't respond to a transfer request",
         move |core| async move { core.decide_incoming_transfer(decision).await },
     )
 }
@@ -39,7 +39,7 @@ pub fn cancel_transfer_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to cancel transfer",
+        "couldn't cancel a transfer",
         move |core| async move { core.cancel_transfer(ticket).await },
     )
 }

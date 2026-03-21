@@ -30,7 +30,7 @@ impl WorkspaceView {
 
         self.network_panel_shell(
             "LAN Auto Sync",
-            "Connected peers discovered through mDNS and managed automatically by runtime policy.",
+            "Devices on the same network that nooboard can find automatically.",
         )
         .child(
             div()
@@ -54,13 +54,13 @@ impl WorkspaceView {
                                 .text_size(px(12.0))
                                 .font_semibold()
                                 .text_color(theme::fg_primary())
-                                .child("mDNS Discovery"),
+                                .child("Nearby Discovery"),
                         )
                         .child(
                             div()
                                 .id("network-lan-tooltip-shell")
                                 .tooltip({
-                                    let text = "Advertise this node and allow LAN auto-sync to discover matching peers.".to_string();
+                                    let text = "Let devices on the same Wi-Fi or LAN find each other automatically.".to_string();
                                     move |window, cx| {
                                         Self::network_themed_tooltip(
                                             text.clone(),
@@ -113,12 +113,12 @@ impl WorkspaceView {
                         .gap(px(10.0))
                         .children(if !state.lan_enabled {
                             vec![
-                                self.network_empty_notice("LAN auto sync is disabled.")
+                                self.network_empty_notice("Nearby sync is turned off.")
                                     .into_any_element(),
                             ]
                         } else if connected_peers.is_empty() {
                             vec![
-                                self.network_empty_notice("No connected LAN peers.")
+                                self.network_empty_notice("No nearby devices are connected.")
                                     .into_any_element(),
                             ]
                         } else {
@@ -174,14 +174,14 @@ impl WorkspaceView {
                         div()
                             .text_size(px(11.0))
                             .text_color(theme::fg_muted())
-                            .child(format!("connected at {value}")),
+                            .child(format!("Connected at {value}")),
                     )
                 })
                 .child(
                     div()
                         .text_size(px(11.0))
                         .text_color(theme::fg_muted())
-                        .child(format!("last seen {}", peer.last_seen_label)),
+                        .child(format!("Last seen {}", peer.last_seen_label)),
                 ),
         )
     }

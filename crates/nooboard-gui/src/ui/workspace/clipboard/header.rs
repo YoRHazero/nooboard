@@ -37,7 +37,7 @@ impl WorkspaceView {
                         div()
                             .text_size(px(12.0))
                             .text_color(theme::fg_muted())
-                            .child("committed history"),
+                            .child("saved history"),
                     ),
             )
             .child(
@@ -46,7 +46,7 @@ impl WorkspaceView {
                     .flex_wrap()
                     .gap(px(8.0))
                     .child(clipboard_metric_chip(
-                        "Sessions",
+                        "Devices",
                         snapshot.connected_target_count.to_string(),
                         theme::accent_cyan(),
                     ))
@@ -74,8 +74,8 @@ impl WorkspaceView {
         cx: &Context<Self>,
     ) -> impl IntoElement {
         let scope_label = match snapshot.broadcast_scope {
-            ClipboardBroadcastScope::AllConnected => "All sessions",
-            ClipboardBroadcastScope::SelectedSessions => "Selected sessions",
+            ClipboardBroadcastScope::AllConnected => "All connected devices",
+            ClipboardBroadcastScope::SelectedSessions => "Selected devices",
         };
 
         clipboard_panel_shell()
@@ -97,13 +97,13 @@ impl WorkspaceView {
                                     .text_size(px(14.0))
                                     .font_semibold()
                                     .text_color(theme::fg_primary())
-                                    .child("Broadcast Targets"),
+                                    .child("Send To"),
                             )
                             .child(
                                 div()
                                     .text_size(px(12.0))
                                     .text_color(theme::fg_muted())
-                                    .child(format!("Rebroadcast mode: {scope_label}.")),
+                                    .child(format!("Send mode: {scope_label}.")),
                             ),
                     )
                     .child(
@@ -152,7 +152,7 @@ impl WorkspaceView {
                 div()
                     .text_size(px(12.0))
                     .text_color(theme::fg_muted())
-                    .child("No active sessions are available for clipboard rebroadcast.")
+                    .child("No connected devices are available right now.")
                     .into_any_element()
             } else {
                 div()

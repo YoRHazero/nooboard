@@ -24,13 +24,13 @@ impl WorkspaceView {
             .connection
             .endpoint_label
             .as_deref()
-            .unwrap_or("not bound");
+            .unwrap_or("Not available yet");
         let token_masked = self.settings.token_masked();
         let actions_enabled = dirty && self.settings.applying().is_none();
 
         self.settings_section_shell(
             "Connection",
-            "Device identity, network token, and listen endpoint are applied directly through nooboard-core.",
+            "Choose the name other devices see, the shared token they use to connect, and the port nooboard listens on.",
             self.settings_status_chip(status_label, status_accent),
         )
         .child(
@@ -45,7 +45,7 @@ impl WorkspaceView {
                         .child(self.settings_input_field_with_tooltip(
                     "settings-connection-device-id",
                     "Device ID",
-                    "Shown to peers and rendered in the shell header.",
+                    "Other devices will see this name when they connect.",
                     Input::new(&self.settings.device_id_input())
                         .small()
                         .appearance(false)
@@ -56,7 +56,7 @@ impl WorkspaceView {
                 .child(self.settings_input_field_with_tooltip(
                     "settings-connection-token",
                     "Network Token",
-                    "Shared token required for authenticated peers.",
+                    "Devices need the same token to connect to each other.",
                     Input::new(&self.settings.token_input())
                         .small()
                         .appearance(false)
@@ -100,7 +100,7 @@ impl WorkspaceView {
                 .child(self.settings_input_field_with_tooltip(
                     "settings-connection-port",
                     "Listen Port",
-                    "LAN discovery and direct-connect binds use this port.",
+                    "Nearby discovery and direct connections use this port.",
                     Input::new(&self.settings.listen_port_input())
                         .small()
                         .appearance(false)
@@ -137,7 +137,7 @@ impl WorkspaceView {
                                                 .text_size(px(12.0))
                                                 .font_semibold()
                                                 .text_color(theme::fg_primary())
-                                                .child("Endpoint"),
+                                                .child("Current Address"),
                                         )
                                         .child(self.settings_status_chip(
                                             "Current",
@@ -181,11 +181,11 @@ impl WorkspaceView {
                                                 .text_size(px(12.0))
                                                 .font_semibold()
                                                 .text_color(theme::fg_primary())
-                                                .child("LAN Discovery"),
+                                                .child("Nearby Discovery"),
                                         )
                                         .child(self.settings_info_tooltip_icon(
                                             "settings-connection-lan",
-                                            "Advertise this node on the local network and allow nearby peers to discover it via mDNS.".to_string(),
+                                            "Let devices on the same local network find this device automatically.".to_string(),
                                         )),
                                 )
                                 .child(
@@ -228,7 +228,7 @@ impl WorkspaceView {
                 .child(self.settings_compact_action_button(
                     "settings-reset-connection",
                     "Reset",
-                    "Discard current connection edits and restore the latest snapshot values."
+                    "Undo the changes in this section."
                         .to_string(),
                     actions_enabled,
                     theme::accent_rose(),
@@ -240,7 +240,7 @@ impl WorkspaceView {
                 .child(self.settings_compact_action_button(
                         "settings-apply-connection",
                         "Apply",
-                        "Persist the current connection draft through nooboard-core."
+                        "Save the changes in this section."
                             .to_string(),
                         actions_enabled,
                         theme::accent_cyan(),

@@ -18,13 +18,13 @@ impl WorkspaceView {
         cx: &Context<Self>,
     ) -> impl IntoElement {
         self.transfers_panel_shell(
-            "Transfer Targets",
-            format!("{} connected session(s)", state.available_targets.len()),
+            "Send To",
+            format!("{} connected device(s)", state.available_targets.len()),
         )
         .child(div().h_flex().flex_wrap().gap(px(10.0)).children(
             if state.available_targets.is_empty() {
                 vec![
-                    self.transfers_empty_notice("No connected sessions available for uploads.")
+                    self.transfers_empty_notice("No connected devices are available right now.")
                         .into_any_element(),
                 ]
             } else {

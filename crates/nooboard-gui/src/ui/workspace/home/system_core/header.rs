@@ -26,7 +26,7 @@ impl WorkspaceView {
                     .text_size(px(11.0))
                     .font_semibold()
                     .text_color(theme::fg_muted())
-                    .child(format!("DEVICE {}", snapshot.local_device_id)),
+                    .child(format!("THIS DEVICE {}", snapshot.local_device_id)),
             )
     }
 }

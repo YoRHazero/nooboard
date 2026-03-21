@@ -187,13 +187,13 @@ impl WorkspaceView {
                                 .text_size(px(12.0))
                                 .font_semibold()
                                 .text_color(theme::accent_cyan())
-                                .child("TRANSFER STATUS"),
+                                .child("TRANSFERS"),
                         )
                         .child(
                             div()
                                 .text_size(px(12.0))
                                 .text_color(theme::fg_muted())
-                                .child("Waiting for workspace snapshot."),
+                                .child("Loading transfer activity."),
                         ),
                 ),
         }

@@ -27,11 +27,11 @@ impl WorkspaceView {
 
         self.settings_section_shell(
             "Storage",
-            "Retention windows are converted back to core units on apply; db_root remains read-only until core exposes a dedicated setter.",
+            "Control how long clipboard history is kept and how much text nooboard stores.",
             self.settings_status_chip(status_label, status_accent),
         )
         .child(self.settings_readonly_path_card(
-            "Database Root",
+            "Storage Folder",
             state.storage.db_root.display().to_string(),
         ))
         .child(
@@ -43,7 +43,7 @@ impl WorkspaceView {
                 .child(self.settings_fixed_field_with_tooltip(
                     "settings-storage-history-window",
                     "History Window",
-                    "Committed clipboard retention window. GUI converts the selected unit back to whole days before applying to core.",
+                    "How long saved clipboard history stays available.",
                     px(STORAGE_FIELD_WIDTH),
                     self.storage_measurement_surface(
                         Input::new(&self.settings.history_window_input())
@@ -63,7 +63,7 @@ impl WorkspaceView {
                 .child(self.settings_fixed_field_with_tooltip(
                     "settings-storage-dedup-window",
                     "Dedup Window",
-                    "Clipboard dedup horizon. GUI converts the selected unit back to whole days before applying to core.",
+                    "How long identical clipboard items are treated as duplicates.",
                     px(STORAGE_FIELD_WIDTH),
                     self.storage_measurement_surface(
                         Input::new(&self.settings.dedup_window_input())
@@ -89,7 +89,7 @@ impl WorkspaceView {
                 .child(self.settings_fixed_field_with_tooltip(
                     "settings-storage-max-text-bytes",
                     "Max Text Bytes",
-                    "Clipboard submit and edit ceiling enforced by core. GUI converts the selected unit back to bytes before apply.",
+                    "The largest text item nooboard will save or edit.",
                     px(STORAGE_FIELD_WIDTH),
                     self.storage_measurement_surface(
                         Input::new(&self.settings.max_text_bytes_input())
@@ -115,7 +115,7 @@ impl WorkspaceView {
                 .child(self.settings_compact_action_button(
                     "settings-reset-storage",
                     "Reset",
-                    "Discard current storage edits and restore the latest snapshot values."
+                    "Undo the changes in this section."
                         .to_string(),
                     actions_enabled,
                     theme::accent_rose(),
@@ -127,7 +127,7 @@ impl WorkspaceView {
                 .child(self.settings_compact_action_button(
                     "settings-apply-storage",
                     "Apply",
-                    "Persist the current storage draft through nooboard-core.".to_string(),
+                    "Save the changes in this section.".to_string(),
                     actions_enabled,
                     theme::accent_cyan(),
                     |this, _, _, cx| {

@@ -72,12 +72,12 @@ impl WorkspaceView {
                                 this.clipboard.finish_submit(
                                     window,
                                     cx,
-                                    "Edited record saved. Waiting for the latest committed snapshot update.".to_string(),
+                                    "Saved your edits as a new clipboard item.".to_string(),
                                 );
                             }
                             Err(error) => {
                                 this.clipboard.fail_submit(format!(
-                                    "Failed to save edited clipboard content: {error}"
+                                    "Couldn't save your edited clipboard item: {error}"
                                 ));
                             }
                         }

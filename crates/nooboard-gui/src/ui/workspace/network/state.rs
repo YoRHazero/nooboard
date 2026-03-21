@@ -45,12 +45,12 @@ impl NetworkPageState {
         cx: &mut Context<WorkspaceView>,
     ) -> Self {
         Self {
-            seed_label_input: cx.new(|cx| InputState::new(window, cx).placeholder("Office relay")),
+            seed_label_input: cx.new(|cx| InputState::new(window, cx).placeholder("Office Mac")),
             seed_host_input: cx
                 .new(|cx| InputState::new(window, cx).placeholder("relay.example.com")),
             seed_port_input: cx.new(|cx| InputState::new(window, cx).placeholder("17890")),
             seed_filter_input: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("Filter by label or learned device id")
+                InputState::new(window, cx).placeholder("Search by name or learned device code")
             }),
             direct_tab: DirectPanelTab::Seeds,
             seed_panel_mode: SeedPanelMode::Create,
@@ -242,7 +242,7 @@ impl NetworkPageState {
         self.seed_port_input.update(cx, |input, cx| {
             input.set_value(seed.port.to_string(), window, cx);
         });
-        self.feedback = Some(format!("Loaded direct seed '{}' into the editor.", seed.label));
+        self.feedback = Some(format!("Loaded '{}' into the form.", seed.label));
     }
 
     pub(in crate::ui::workspace) fn toggle_draft_enabled(&mut self) {
@@ -251,13 +251,13 @@ impl NetworkPageState {
 
     pub(in crate::ui::workspace) fn begin_save(&mut self) {
         self.save_in_flight = true;
-        self.feedback = Some("Saving direct preset.".to_string());
+        self.feedback = Some("Saving device...".to_string());
     }
 
     pub(in crate::ui::workspace) fn finish_save(&mut self, saved_id: DirectSeedId) {
         self.save_in_flight = false;
         self.editing_seed_id = Some(saved_id);
-        self.feedback = Some("Direct preset saved.".to_string());
+        self.feedback = Some("Device saved.".to_string());
     }
 
     pub(in crate::ui::workspace) fn fail_save(&mut self, message: String) {

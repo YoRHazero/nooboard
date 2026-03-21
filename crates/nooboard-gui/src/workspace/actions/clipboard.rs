@@ -15,7 +15,7 @@ pub fn submit_text_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to submit clipboard text",
+        "couldn't save a clipboard item",
         move |core| async move { core.submit_text(content).await },
     )
 }
@@ -28,7 +28,7 @@ pub fn get_clipboard_record_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to get clipboard record",
+        "couldn't load a clipboard item",
         move |core| async move { core.get_clipboard_record(event_id).await },
     )
 }
@@ -41,7 +41,7 @@ pub fn list_clipboard_history_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to list clipboard history",
+        "couldn't load clipboard history",
         move |core| async move { core.list_clipboard_history(request).await },
     )
 }
@@ -54,7 +54,7 @@ pub fn adopt_clipboard_record_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to adopt clipboard record",
+        "couldn't copy a clipboard item",
         move |core| async move { core.adopt_clipboard_record(event_id).await },
     )
 }
@@ -68,7 +68,7 @@ pub fn rebroadcast_clipboard_record_task<T: 'static>(
     spawn_core_call(
         controller,
         cx,
-        "failed to rebroadcast clipboard record",
+        "couldn't send a clipboard item",
         move |core| async move { core.rebroadcast_clipboard_record(event_id, target).await },
     )
 }

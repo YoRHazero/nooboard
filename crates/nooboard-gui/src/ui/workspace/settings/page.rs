@@ -12,8 +12,8 @@ impl WorkspaceView {
             return vec![
                 self.list_card(
                     "Settings",
-                    &["Waiting for workspace snapshot.".to_string()],
-                    "Waiting for workspace snapshot.",
+                    &["Loading your settings.".to_string()],
+                    "Loading your settings.",
                 )
                 .into_any_element(),
             ];
@@ -33,9 +33,9 @@ impl WorkspaceView {
                 banner_accent,
                 self.settings.feedback().cloned().unwrap_or_else(|| {
                     if any_dirty {
-                        "Settings drafts live only in this route until you apply them.".to_string()
+                        "You have unsaved changes on this page.".to_string()
                     } else {
-                        "Rendered values are synced from the latest WorkspaceSnapshot.".to_string()
+                        "These settings show what nooboard is using right now.".to_string()
                     }
                 }),
             )

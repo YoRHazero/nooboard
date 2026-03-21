@@ -73,13 +73,13 @@ impl WorkspaceView {
         }
         if self.transfers.staged_files().is_empty() {
             self.transfers
-                .fail_send("Stage at least one file before sending.".to_string());
+                .fail_send("Add at least one file before sending.".to_string());
             cx.notify();
             return;
         }
         if self.transfers.selected_session_ids().is_empty() {
             self.transfers
-                .fail_send("Select at least one connected session target.".to_string());
+                .fail_send("Choose at least one connected device.".to_string());
             cx.notify();
             return;
         }
@@ -104,7 +104,7 @@ impl WorkspaceView {
             cx,
         ) else {
             self.transfers
-                .fail_send("Transfer core bridge is not ready yet.".to_string());
+                .fail_send("Transfers are still loading.".to_string());
             cx.notify();
             return;
         };
@@ -119,10 +119,10 @@ impl WorkspaceView {
                 match result {
                     Ok(tickets) => this
                         .transfers
-                        .finish_send(format!("Submitted {} transfer ticket(s).", tickets.len())),
+                        .finish_send(format!("Started {} transfer(s).", tickets.len())),
                     Err(error) => this
                         .transfers
-                        .fail_send(format!("Failed to send files: {error}")),
+                        .fail_send(format!("Couldn't send files: {error}")),
                 }
                 cx.notify();
             });
@@ -150,7 +150,7 @@ impl WorkspaceView {
         else {
             self.transfers.clear_ticket_pending(
                 transfer.ticket,
-                "Transfer core bridge is not ready yet.".to_string(),
+                "Transfers are still loading.".to_string(),
             );
             cx.notify();
             return;
@@ -179,7 +179,7 @@ impl WorkspaceView {
                         file_name
                     ),
                     Err(error) => format!(
-                        "Failed to {} incoming transfer '{}': {error}",
+                        "Couldn't {} incoming transfer '{}': {error}",
                         if accept { "accept" } else { "reject" },
                         file_name
                     ),
@@ -202,7 +202,7 @@ impl WorkspaceView {
         else {
             self.transfers.clear_ticket_pending(
                 transfer.ticket,
-                "Transfer core bridge is not ready yet.".to_string(),
+                "Transfers are still loading.".to_string(),
             );
             cx.notify();
             return;
@@ -222,7 +222,7 @@ impl WorkspaceView {
             let _ = view.update(cx, |this, cx| {
                 let message = match result {
                     Ok(()) => format!("Cancelled transfer '{}'.", file_name),
-                    Err(error) => format!("Failed to cancel transfer '{}': {error}", file_name),
+                    Err(error) => format!("Couldn't cancel transfer '{}': {error}", file_name),
                 };
                 this.transfers.clear_ticket_pending(ticket, message);
                 cx.notify();

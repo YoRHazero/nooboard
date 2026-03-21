@@ -94,7 +94,7 @@ impl TransfersPageState {
         }
         let count = self.selected_session_ids.len();
         self.feedback = Some(format!(
-            "{} transfer target{} selected.",
+            "{} device{} selected.",
             count,
             if count == 1 { "" } else { "s" }
         ));
@@ -149,7 +149,7 @@ impl TransfersPageState {
 
         if staged_now > 0 {
             self.feedback = Some(format!(
-                "Staged {} file{} for transfer.",
+                "Added {} file{}.",
                 staged_now,
                 if staged_now == 1 { "" } else { "s" }
             ));
@@ -160,13 +160,13 @@ impl TransfersPageState {
         let before = self.staged_files.len();
         self.staged_files.retain(|item| item.id != staged_file_id);
         if self.staged_files.len() != before {
-            self.feedback = Some("Removed staged file.".to_string());
+            self.feedback = Some("Removed file.".to_string());
         }
     }
 
     pub(in crate::ui::workspace) fn begin_send(&mut self) {
         self.send_in_flight = true;
-        self.feedback = Some("Submitting staged files to nooboard-core.".to_string());
+        self.feedback = Some("Sending files...".to_string());
     }
 
     pub(in crate::ui::workspace) fn finish_send(&mut self, message: String) {
