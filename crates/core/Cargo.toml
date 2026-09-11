@@ -1,0 +1,21 @@
+[package]
+name = "nooboard-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+nooboard-clipboard = { path = "../clipboard" }
+nooboard-network = { path = "../network" }
+nooboard-storage = { path = "../storage" }
+tokio.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
