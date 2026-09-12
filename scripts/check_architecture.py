@@ -14,7 +14,7 @@ for name, package in packages.items():
     assert not any(dep["name"].startswith("tauri") for dep in package["dependencies"]), name
 
 tree = subprocess.check_output(
-    ["cargo", "tree", "-p", "nooboard-clipboard", "--edges", "normal,build", "--prefix", "none", "--locked"],
+    ["cargo", "tree", "-p", "nooboard-clipboard", "--target", "all", "--edges", "normal,build", "--prefix", "none", "--locked"],
     text=True,
 )
 assert not any(line.startswith("arboard ") for line in tree.splitlines()), "clipboard depends on arboard"

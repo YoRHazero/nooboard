@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, windows-2022]
+        os: [macos-14, windows-2022, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
@@ -25,15 +25,24 @@ jobs:
           persist-credentials: false
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.93.0 --profile minimal --component clippy,rustfmt
+      - name: Install isolated Linux session tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb sway dbus-x11 gnome-keyring
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Check module boundaries
         run: python scripts/check_architecture.py
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Test
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --all-features --locked
       - name: Native clipboard smoke test (runner session)
-        run: cargo test -p nooboard-clipboard --locked -- --ignored --test-threads=1
+        if: runner.os != 'Linux'
+        run: cargo test -p nooboard-clipboard --all-features --locked -- --ignored --test-threads=1
+      - name: X11, Wayland and Secret Service smoke tests
+        if: runner.os == 'Linux'
+        run: bash scripts/test_linux_native.sh
       - name: Build backend harness
         run: cargo build -p nooboard-core --example backend --locked
+      - name: Build native integration harness
+        run: cargo build -p nooboard-core --example link_probe --features diagnostics --locked

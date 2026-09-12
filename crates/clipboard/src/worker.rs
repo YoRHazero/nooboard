@@ -23,6 +23,29 @@ pub struct Clipboard {
 impl Clipboard {
     /// Startup only records the revision; existing clipboard text is not published.
     pub fn open(interval: Duration, max_bytes: usize) -> Result<Self> {
+        Self::open_with(interval, max_bytes, move || Native::open(max_bytes))
+    }
+    /// Opt-in diagnostics: a named private pasteboard on macOS, the current
+    /// display on Linux/Windows. Use an isolated desktop on those platforms.
+    #[cfg(feature = "diagnostics")]
+    pub fn open_diagnostic(name: String, interval: Duration, max_bytes: usize) -> Result<Self> {
+        Self::open_with(interval, max_bytes, move || {
+            #[cfg(target_os = "macos")]
+            {
+                Native::open_named(&name, max_bytes)
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                let _ = name;
+                Native::open(max_bytes)
+            }
+        })
+    }
+    fn open_with(
+        interval: Duration,
+        max_bytes: usize,
+        open: impl FnOnce() -> Result<Native> + Send + 'static,
+    ) -> Result<Self> {
         if interval.is_zero() || max_bytes == 0 {
             return Err(Error::InvalidInput);
         }
@@ -38,7 +61,7 @@ impl Clipboard {
         let thread = thread::Builder::new()
             .name("nooboard-clipboard".into())
             .spawn(move || {
-                let mut native = match Native::open(max_bytes) {
+                let mut native = match open() {
                     Ok(native) => native,
                     Err(error) => {
                         let _ = ready.send(Err(error));

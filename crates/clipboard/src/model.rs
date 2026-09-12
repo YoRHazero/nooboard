@@ -40,6 +40,8 @@ pub enum Error {
     InvalidInput,
     #[error("clipboard platform is unsupported")]
     UnsupportedPlatform,
+    #[error("clipboard session is unsupported: {0}")]
+    UnsupportedSession(&'static str),
     #[error("native clipboard operation failed")]
     Native,
 }

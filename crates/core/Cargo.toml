@@ -5,6 +5,13 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[features]
+diagnostics = ["nooboard-clipboard/diagnostics"]
+
+[[example]]
+name = "link_probe"
+required-features = ["diagnostics"]
+
 [dependencies]
 nooboard-clipboard = { path = "../clipboard" }
 nooboard-network = { path = "../network" }

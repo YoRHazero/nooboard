@@ -5,7 +5,19 @@ use objc2::{
 };
 use objc2_app_kit::NSPasteboard;
 use objc2_foundation::NSString;
-use std::{sync::mpsc, time::Duration};
+use std::{
+    sync::{Mutex, MutexGuard, mpsc},
+    time::Duration,
+};
+
+// AppKit can return the same NSPasteboard object to separate callers. Its type
+// cache must not be mutated concurrently by two clipboard workers in this process.
+static PASTEBOARD_ACCESS: Mutex<()> = Mutex::new(());
+fn access() -> MutexGuard<'static, ()> {
+    PASTEBOARD_ACCESS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 pub(crate) struct Wake;
 impl Wake {
@@ -19,7 +31,23 @@ pub(crate) struct Native {
     max_bytes: usize,
 }
 impl Native {
+    #[cfg(feature = "diagnostics")]
+    pub fn open_named(name: &str, max_bytes: usize) -> Result<Self> {
+        let _access = access();
+        if !name.starts_with("nooboard.diagnostic.") {
+            return Err(Error::InvalidInput);
+        }
+        // SAFETY: documented nullable class method; the prefix reserves test boards.
+        let board: Option<Retained<NSPasteboard>> = unsafe {
+            msg_send![NSPasteboard::class(), pasteboardWithName: &*NSString::from_str(name)]
+        };
+        Ok(Self {
+            board: board.ok_or(Error::Unavailable)?,
+            max_bytes,
+        })
+    }
     pub fn open(max_bytes: usize) -> Result<Self> {
+        let _access = access();
         // SAFETY: documented class method; nullable return handles an unavailable
         // pasteboard service (for example a noninteractive or sandboxed session).
         let board: Option<Retained<NSPasteboard>> =
@@ -30,6 +58,10 @@ impl Native {
         })
     }
     pub fn revision(&self) -> u64 {
+        let _access = access();
+        self.revision_inner()
+    }
+    fn revision_inner(&self) -> u64 {
         self.board.changeCount() as u64
     }
     pub fn wait(
@@ -51,8 +83,12 @@ impl Native {
         }
     }
     pub fn read(&self) -> Result<Snapshot> {
+        let _access = access();
+        self.read_inner()
+    }
+    fn read_inner(&self) -> Result<Snapshot> {
         autoreleasepool(|_| {
-            let revision = self.revision();
+            let revision = self.revision_inner();
             let types: Vec<String> = self
                 .board
                 .types()
@@ -94,7 +130,7 @@ impl Native {
             } else {
                 Content::Unsupported
             };
-            if self.revision() != revision {
+            if self.revision_inner() != revision {
                 return Err(Error::Changed);
             }
             Ok(Snapshot {
@@ -105,6 +141,7 @@ impl Native {
         })
     }
     pub fn write(&mut self, text: &str) -> Result<Snapshot> {
+        let _access = access();
         if text.len() > self.max_bytes || text.contains('\0') {
             return Err(Error::InvalidInput);
         }
@@ -116,7 +153,7 @@ impl Native {
             ) {
                 return Err(Error::Native);
             }
-            let mut snapshot = self.read()?;
+            let mut snapshot = self.read_inner()?;
             if snapshot.content != Content::Text(text.into()) {
                 return Err(Error::Changed);
             }
@@ -149,5 +186,25 @@ mod tests {
         );
         assert_eq!(native.read().unwrap().content, Content::Unsupported);
         native.board.clearContents();
+    }
+    #[cfg(feature = "diagnostics")]
+    #[tokio::test]
+    #[ignore = "requires macOS pasteboard service; isolated pasteboard"]
+    async fn concurrent_workers_share_a_named_pasteboard_safely() {
+        let name = format!("nooboard.diagnostic.regression.{}", std::process::id());
+        let a = crate::Clipboard::open_diagnostic(name.clone(), Duration::from_millis(10), 1024)
+            .unwrap();
+        let b = crate::Clipboard::open_diagnostic(name, Duration::from_millis(10), 1024).unwrap();
+        for index in 0..250 {
+            let (written, read) = tokio::join!(a.write_text(format!("text {index}")), b.read());
+            written.unwrap();
+            read.unwrap();
+            let (written, read) = tokio::join!(b.write_text(format!("reply {index}")), a.read());
+            written.unwrap();
+            read.unwrap();
+        }
+        a.write_text(String::new()).await.unwrap();
+        b.shutdown().await.unwrap();
+        a.shutdown().await.unwrap();
     }
 }

@@ -1,6 +1,8 @@
 //! UI-independent application backend. Only this crate coordinates the other libraries.
 mod app;
 mod bootstrap;
+#[cfg(feature = "diagnostics")]
+pub mod diagnostics;
 mod history;
 mod link;
 mod model;
