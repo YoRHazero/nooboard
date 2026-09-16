@@ -6,6 +6,25 @@ pub fn fingerprint(certificate: &[u8]) -> String {
     hex::encode(Sha256::digest(certificate))
 }
 
+/// Stable device identity: SHA-256 of DER SubjectPublicKeyInfo, not the certificate.
+pub fn noob_id(certificate: &[u8]) -> Result<String> {
+    let der = CertificateDer::from(certificate);
+    let parsed = rustls::server::ParsedCertificate::try_from(&der)?;
+    Ok(hex::encode(Sha256::digest(
+        parsed.subject_public_key_info(),
+    )))
+}
+
+/// A fresh, cryptographically random namespace for message IDs after each restart.
+pub fn new_session_id() -> Result<String> {
+    let mut bytes = [0_u8; 16];
+    rustls::crypto::ring::default_provider()
+        .secure_random
+        .fill(&mut bytes)
+        .map_err(|_| Error::Identity)?;
+    Ok(hex::encode(bytes))
+}
+
 /// Private key material is never included in Debug or written to configuration files.
 pub struct Identity {
     pub(crate) cert: CertificateDer<'static>,
@@ -25,6 +44,9 @@ impl Identity {
     }
     pub fn fingerprint(&self) -> String {
         fingerprint(self.certificate())
+    }
+    pub fn noob_id(&self) -> Result<String> {
+        noob_id(self.certificate())
     }
     /// Binary material intended exclusively for the OS credential store.
     pub fn export_secret(&self) -> Vec<u8> {

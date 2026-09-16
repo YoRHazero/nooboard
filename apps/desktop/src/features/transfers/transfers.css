@@ -1,0 +1,139 @@
+.batch-receipt {
+  margin: 22px 0 0;
+}
+.batch-receipt summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  padding-bottom: 12px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+}
+.batch-receipt summary::-webkit-details-marker {
+  display: none;
+}
+.batch-receipt summary small {
+  font-size: 9px;
+  margin-left: 8px;
+  color: var(--faint);
+}
+.batch-receipt__result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--green);
+}
+.batch-receipt__result.is-pending,
+.batch-receipt__result.is-partial {
+  color: var(--accent-strong);
+}
+.batch-receipt__result.is-rejected,
+.batch-receipt__result.is-unconfirmed {
+  color: var(--danger);
+}
+.batch-receipt__result.is-cancelled {
+  color: var(--muted);
+}
+.batch-receipt__result svg {
+  transition: rotate 120ms;
+}
+.batch-receipt:not([open]) .batch-receipt__result svg {
+  rotate: -90deg;
+}
+.delivery-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 200px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.delivery-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 1px;
+  border-top: 1px solid var(--line);
+}
+.delivery-list .device-name strong {
+  font-size: 11px;
+  font-weight: 450;
+}
+.delivery-list .device-name code {
+  font-size: 9px;
+}
+.delivery-state {
+  font-size: 10px;
+  white-space: nowrap;
+  color: var(--muted);
+  transition: color 120ms;
+}
+.delivery-state.is-applied {
+  color: var(--green);
+}
+.delivery-state.is-sending,
+.delivery-state.is-awaitingReceipt {
+  color: var(--accent-strong);
+}
+.delivery-state.is-rejected,
+.delivery-state.is-unconfirmed,
+.delivery-state.is-queueFull {
+  color: var(--danger);
+}
+.transfer-excerpt {
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  padding: 16px 0;
+}
+.target-picker {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0 14px;
+  max-height: 290px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.target-picker li + li {
+  border-top: 1px solid var(--line);
+}
+.target-picker label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  padding: 13px 2px;
+}
+.target-picker label > svg {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.target-picker .device-name {
+  flex: 1;
+}
+.target-picker small {
+  font-size: 10px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.target-picker input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--green);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+@media (max-width: 370px) {
+  .target-picker label {
+    gap: 8px;
+  }
+  .target-picker label > svg {
+    display: none;
+  }
+}

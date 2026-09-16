@@ -1,0 +1,20 @@
+.mascot,
+.mascot__canvas {
+  width: 100%;
+  height: 100%;
+}
+.mascot__canvas {
+  background: var(--surface);
+}
+.mascot__canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.mascot__poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}

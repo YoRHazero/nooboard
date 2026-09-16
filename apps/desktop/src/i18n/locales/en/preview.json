@@ -1,0 +1,18 @@
+{
+  "nativeVerification": "Native verification",
+  "nativeEnvironment": "Isolated clipboard · Temporary identity and database · Real TLS",
+  "copyTest": "Copy test text",
+  "receiveTest": "Receive test text",
+  "title": "Design preview",
+  "environment": "Sample data · System clipboard untouched",
+  "copySample": "Copy sample text",
+  "eventDevice": "Device for simulated events",
+  "noDevices": "No devices",
+  "receiveSample": "Receive text",
+  "disconnect": "Disconnect",
+  "reconnect": "Reconnect",
+  "stopReceiving": "Pause peer receiving",
+  "startReceiving": "Resume peer receiving",
+  "reset": "Reset",
+  "demoCode": "Demo code: 48217396 · "
+}

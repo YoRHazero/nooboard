@@ -1,10 +1,11 @@
-//! JSON-lines control for reproducible, native two-host integration tests.
-//! Clipboard text is never printed; only hashes, byte counts and public certificates.
-use nooboard_core::{Endpoint, Event, PairRequest, Settings, diagnostics::Session};
+//! JSON-lines control for isolated native integration tests. No clipboard bodies in output.
+use nooboard_core::{
+    Event, PeerSettings, Settings,
+    diagnostics::{PeerFixture, Session, trust_peer},
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::io::{self, BufRead, Write};
-
 #[derive(Deserialize)]
 struct Request {
     id: u64,
@@ -14,10 +15,21 @@ struct Request {
 #[derive(Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case")]
 enum Command {
-    Pair {
+    TrustPeer {
         certificate: Vec<u8>,
         fingerprint: String,
-        endpoint: Endpoint,
+        device_name: String,
+        address: Option<String>,
+    },
+    Listen {
+        address: String,
+    },
+    ConfigurePeer {
+        noob_id: String,
+        settings: PeerSettings,
+    },
+    Targets {
+        targets: Vec<String>,
     },
     Settings {
         settings: Settings,
@@ -26,11 +38,15 @@ enum Command {
         text: String,
     },
     Read,
-    Send,
+    Send {
+        targets: Option<Vec<String>>,
+    },
     Status,
     History,
     Events,
-    Unpair,
+    Unpair {
+        noob_id: String,
+    },
     Quit,
 }
 fn digest(text: &str) -> Value {
@@ -43,17 +59,37 @@ async fn execute(
 ) -> Result<Value, Box<dyn std::error::Error>> {
     let app = &session.app;
     Ok(match command {
-        Command::Pair {
+        Command::TrustPeer {
             certificate,
             fingerprint,
-            endpoint,
-        } => {
-            app.pair(PairRequest {
-                certificate,
-                confirmed_fingerprint: fingerprint,
-                endpoint,
+            device_name,
+            address,
+        } => json!(
+            trust_peer(
+                app,
+                PeerFixture {
+                    certificate,
+                    confirmed_fingerprint: fingerprint,
+                    device_name,
+                    address
+                }
+            )
+            .await?
+        ),
+        Command::Listen { address } => {
+            app.set_settings(Settings {
+                listen_address: address,
+                ..app.status().settings
             })
             .await?;
+            Value::Null
+        }
+        Command::ConfigurePeer { noob_id, settings } => {
+            app.configure_peer(noob_id, settings).await?;
+            Value::Null
+        }
+        Command::Targets { targets } => {
+            app.select_targets(targets).await?;
             Value::Null
         }
         Command::Settings { settings } => {
@@ -70,11 +106,11 @@ async fn execute(
             .as_deref()
             .map(digest)
             .unwrap_or(Value::Null),
-        Command::Send => json!(app.send_current().await?),
-        Command::Status => {
-            let s = app.status();
-            json!({"online": s.online, "peer_accepting": s.peer_accepting, "settings": s.settings})
-        }
+        Command::Send { targets } => json!(match targets {
+            Some(targets) => app.send_to(targets).await?,
+            None => app.send_current().await?,
+        }),
+        Command::Status => json!(app.status()),
         Command::History => json!(
             app.history(String::new(), 100, 0)
                 .await?
@@ -86,15 +122,15 @@ async fn execute(
             let mut collected = Vec::new();
             loop {
                 match events.try_recv() {
-                    Ok(e) => collected.push(format!("{e:?}")),
+                    Ok(e) => collected.push(e),
                     Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
                     Err(e) => return Err(e.into()),
                 }
             }
             json!(collected)
         }
-        Command::Unpair => {
-            app.unpair().await?;
+        Command::Unpair { noob_id } => {
+            app.unpair(noob_id).await?;
             Value::Null
         }
         Command::Quit => Value::Null,
@@ -106,7 +142,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut events = session.app.subscribe();
     println!(
         "{}",
-        json!({"ready":true, "certificate":session.app.certificate(), "fingerprint":session.app.status().fingerprint})
+        json!({"ready":true, "certificate":session.app.certificate(), "fingerprint":session.app.status().fingerprint, "noob_id":session.app.status().noob_id, "device_name":session.app.status().settings.device_name, "listen_address":session.app.status().listen_address})
     );
     io::stdout().flush()?;
     let (input, mut lines) = tokio::sync::mpsc::channel(16);

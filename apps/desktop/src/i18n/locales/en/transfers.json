@@ -1,0 +1,8 @@
+{
+  "deliveryList": "Results by device",
+  "targetsTitle": "Send to",
+  "selectLabel": "Select {{name}} {{id}}",
+  "saveSelection": "Save selection",
+  "result": "Send result",
+  "unconfirmedHelp": "Some devices haven’t confirmed receipt. This send won’t be retried automatically."
+}

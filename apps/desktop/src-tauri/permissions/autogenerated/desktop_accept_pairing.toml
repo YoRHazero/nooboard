@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-accept-pairing"
+description = "Enables the desktop_accept_pairing command without any pre-configured scope."
+commands.allow = ["desktop_accept_pairing"]
+
+[[permission]]
+identifier = "deny-desktop-accept-pairing"
+description = "Denies the desktop_accept_pairing command without any pre-configured scope."
+commands.deny = ["desktop_accept_pairing"]

@@ -1,0 +1,244 @@
+.mailbox-badge {
+  position: absolute;
+  top: -1px;
+  right: 1px;
+  min-width: 30px;
+  height: 30px;
+  padding: 3px;
+  border: 1px dashed var(--accent);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--accent-strong);
+  box-shadow: 0 3px 8px #171b1a18;
+}
+.mailbox-badge > span {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-width: 22px;
+  border: 1px solid var(--accent-soft);
+  border-radius: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.stage-panel-position--mailbox {
+  --panel-width: 360px;
+}
+.stage-panel--mailbox .stage-panel__surface {
+  height: 480px;
+}
+.stage-panel--mailbox .stage-panel__header {
+  margin-bottom: 24px;
+}
+.mailbox-content {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 200px);
+  gap: 18px;
+}
+.postmark {
+  position: absolute;
+  right: -10px;
+  top: 3px;
+  width: 77px;
+  height: 49px;
+  color: var(--accent);
+  opacity: 0.48;
+  rotate: -12deg;
+  pointer-events: none;
+}
+.postmark circle,
+.postmark path {
+  stroke: currentColor;
+  stroke-width: 1;
+}
+.postmark text {
+  fill: currentColor;
+  font-size: 6px;
+  font-family: inherit;
+  letter-spacing: 0.4px;
+}
+.mailbox-content > .postmark {
+  top: -67px;
+  right: 63px;
+  width: 65px;
+  opacity: 0.28;
+}
+.mailbox-events,
+.mailbox-devices {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mailbox-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-bottom: 10px;
+}
+.mailbox-section-heading h3 {
+  font-size: 11px;
+  font-weight: 550;
+  color: var(--muted);
+}
+.mailbox-section-heading > span {
+  color: var(--faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.mailbox-activity-list,
+.mailbox-device-list {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  scrollbar-gutter: stable;
+}
+.mailbox-activity-list {
+  max-height: 160px;
+}
+.mailbox-activity-list:focus-visible,
+.mailbox-device-list:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.mailbox-activity {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  border-bottom: 1px solid var(--prop-rule);
+}
+.mailbox-activity:last-child {
+  border-bottom: 0;
+}
+.mailbox-activity__type {
+  display: flex;
+  color: var(--muted);
+}
+.mailbox-activity__type.is-sent {
+  color: var(--accent);
+}
+.mailbox-activity__type.is-received {
+  color: var(--green);
+}
+.mailbox-activity__summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.mailbox-activity__state {
+  border-radius: 5px;
+  padding: 3px 5px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: 9px;
+  white-space: nowrap;
+}
+.mailbox-activity__state.is-pending {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.mailbox-activity__state.is-rejected,
+.mailbox-activity__state.is-unconfirmed {
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
+  color: var(--danger);
+}
+.mailbox-devices {
+  border-top: 1px dashed var(--prop-edge);
+  padding-top: 15px;
+}
+.mailbox-device-list {
+  flex: 1;
+  max-height: 132px;
+}
+.mailbox-device {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+}
+.mailbox-device__platform {
+  display: flex;
+  color: var(--muted);
+}
+.mailbox-device__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.mailbox-device .home-status {
+  font-size: 10px;
+  gap: 5px;
+}
+.mailbox-devices .panel-link {
+  flex-shrink: 0;
+  align-self: flex-end;
+  margin-top: auto;
+  padding-top: 10px;
+}
+@media (max-height: 640px) {
+  .mailbox-content {
+    grid-template-rows: minmax(0, 1fr) minmax(0, 112px);
+    gap: 12px;
+  }
+}
+@media (max-width: 520px) {
+  .mailbox-activity {
+    gap: 6px;
+  }
+  .mailbox-content > .postmark {
+    right: 78px;
+    width: 55px;
+  }
+}
+
+/* Device identity stays readable when names are shared by several peers. */
+.mailbox-device {
+  min-height: 44px;
+}
+.mailbox-device > .device-name {
+  flex: 1;
+  gap: 3px;
+}
+.mailbox-device .device-name strong {
+  font-size: 11px;
+  font-weight: 450;
+}
+.mailbox-device .device-name code {
+  font-size: 9px;
+}
+.mailbox-device .home-status {
+  flex-shrink: 0;
+}
+button.mailbox-activity__summary {
+  border: 0;
+  padding: 8px 0;
+  color: inherit;
+  background: none;
+  text-align: left;
+}
+button.mailbox-activity__summary:hover {
+  color: var(--accent-strong);
+}
+.mailbox-activity__state.is-partial {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.mailbox-activity__state.is-cancelled {
+  background: var(--sidebar);
+  color: var(--muted);
+}

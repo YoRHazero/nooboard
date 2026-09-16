@@ -1,99 +1,209 @@
 use super::Runtime;
 use crate::{
-    Error, Event, Result,
+    Error, Event, Mode, Result,
     app::{Command, Reply},
+    devices::{MAX_PEERS, Peer},
     history,
-    model::Peer,
+    link::Listener,
 };
-use nooboard_network::{Message, TlsConfig, fingerprint};
+use nooboard_network::Message;
 
 impl Runtime {
     pub(super) async fn command(&mut self, command: Command) -> Result<Reply> {
         match command {
+            Command::RefreshDiscovery => {
+                self.refresh_discovery();
+                Ok(Reply::Done)
+            }
+            Command::BeginPairing { address, expected } => {
+                self.begin_pairing(address, expected)?;
+                Ok(Reply::Done)
+            }
+            Command::AcceptPairing(id) => {
+                self.accept_pairing(&id)?;
+                Ok(Reply::Done)
+            }
+            Command::SubmitPairingCode { id, code } => {
+                self.submit_pairing_code(&id, code)?;
+                Ok(Reply::Done)
+            }
+            Command::DismissPairing(id) => {
+                self.dismiss_pairing(&id)?;
+                Ok(Reply::Done)
+            }
             Command::Settings(settings) => {
                 settings.validate()?;
-                // Consume pre-transition content under the previous mode to avoid replay on resume.
-                let current = self.clipboard.read().await?;
-                self.observe(current, false).await?;
-                let bytes = serde_json::to_vec(&settings).map_err(|_| Error::Configuration)?;
-                self.store
-                    .run(move |db| db.set_setting("settings", &bytes))
-                    .await?;
-                let acceptance_changed = settings.accepting() != self.state.settings.accepting();
-                self.state.settings = settings;
+                self.observe(self.clipboard.read().await?, true).await?;
+                let listener = if settings.listen_address != self.config.settings.listen_address {
+                    Some(
+                        Listener::bind(
+                            &settings.listen_address,
+                            self.config.tls(&self.identity)?,
+                            self.link_events.clone(),
+                        )
+                        .await?,
+                    )
+                } else {
+                    None
+                };
+                let pairing_listener = if settings.pairing_listen_address
+                    != self.config.settings.pairing_listen_address
+                {
+                    Some(
+                        nooboard_network::pairing::Endpoint::bind(
+                            &settings.pairing_listen_address,
+                            self.pairing_contact(),
+                            self.onboarding.sender.clone(),
+                        )
+                        .await?,
+                    )
+                } else {
+                    None
+                };
+                let acceptance_changed = settings.accepting() != self.config.settings.accepting();
+                let renamed = settings.device_name != self.config.settings.device_name;
+                let mut config = self.config.clone();
+                config.settings = settings;
+                config.save(&self.store).await?;
+                self.config = config;
+                if let Some(listener) = listener {
+                    self.listener = listener;
+                }
+                if let Some(endpoint) = pairing_listener {
+                    if let Some(session) = self.onboarding.snapshot.session.clone() {
+                        self.dismiss_pairing(&session.id)?;
+                    }
+                    self.onboarding.snapshot.pairing_address = endpoint.address.clone();
+                    self.onboarding.endpoint = endpoint;
+                }
+                self.onboarding
+                    .endpoint
+                    .contact
+                    .send_replace(self.pairing_contact());
+                self.refresh_local_network();
+                self.onboarding.snapshot.discovery_error = self
+                    .advertise_discovery()
+                    .err()
+                    .map(|_| "局域网发现暂不可用，可以通过地址添加设备。".into());
+                let ids = self.peers.keys().cloned().collect::<Vec<_>>();
+                for id in ids {
+                    if self.config.settings.paused {
+                        self.cancel_queued(&id, false);
+                    } else if self.config.settings.mode != Mode::Automatic {
+                        self.cancel_queued(&id, true);
+                    }
+                    if renamed {
+                        self.control(
+                            &id,
+                            Message::Device {
+                                device_name: self.config.settings.device_name.clone(),
+                            },
+                        );
+                    }
+                }
                 if acceptance_changed {
-                    self.epoch = self.epoch.checked_add(1).ok_or(Error::Configuration)?;
+                    self.advertise(true)?;
                 }
                 self.publish();
-                if acceptance_changed
-                    && self.connection.is_some()
-                    && let Err(error) = self
-                        .send(Message::State {
-                            epoch: self.epoch,
-                            accepting: self.state.settings.accepting(),
-                        })
-                        .await
-                {
-                    self.emit(Event::Fault(error.to_string()));
+                if let Err(e) = history::prune(&self.store, &self.config.settings).await {
+                    self.fault(None, e.to_string());
                 }
-                if let Err(error) = history::prune(&self.store, &self.state.settings).await {
-                    self.emit(Event::Fault(error.to_string()));
-                }
+                self.emit(Event::HistoryChanged);
                 Ok(Reply::Done)
             }
-            Command::Pair(request) => {
-                if request.certificate.len() > 8192
-                    || fingerprint(&request.certificate)
-                        != request.confirmed_fingerprint.to_lowercase()
-                {
-                    return Err(Error::Fingerprint);
+            Command::TrustPeer(request) => {
+                let mut peer = Peer::confirmed(request, &self.identity)?;
+                if let Some(old) = self.config.peers.get(&peer.noob_id) {
+                    if old.certificate != peer.certificate {
+                        return Err(Error::AlreadyPaired);
+                    }
+                    peer.settings.auto_send = old.settings.auto_send;
+                } else if self.config.peers.len() >= MAX_PEERS {
+                    return Err(Error::Busy);
                 }
-                if request.certificate == self.identity.certificate() {
+                let id = peer.noob_id.clone();
+                let mut config = self.config.clone();
+                config.peers.insert(id.clone(), peer);
+                let tls = config.tls(&self.identity)?;
+                config.save(&self.store).await?;
+                self.config = config;
+                self.listener.trust.send_replace(tls);
+                self.start_dial(&id)?;
+                self.publish();
+                Ok(Reply::Done)
+            }
+            Command::Unpair(id) => {
+                let mut config = self.config.clone();
+                if config.peers.remove(&id).is_none() {
                     return Err(Error::Configuration);
                 }
-                if self
-                    .peer
-                    .as_ref()
-                    .is_some_and(|p| p.certificate != request.certificate)
-                {
-                    return Err(Error::AlreadyPaired);
+                config.manual_targets.retain(|target| *target != id);
+                let tls = config.tls(&self.identity)?;
+                config.save(&self.store).await?;
+                self.config = config;
+                self.listener.trust.send_replace(tls);
+                self.disconnect(&id);
+                self.peers.remove(&id);
+                self.received.forget(&id);
+                self.publish();
+                Ok(Reply::Done)
+            }
+            Command::ConfigurePeer(id, settings) => {
+                settings.validate()?;
+                self.observe(self.clipboard.read().await?, true).await?;
+                let mut config = self.config.clone();
+                let peer = config.peers.get_mut(&id).ok_or(Error::Configuration)?;
+                let address_changed = peer.settings.address != settings.address;
+                peer.settings = settings;
+                config.save(&self.store).await?;
+                self.config = config;
+                if !self.config.peers[&id].settings.auto_send {
+                    self.cancel_queued(&id, true);
                 }
-                TlsConfig::new(&self.identity, &request.certificate)?;
-                let peer = Peer {
-                    certificate: request.certificate,
-                    endpoint: request.endpoint,
-                };
-                let bytes = serde_json::to_vec(&peer).map_err(|_| Error::Configuration)?;
-                self.store
-                    .run(move |db| db.set_setting("peer", &bytes))
-                    .await?;
-                self.state.peer_fingerprint = Some(fingerprint(&peer.certificate));
-                self.peer = Some(peer);
-                self.restart_link()?;
+                if address_changed {
+                    self.start_dial(&id)?;
+                }
+                self.publish();
                 Ok(Reply::Done)
             }
-            Command::Unpair => {
-                self.store.run(|db| db.delete_setting("peer")).await?;
-                self.peer = None;
-                self.state.peer_fingerprint = None;
-                self.restart_link()?;
+            Command::SelectTargets(targets) => {
+                self.select_targets(targets).await?;
                 Ok(Reply::Done)
             }
-            Command::Send => {
+            Command::Send(targets) => {
+                if self.config.settings.paused {
+                    return Err(Error::Paused);
+                }
                 let snapshot = self.clipboard.read().await?;
                 self.observe(snapshot.clone(), false).await?;
                 let text = Self::eligible(snapshot.content)?;
-                Ok(Reply::Sequence(self.send_text(text).await?))
+                if let Some(targets) = targets {
+                    self.select_targets(targets).await?;
+                }
+                Ok(Reply::MessageId(self.send_text(
+                    text,
+                    self.config.manual_targets.clone(),
+                    false,
+                )?))
             }
             Command::History {
                 contains,
                 limit,
                 offset,
+                local,
             } => Ok(Reply::History(
-                history::query(&self.store, &self.state.settings, contains, limit, offset).await?,
+                history::query(
+                    &self.store,
+                    &self.config.settings,
+                    contains,
+                    local,
+                    limit,
+                    offset,
+                )
+                .await?,
             )),
             Command::CopyHistory(id) => {
-                history::prune(&self.store, &self.state.settings).await?;
+                history::prune(&self.store, &self.config.settings).await?;
                 let entry = self
                     .store
                     .run(move |db| db.history_entry(id))
@@ -101,10 +211,15 @@ impl Runtime {
                     .ok_or(Error::NotFound)?;
                 let snapshot = self.clipboard.write(entry.text.clone()).await?;
                 self.observed_revision = snapshot.revision;
+                self.view.current(snapshot.clone(), None);
+                self.view
+                    .record(crate::ActivityKind::Copied, &entry.text, None, None, None);
                 self.remember(entry.text.clone(), "local".into()).await;
-                if self.can_auto_send() {
-                    self.send_text(entry.text).await?;
-                }
+                self.emit(Event::Copied {
+                    revision: snapshot.revision,
+                    bytes: entry.text.len(),
+                });
+                self.auto_send(entry.text)?;
                 Ok(Reply::Done)
             }
             Command::DeleteHistory(id) => {
@@ -119,5 +234,14 @@ impl Runtime {
             }
             Command::Stop => Ok(Reply::Done),
         }
+    }
+    async fn select_targets(&mut self, targets: Vec<String>) -> Result<()> {
+        self.config.targets(&targets)?;
+        let mut config = self.config.clone();
+        config.manual_targets = targets;
+        config.save(&self.store).await?;
+        self.config = config;
+        self.publish();
+        Ok(())
     }
 }

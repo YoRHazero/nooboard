@@ -2,10 +2,27 @@ use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 pub const MAX_TEXT_BYTES: usize = 1024 * 1024;
 // JSON can expand each control byte into a six-byte escape.
 const MAX_FRAME_BYTES: usize = MAX_TEXT_BYTES * 6 + 4096;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[serde(deny_unknown_fields)]
+pub struct MessageId {
+    pub session: String,
+    pub sequence: u64,
+}
+impl MessageId {
+    fn valid(&self) -> bool {
+        self.sequence != 0
+            && self.session.len() == 32
+            && self
+                .session
+                .bytes()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+    }
+}
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", deny_unknown_fields)]
@@ -13,20 +30,23 @@ pub enum Message {
     Hello {
         version: u16,
     },
+    Device {
+        device_name: String,
+    },
     State {
         epoch: u64,
         accepting: bool,
     },
     Text {
-        sequence: u64,
+        id: MessageId,
         target_epoch: u64,
         text: String,
     },
     Applied {
-        sequence: u64,
+        id: MessageId,
     },
     Rejected {
-        sequence: u64,
+        id: MessageId,
     },
     Ping,
     Pong,
@@ -35,37 +55,43 @@ impl std::fmt::Debug for Message {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Text {
-                sequence,
+                id,
                 target_epoch,
                 text,
             } => f
                 .debug_struct("Text")
-                .field("sequence", sequence)
+                .field("id", id)
                 .field("target_epoch", target_epoch)
                 .field("bytes", &text.len())
                 .finish(),
+            Self::Device { device_name } => f.debug_tuple("Device").field(device_name).finish(),
             Self::Hello { version } => f.debug_tuple("Hello").field(version).finish(),
             Self::State { epoch, accepting } => f
                 .debug_tuple("State")
                 .field(epoch)
                 .field(accepting)
                 .finish(),
-            Self::Applied { sequence } => f.debug_tuple("Applied").field(sequence).finish(),
-            Self::Rejected { sequence } => f.debug_tuple("Rejected").field(sequence).finish(),
+            Self::Applied { id } => f.debug_tuple("Applied").field(id).finish(),
+            Self::Rejected { id } => f.debug_tuple("Rejected").field(id).finish(),
             Self::Ping => f.write_str("Ping"),
             Self::Pong => f.write_str("Pong"),
         }
     }
 }
+pub fn valid_device_name(name: &str) -> bool {
+    !name.trim().is_empty() && name.chars().count() <= 80 && !name.chars().any(char::is_control)
+}
 impl Message {
     fn validate(&self) -> Result<()> {
         match self {
             Self::Hello { version } if *version != PROTOCOL_VERSION => Err(Error::Protocol),
-            Self::Text { sequence, text, .. }
-                if *sequence == 0 || text.len() > MAX_TEXT_BYTES || text.contains('\0') =>
+            Self::Text { id, text, .. }
+                if !id.valid() || text.len() > MAX_TEXT_BYTES || text.contains('\0') =>
             {
                 Err(Error::Protocol)
             }
+            Self::Applied { id } | Self::Rejected { id } if !id.valid() => Err(Error::Protocol),
+            Self::Device { device_name } if !valid_device_name(device_name) => Err(Error::Protocol),
             _ => Ok(()),
         }
     }
@@ -100,7 +126,10 @@ mod tests {
     #[tokio::test]
     async fn unicode_frame_roundtrip_and_body_redaction() {
         let message = Message::Text {
-            sequence: 1,
+            id: MessageId {
+                session: "a".repeat(32),
+                sequence: 1,
+            },
             target_epoch: 2,
             text: " 秘密🦀\r\n ".into(),
         };
@@ -119,10 +148,13 @@ mod tests {
     }
     #[tokio::test]
     async fn rejects_version_null_and_truncated_frames() {
-        assert!(Message::Hello { version: 2 }.validate().is_err());
+        assert!(Message::Hello { version: 1 }.validate().is_err());
         assert!(
             Message::Text {
-                sequence: 1,
+                id: MessageId {
+                    session: "a".repeat(32),
+                    sequence: 1
+                },
                 target_epoch: 0,
                 text: "a\0b".into()
             }

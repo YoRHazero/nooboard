@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "The local nooboard window may call its backend commands.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "os:allow-locale",
+    "allow-desktop-connect",
+    "allow-desktop-settings",
+    "allow-desktop-peer-settings",
+    "allow-desktop-select-targets",
+    "allow-desktop-send",
+    "allow-desktop-unpair",
+    "allow-desktop-history",
+    "allow-desktop-history-action",
+    "allow-desktop-probe",
+    "allow-desktop-discover",
+    "allow-desktop-begin-pairing",
+    "allow-desktop-accept-pairing",
+    "allow-desktop-pairing-code",
+    "allow-desktop-dismiss-pairing"
+  ]
+}

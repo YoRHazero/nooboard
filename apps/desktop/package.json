@@ -1,0 +1,46 @@
+{
+  "name": "@nooboard/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "check": "tsc -b",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
+    "i18n:check": "node scripts/check-i18n.mjs"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-os": "^2.3.2",
+    "i18next": "^26.4.2",
+    "lucide-react": "1.45.0",
+    "motion": "13.2.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-i18next": "^17.0.14",
+    "three": "0.186.0"
+  },
+  "devDependencies": {
+    "@babel/parser": "^7.29.8",
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/node": "22.20.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/three": "0.186.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "prettier": "3.9.6",
+    "typescript": "7.0.2",
+    "vite": "8.3.0",
+    "vitest": "5.0.0"
+  }
+}

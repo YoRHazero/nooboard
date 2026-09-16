@@ -70,24 +70,36 @@ impl Database {
         Ok(id)
     }
     pub fn prune_history(&mut self, max_entries: u32, oldest_ms: i64) -> Result<()> {
+        self.prune_history_changed(max_entries, oldest_ms)
+            .map(|_| ())
+    }
+    pub fn prune_history_changed(&mut self, max_entries: u32, oldest_ms: i64) -> Result<bool> {
         let tx = self.connection.transaction()?;
-        tx.execute("DELETE FROM history WHERE copied_at_ms < ?1", [oldest_ms])?;
-        tx.execute(
+        let expired = tx.execute("DELETE FROM history WHERE copied_at_ms < ?1", [oldest_ms])?;
+        let excess = tx.execute(
             "DELETE FROM history WHERE id IN (
             SELECT id FROM history ORDER BY copied_at_ms DESC,id DESC LIMIT -1 OFFSET ?1)",
             [max_entries],
         )?;
         tx.commit()?;
-        Ok(())
+        Ok(expired + excess > 0)
     }
     pub fn history(&self, query: HistoryQuery<'_>) -> Result<Vec<HistoryEntry>> {
+        self.history_filtered(query, None)
+    }
+    /// Apply the local/remote source filter before offset and limit.
+    pub fn history_filtered(
+        &self,
+        query: HistoryQuery<'_>,
+        local: Option<bool>,
+    ) -> Result<Vec<HistoryEntry>> {
         let mut statement = self.connection.prepare(
-            "SELECT id,text,source,copied_at_ms FROM history WHERE instr(text,?1)>0
+            "SELECT id,text,source,copied_at_ms FROM history WHERE instr(text,?1)>0 AND (?4 IS NULL OR (source='local')=?4)
              ORDER BY copied_at_ms DESC,id DESC LIMIT ?2 OFFSET ?3",
         )?;
         Ok(statement
             .query_map(
-                params![query.contains, query.limit.min(1000), query.offset],
+                params![query.contains, query.limit.min(1000), query.offset, local],
                 entry,
             )?
             .collect::<rusqlite::Result<_>>()?)
@@ -114,5 +126,58 @@ impl Database {
         self.connection
             .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn source_and_literal_search_are_applied_before_pagination() {
+        let mut db = Database::in_memory().unwrap();
+        for i in 0..80 {
+            db.record_text(
+                &format!("copy_%_{i}"),
+                if i % 2 == 0 { "local" } else { "peer" },
+                i,
+                100,
+                0,
+            )
+            .unwrap();
+        }
+        let local = db
+            .history_filtered(
+                HistoryQuery {
+                    contains: "_%_",
+                    offset: 32,
+                    limit: 32,
+                },
+                Some(true),
+            )
+            .unwrap();
+        assert_eq!(local.len(), 8);
+        assert!(local.iter().all(|r| r.source == "local"));
+        assert_eq!(local[0].text, "copy_%_14");
+        let remote = db
+            .history_filtered(
+                HistoryQuery {
+                    contains: "_%_",
+                    offset: 32,
+                    limit: 32,
+                },
+                Some(false),
+            )
+            .unwrap();
+        assert_eq!(remote.len(), 8);
+        assert!(remote.iter().all(|r| r.source == "peer"));
+        assert_eq!(remote[0].text, "copy_%_15");
+        assert!(
+            db.history(HistoryQuery {
+                contains: "COPY",
+                ..HistoryQuery::default()
+            })
+            .unwrap()
+            .is_empty()
+        );
     }
 }

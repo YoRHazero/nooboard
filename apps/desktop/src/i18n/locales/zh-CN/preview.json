@@ -1,0 +1,18 @@
+{
+  "nativeVerification": "原生验证",
+  "nativeEnvironment": "隔离剪贴板 · 临时身份与数据库 · 真实 TLS",
+  "copyTest": "复制测试文字",
+  "receiveTest": "接收测试文字",
+  "title": "设计预览",
+  "environment": "示例数据 · 不操作系统剪贴板",
+  "copySample": "复制新文字",
+  "eventDevice": "模拟事件的设备",
+  "noDevices": "暂无设备",
+  "receiveSample": "接收文字",
+  "disconnect": "断开连接",
+  "reconnect": "恢复连接",
+  "stopReceiving": "对方停收",
+  "startReceiving": "对方开收",
+  "reset": "重置",
+  "demoCode": "演示配对码：48217396 · "
+}

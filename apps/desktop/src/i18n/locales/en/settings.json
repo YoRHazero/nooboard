@@ -1,0 +1,15 @@
+{
+  "textSync": "Text sync",
+  "mode": "Send mode",
+  "receive": "Accept incoming text",
+  "history": "Save text history",
+  "localOnly": "Stored on this device only",
+  "retention": "Keep history for",
+  "retentionLabel": "History retention",
+  "limit": "History limit",
+  "limitLabel": "History entry limit",
+  "interface": "Interface",
+  "appearance": "Appearance",
+  "appearanceLabel": "Interface appearance",
+  "reduceMotion": "Reduce motion"
+}

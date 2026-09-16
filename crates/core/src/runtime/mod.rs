@@ -1,85 +1,168 @@
 mod commands;
+mod connections;
+mod local_network;
+mod onboarding;
 mod replication;
 use crate::{
     Event, Result, Status,
     app::{Command, Reply, Request},
+    devices::Configuration,
     history,
-    link::{self, Generation, LinkEvent, Outbound},
-    model::Peer,
+    link::{Dial, LinkEvent, Listener, Session},
     ports::{ClipboardPort, Store},
-    sync::Order,
+    sync::Received,
+    transfers::Transfers,
 };
-use nooboard_network::{Identity, Message};
-use tokio::{
-    sync::{broadcast, mpsc, watch},
-    task::JoinHandle,
+use nooboard_network::Identity;
+use std::{
+    collections::BTreeMap,
+    time::{Duration, Instant},
 };
+use tokio::sync::{broadcast, mpsc, watch};
 
+struct PeerSession {
+    session: Option<Session>,
+    dial: Option<Dial>,
+    online: watch::Sender<bool>,
+    generation: u64,
+    dial_generation: u64,
+    preferred: bool,
+    local_epoch: u64,
+    peer_epoch: Option<u64>,
+    accepting: bool,
+}
+impl PeerSession {
+    fn new() -> Self {
+        let (online, _) = watch::channel(false);
+        Self {
+            session: None,
+            dial: None,
+            online,
+            generation: 0,
+            dial_generation: 0,
+            preferred: false,
+            local_epoch: 0,
+            peer_epoch: None,
+            accepting: false,
+        }
+    }
+}
 pub(crate) struct Runtime {
+    onboarding: crate::onboarding::Onboarding,
     store: Store,
     identity: Identity,
     clipboard: Box<dyn ClipboardPort>,
-    peer: Option<Peer>,
+    config: Configuration,
+    peers: BTreeMap<String, PeerSession>,
+    listener: Listener,
     state: Status,
     status: watch::Sender<Status>,
     events: broadcast::Sender<Event>,
-    link: Option<JoinHandle<()>>,
-    instance: u64,
-    connection: Option<(Generation, mpsc::Sender<Outbound>)>,
     link_events: mpsc::Sender<LinkEvent>,
     incoming: mpsc::Receiver<LinkEvent>,
-    order: Order,
-    epoch: u64,
-    peer_epoch: Option<u64>,
+    received: Received,
+    transfers: Transfers,
+    namespace: String,
+    sequence: u64,
+    generation: u64,
     observed_revision: u64,
+    view: crate::view::ViewState,
+    pub(crate) snapshots: watch::Sender<crate::AppSnapshot>,
 }
 impl Runtime {
-    pub fn new(
+    pub async fn new(
         store: Store,
         identity: Identity,
         clipboard: Box<dyn ClipboardPort>,
-        peer: Option<Peer>,
-        state: Status,
+        config: Configuration,
         status: watch::Sender<Status>,
         events: broadcast::Sender<Event>,
-    ) -> Self {
-        let observed_revision = clipboard
-            .subscribe()
-            .borrow()
-            .as_ref()
-            .map(|s| s.revision)
-            .unwrap_or(0);
-        let (link_events, incoming) = mpsc::channel(64);
-        Self {
+    ) -> Result<Self> {
+        let initial = clipboard.read().await?;
+        let observed_revision = initial.revision;
+        let (link_events, incoming) = mpsc::channel(512);
+        let listener = Listener::bind(
+            &config.settings.listen_address,
+            config.tls(&identity)?,
+            link_events.clone(),
+        )
+        .await?;
+        let state = status.borrow().clone();
+        let namespace = nooboard_network::new_session_id()?;
+        let view = crate::view::ViewState::new(namespace.clone(), state.clone(), initial);
+        let (snapshots, _) = watch::channel(view.snapshot.clone());
+        let (sender, events_pairing) = mpsc::channel(32);
+        let endpoint = nooboard_network::pairing::Endpoint::bind(
+            &config.settings.pairing_listen_address,
+            nooboard_network::pairing::Contact {
+                device_name: config.settings.device_name.clone(),
+                certificate: identity.certificate().to_vec(),
+                sync_port: listener
+                    .address
+                    .parse::<std::net::SocketAddr>()
+                    .expect("bound address")
+                    .port(),
+            },
+            sender.clone(),
+        )
+        .await?;
+        let (_, nearby) = watch::channel(Vec::new());
+        let onboarding = crate::onboarding::Onboarding {
+            snapshot: crate::OnboardingSnapshot {
+                pairing_address: endpoint.address.clone(),
+                ..Default::default()
+            },
+            endpoint,
+            discovery: None,
+            nearby,
+            events: events_pairing,
+            sender,
+            control: None,
+            expected: None,
+        };
+        let mut runtime = Self {
+            onboarding,
             store,
             identity,
             clipboard,
-            peer,
+            config,
+            peers: BTreeMap::new(),
+            listener,
             state,
             status,
             events,
-            link: None,
-            instance: 0,
-            connection: None,
             link_events,
             incoming,
-            order: Order::default(),
-            epoch: 0,
-            peer_epoch: None,
+            received: Received::default(),
+            transfers: Transfers::default(),
+            namespace,
+            view,
+            snapshots,
+            sequence: 0,
+            generation: 0,
             observed_revision,
+        };
+        for peer in runtime.config.peers.keys().cloned().collect::<Vec<_>>() {
+            runtime.start_dial(&peer)?;
         }
+        runtime.refresh_local_network();
+        runtime.publish();
+        Ok(runtime)
     }
     pub async fn run(mut self, mut requests: mpsc::Receiver<Request>) -> Result<()> {
-        self.restart_link()?;
         let mut clipboard = self.clipboard.subscribe();
-        // Catch a copy made after construction but before the task first ran.
         clipboard.mark_changed();
-        let mut maintenance = tokio::time::interval(std::time::Duration::from_secs(30));
+        let mut maintenance = tokio::time::interval(Duration::from_secs(30));
+        let mut receipts = tokio::time::interval(Duration::from_secs(1));
+        let mut interfaces = tokio::time::interval(Duration::from_secs(5));
+        interfaces.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             let outcome = tokio::select! {
                 request = requests.recv() => {
                     let Some(request) = request else { break };
                     if matches!(request.command, Command::Stop) {
+                        for peer in self.peers.keys().cloned().collect::<Vec<_>>() { self.disconnect(&peer); }
+                        self.peers.clear();
                         let _ = request.response.send(Ok(Reply::Done));
                         break;
                     }
@@ -90,76 +173,104 @@ impl Runtime {
                 changed = clipboard.changed() => {
                     if changed.is_err() { return Err(crate::Error::Stopped); }
                     let snapshot = clipboard.borrow_and_update().clone();
-                    match snapshot {
-                        Ok(snapshot) => self.observe(snapshot, true).await,
-                        Err(error) => Err(error.into()),
-                    }
+                    match snapshot { Ok(snapshot) => self.observe(snapshot, true).await, Err(e) => Err(e.into()) }
                 }
                 Some(event) = self.incoming.recv() => self.link_event(event).await,
-                _ = maintenance.tick() => history::prune(&self.store, &self.state.settings).await,
+                Some(event) = self.onboarding.events.recv() => self.pairing_event(event).await,
+                _ = interfaces.tick() => {
+                    if self.refresh_local_network() { self.publish_snapshot(); }
+                    Ok(())
+                },
+                Ok(()) = self.onboarding.nearby.changed(), if self.onboarding.discovery.is_some() => {
+                    self.onboarding.snapshot.nearby=self.onboarding.nearby.borrow_and_update().clone();
+                    for id in self.config.peers.keys().cloned().collect::<Vec<_>>() { self.start_dial(&id)?; }
+                    self.publish_snapshot(); Ok(())
+                },
+                _ = maintenance.tick() => {
+                    let result = history::prune(&self.store, &self.config.settings).await;
+                    if matches!(result, Ok(true)) { self.emit(Event::HistoryChanged); }
+                    result.map(|_| ())
+                },
+                _ = receipts.tick() => {
+                    let expired = self.transfers.expire(Instant::now());
+                    if !expired.is_empty() {
+                        for transfer in expired { self.emit(Event::Transfer(transfer)); }
+                        self.publish();
+                    }
+                    Ok(())
+                }
             };
             if let Err(error) = outcome {
-                self.emit(Event::Fault(error.to_string()));
+                self.fault(None, error.to_string());
             }
         }
-        if let Some(task) = self.link.take() {
-            task.abort();
-            let _ = task.await;
-        }
-        self.connection = None;
-        // Dropping the native clipboard owner joins its platform worker.
         Ok(())
     }
-    fn emit(&self, event: Event) {
+    fn emit(&mut self, event: Event) {
+        match &event {
+            Event::HistoryChanged => self.view.snapshot.history_revision += 1,
+            Event::Fault { peer, message } => {
+                self.view.snapshot.fault = Some(crate::Fault {
+                    sequence: self.view.snapshot.revision + 1,
+                    peer: peer.clone(),
+                    message: message.clone(),
+                })
+            }
+            _ => {}
+        }
+        self.publish_snapshot();
         let _ = self.events.send(event);
     }
-    fn publish(&self) {
+    fn publish_snapshot(&mut self) {
+        self.view.snapshot.onboarding = self.onboarding.snapshot.clone();
+        self.snapshots.send_replace(
+            self.view
+                .publish(self.state.clone(), self.transfers.snapshot()),
+        );
+    }
+    fn fault(&mut self, peer: Option<String>, message: String) {
+        self.emit(Event::Fault { peer, message });
+    }
+    fn fresh_generation(&mut self) -> Result<u64> {
+        self.generation = self
+            .generation
+            .checked_add(1)
+            .ok_or(crate::Error::Configuration)?;
+        Ok(self.generation)
+    }
+    fn publish(&mut self) {
+        self.state.settings = self.config.settings.clone();
+        self.state.listen_address = self.listener.address.clone();
+        self.state.manual_targets = self.config.manual_targets.clone();
+        self.state.peers = self
+            .config
+            .peers
+            .values()
+            .map(|p| {
+                let session = self.peers.get(&p.noob_id);
+                crate::PeerStatus {
+                    noob_id: p.noob_id.clone(),
+                    device_name: p.device_name.clone(),
+                    fingerprint: nooboard_network::fingerprint(&p.certificate),
+                    settings: p.settings.clone(),
+                    online: session.is_some_and(|s| s.session.is_some()),
+                    accepting: session.is_some_and(|s| s.accepting),
+                }
+            })
+            .collect();
+        self.state.transfers = self.transfers.snapshot();
         self.status.send_replace(self.state.clone());
         self.emit(Event::Status(self.state.clone()));
     }
-    fn restart_link(&mut self) -> Result<()> {
-        if let Some(task) = self.link.take() {
-            task.abort();
-        }
-        self.instance = self
-            .instance
-            .checked_add(1)
-            .ok_or(crate::Error::Configuration)?;
-        self.connection = None;
-        self.peer_epoch = None;
-        self.state.online = false;
-        self.state.peer_accepting = false;
-        if let Some(peer) = &self.peer {
-            let tls = nooboard_network::TlsConfig::new(&self.identity, &peer.certificate)?;
-            self.link = Some(link::start(
-                self.instance,
-                peer.endpoint.clone(),
-                tls,
-                self.link_events.clone(),
-            ));
-        }
-        self.publish();
-        Ok(())
-    }
-    async fn send(&mut self, message: Message) -> Result<()> {
-        let sender = &self.connection.as_ref().ok_or(crate::Error::Offline)?.1;
-        let result = link::send(sender, message).await;
-        if result.is_err() {
-            self.connection = None;
-            self.state.online = false;
-            self.state.peer_accepting = false;
+    fn delivery(
+        &mut self,
+        id: &nooboard_network::MessageId,
+        peer: &str,
+        state: crate::DeliveryState,
+    ) {
+        if let Some(transfer) = self.transfers.update(id, peer, state) {
+            self.emit(Event::Transfer(transfer));
             self.publish();
-        }
-        result
-    }
-}
-impl Drop for Runtime {
-    fn drop(&mut self) {
-        self.state.online = false;
-        self.state.peer_accepting = false;
-        self.publish();
-        if let Some(task) = &self.link {
-            task.abort();
         }
     }
 }

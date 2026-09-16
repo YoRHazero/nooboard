@@ -1,6 +1,6 @@
 use crate::{
-    App, Error, Options, Result, Settings, Status,
-    model::Peer,
+    App, Error, Options, Result, Status,
+    devices::Configuration,
     ports::{ClipboardPort, Store},
     runtime::Runtime,
 };
@@ -30,7 +30,9 @@ pub(crate) async fn start(options: Options) -> Result<App> {
     })
     .await
     .map_err(|_| Error::Stopped)??;
-    start_parts(database, identity, Box::new(clipboard)).await
+    let app = start_parts(database, identity, Box::new(clipboard)).await?;
+    app.refresh_discovery().await?;
+    Ok(app)
 }
 pub(crate) async fn start_parts(
     database: Database,
@@ -38,32 +40,18 @@ pub(crate) async fn start_parts(
     clipboard: Box<dyn ClipboardPort>,
 ) -> Result<App> {
     let store = Store::new(database);
-    let (settings, peer) = store
-        .run(|db| Ok((db.setting("settings")?, db.setting("peer")?)))
-        .await?;
-    let settings: Settings = settings
-        .map(|bytes| serde_json::from_slice(&bytes))
-        .transpose()
-        .map_err(|_| Error::Configuration)?
-        .unwrap_or_default();
-    settings.validate()?;
-    let peer: Option<Peer> = peer
-        .map(|bytes| serde_json::from_slice(&bytes))
-        .transpose()
-        .map_err(|_| Error::Configuration)?;
-    if let Some(peer) = &peer {
-        nooboard_network::TlsConfig::new(&identity, &peer.certificate)?;
-    }
-    crate::history::prune(&store, &settings).await?;
+    let configuration = Configuration::load(&store, &identity).await?;
+    crate::history::prune(&store, &configuration.settings).await?;
     let initial = Status {
+        noob_id: identity.noob_id()?,
         fingerprint: identity.fingerprint(),
-        peer_fingerprint: peer
-            .as_ref()
-            .map(|p| nooboard_network::fingerprint(&p.certificate)),
-        online: false,
-        peer_accepting: false,
-        settings,
+        listen_address: configuration.settings.listen_address.clone(),
+        settings: configuration.settings.clone(),
+        peers: Vec::new(),
+        manual_targets: configuration.manual_targets.clone(),
+        transfers: Vec::new(),
     };
+    #[cfg(any(test, feature = "diagnostics"))]
     let certificate = identity.certificate().to_vec();
     let (commands, requests) = mpsc::channel(16);
     let (status_sender, status) = watch::channel(initial.clone());
@@ -72,16 +60,19 @@ pub(crate) async fn start_parts(
         store,
         identity,
         clipboard,
-        peer,
-        initial,
+        configuration,
         status_sender,
         events.clone(),
-    );
+    )
+    .await?;
+    let snapshots = runtime.snapshots.subscribe();
     let task = tokio::spawn(runtime.run(requests));
     Ok(App {
         commands,
         status,
+        snapshots,
         events,
+        #[cfg(any(test, feature = "diagnostics"))]
         certificate,
         task: Some(task),
     })

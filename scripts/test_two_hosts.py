@@ -94,26 +94,38 @@ def main():
         remote = Probe(["ssh", "-x", "-T", args.host, remote_command])
         peers.append(remote)
 
+        listener = remote if args.listener == "remote" else local
+        listener.call("listen", address=args.address)
+
+        def pair_one(owner, other, address):
+            owner.call("trust_peer", certificate=other.identity["certificate"],
+                       fingerprint=other.identity["fingerprint"],
+                       device_name=other.identity["device_name"], address=address)
+            owner.call("targets", targets=[other.identity["noob_id"]])
+
         def pair_remote():
-            remote.call("pair", certificate=local.identity["certificate"],
-                        fingerprint=local.identity["fingerprint"], endpoint={"Listen" if args.listener == "remote" else "Connect": args.address})
+            pair_one(remote, local, args.address if args.listener == "local" else None)
 
         pair_remote()
-        local.call("pair", certificate=remote.identity["certificate"],
-                   fingerprint=remote.identity["fingerprint"], endpoint={"Connect" if args.listener == "remote" else "Listen": args.address})
+        pair_one(local, remote, args.address if args.listener == "remote" else None)
+
+        def state(owner, other):
+            return next((p for p in owner.call("status")["peers"]
+                         if p["noob_id"] == other.identity["noob_id"]), {})
 
         def ready():
-            return all(p.call("status")["online"] and p.call("status")["peer_accepting"] for p in peers)
+            return all(state(owner, other).get("online") and state(owner, other).get("accepting")
+                       for owner, other in [(local, remote), (remote, local)])
 
         eventually(ready, "two-way TLS handshake/readiness")
         transfers = []
 
         def send(sender, receiver, text):
             sender.call("copy", text=text)
-            sequence = sender.call("send")
+            message_id = sender.call("send")
             eventually(lambda: receiver.call("read") == digest(text), "native clipboard application")
-            expected = f"Applied {{ sequence: {sequence} }}"
-            eventually(lambda: expected in sender.collect(), "remote Applied acknowledgement")
+            eventually(lambda: any(t["id"] == message_id and all(d["state"] == "Applied" for d in t["targets"])
+                                   for t in sender.call("status")["transfers"]), "remote Applied acknowledgement")
             transfers.append(digest(text))
 
         for index, text in enumerate([" 中文 🦀\r\nline\n  ", "长文本🦀" * 60000, "x" * (1 << 20)]):
@@ -121,6 +133,9 @@ def main():
             send(remote, local, ("回" + str(index) + "\n") if index == 2 else text[::-1])
 
         for peer in peers:
+            for device in peer.call("status")["peers"]:
+                device["settings"]["auto_send"] = True
+                peer.call("configure_peer", noob_id=device["noob_id"], settings=device["settings"])
             settings = peer.call("status")["settings"]
             settings["mode"] = "Automatic"
             peer.call("settings", settings=settings)
@@ -133,12 +148,13 @@ def main():
         time.sleep(0.4)
         for p, offset in zip(peers, before):
             p.collect()
-            assert sum(e.startswith("Sent {") for e in p.events[offset:]) == 1, "clipboard echo loop"
+            sent_ids = {json.dumps(e["Transfer"]["id"], sort_keys=True) for e in p.events[offset:] if "Transfer" in e}
+            assert len(sent_ids) == 1, "clipboard echo loop"
 
         settings = remote.call("status")["settings"]
         settings["paused"] = True
         remote.call("settings", settings=settings)
-        eventually(lambda: not local.call("status")["peer_accepting"], "pause advertisement")
+        eventually(lambda: not state(local, remote).get("accepting"), "pause advertisement")
         previous = remote.call("read")
         local.call("copy", text="paused content must not replay")
         time.sleep(0.3)
@@ -149,8 +165,8 @@ def main():
         time.sleep(0.3)
         assert remote.call("read") == previous, "paused text replayed"
 
-        remote.call("unpair")
-        eventually(lambda: not local.call("status")["online"], "disconnect")
+        remote.call("unpair", noob_id=local.identity["noob_id"])
+        eventually(lambda: not state(local, remote).get("online"), "disconnect")
         local.call("copy", text="offline content must not replay")
         time.sleep(0.3)
         pair_remote()

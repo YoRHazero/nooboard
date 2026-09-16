@@ -1,0 +1,187 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.93.0 --profile minimal
+
+      - name: Check release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/check_release_version.mjs
+
+      - name: Test release tooling
+        run: node --test scripts/check_release_version.test.mjs scripts/publish_release.test.mjs
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+            artifact: nooboard-windows-x64
+            paths: target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+          - name: macOS Apple Silicon
+            os: macos-14
+            target: aarch64-apple-darwin
+            bundles: dmg
+            artifact: nooboard-macos-arm64
+            paths: target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          - name: Ubuntu x64
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,appimage
+            artifact: nooboard-linux-x64
+            paths: |
+              target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+              target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.93.0 --profile minimal --component clippy,rustfmt --target ${{ matrix.target }}
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils libfuse2t64
+
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Check desktop formatting
+        working-directory: apps/desktop
+        run: npm run format:check
+
+      - name: Check translations
+        working-directory: apps/desktop
+        run: npm run i18n:check
+
+      - name: Test desktop adapters
+        working-directory: apps/desktop
+        run: npm test
+
+      # Tauri's custom-protocol feature needs dist during the Rust checks too.
+      - name: Build desktop frontend
+        working-directory: apps/desktop
+        run: npm run build
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check module boundaries
+        run: python scripts/check_architecture.py
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      - name: Test backend
+        run: cargo test --workspace --all-features --locked
+
+      # No release inputs: this step builds only. The publish job owns the Release.
+      - name: Build installers
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && '-' || '' }}
+        with:
+          projectPath: apps/desktop
+          uploadUpdaterJson: false
+          args: --ci --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
+
+      - name: Store installers for publication
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.paths }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+          overwrite: true
+
+  publish:
+    name: Publish complete release
+    needs: [validate, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download installers from this workflow run
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nooboard-*
+          path: release-artifacts
+          merge-multiple: false
+
+      - name: Upload all installers, then publish
+        uses: actions/github-script@v8
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const path = require('node:path');
+            const { publishRelease } = await import(pathToFileURL(path.join(process.env.GITHUB_WORKSPACE, 'scripts/publish_release.mjs')).href);
+            const url = await publishRelease({
+              github,
+              repo: context.repo,
+              tag: process.env.RELEASE_TAG,
+              artifactRoot: path.join(process.env.GITHUB_WORKSPACE, 'release-artifacts'),
+              body: [
+                '从 Assets 下载适合你设备的安装包 / Download the installer for your device from Assets.',
+                '',
+                '- Windows x64: `-setup.exe`',
+                '- macOS Apple Silicon: `_aarch64.dmg`',
+                '- Ubuntu 24.04 x64: `.deb` / `.AppImage`',
+                '',
+                'Windows 安装包尚未签名；macOS 使用临时签名，尚未公证。',
+                'Windows installers are unsigned; macOS builds are ad-hoc signed and not notarized.',
+              ].join('\n'),
+            });
+            core.info(`Published ${url}`);

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-send"
+description = "Enables the desktop_send command without any pre-configured scope."
+commands.allow = ["desktop_send"]
+
+[[permission]]
+identifier = "deny-desktop-send"
+description = "Denies the desktop_send command without any pre-configured scope."
+commands.deny = ["desktop_send"]

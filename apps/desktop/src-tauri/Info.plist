@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>NSLocalNetworkUsageDescription</key><string>nooboard 使用局域网发现你的设备，并在你确认配对后共享剪贴板。</string>
+<key>NSBonjourServices</key><array><string>_nooboard._tcp</string></array>
+</dict></plist>

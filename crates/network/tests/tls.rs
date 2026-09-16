@@ -1,4 +1,4 @@
-use nooboard_network::{Identity, Message, TlsConfig};
+use nooboard_network::{Identity, Message, MessageId, TlsConfig};
 use tokio::net::TcpListener;
 
 #[tokio::test]
@@ -19,7 +19,10 @@ async fn mutual_authentication_and_text_delivery() {
     });
     let mut client = ac.connect(&address).await.unwrap();
     let message = Message::Text {
-        sequence: 1,
+        id: MessageId {
+            session: "a".repeat(32),
+            sequence: 1,
+        },
         target_epoch: 1,
         text: " 中文 🦀\n ".into(),
     };
@@ -53,4 +56,78 @@ async fn client_rejects_an_unconfirmed_server_certificate() {
     let server = tokio::spawn(async move { bc.accept(listener.accept().await.unwrap().0).await });
     assert!(ac.connect(&address).await.is_err());
     assert!(server.await.unwrap().is_err());
+}
+
+#[test]
+fn noob_id_survives_certificate_reissue_and_secret_restore() {
+    let key = rcgen::KeyPair::generate().unwrap();
+    let first = rcgen::CertificateParams::new(vec!["nooboard.local".into()])
+        .unwrap()
+        .self_signed(&key)
+        .unwrap();
+    let second = rcgen::CertificateParams::new(vec!["another-name.local".into()])
+        .unwrap()
+        .self_signed(&key)
+        .unwrap();
+    assert_ne!(
+        nooboard_network::fingerprint(first.der()),
+        nooboard_network::fingerprint(second.der())
+    );
+    assert_eq!(
+        nooboard_network::noob_id(first.der()).unwrap(),
+        nooboard_network::noob_id(second.der()).unwrap()
+    );
+    let identity = Identity::generate().unwrap();
+    assert_eq!(identity.noob_id().unwrap().len(), 64);
+    assert_eq!(
+        identity.noob_id().unwrap(),
+        Identity::from_secret(&identity.export_secret())
+            .unwrap()
+            .noob_id()
+            .unwrap()
+    );
+    assert_ne!(
+        identity.noob_id().unwrap(),
+        Identity::generate().unwrap().noob_id().unwrap()
+    );
+    assert_ne!(
+        nooboard_network::new_session_id().unwrap(),
+        nooboard_network::new_session_id().unwrap()
+    );
+    assert!(nooboard_network::noob_id(b"not a certificate").is_err());
+}
+#[tokio::test]
+async fn one_listener_authenticates_two_different_peers_concurrently() {
+    let server = Identity::generate().unwrap();
+    let a = Identity::generate().unwrap();
+    let b = Identity::generate().unwrap();
+    let trust = TlsConfig::with_peers(
+        &server,
+        &[a.certificate().to_vec(), b.certificate().to_vec()],
+    )
+    .unwrap();
+    let expected = [a.noob_id().unwrap(), b.noob_id().unwrap()]
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap().to_string();
+    let accept = tokio::spawn(async move {
+        let mut jobs = tokio::task::JoinSet::new();
+        for _ in 0..2 {
+            let tcp = listener.accept().await.unwrap().0;
+            let trust = trust.clone();
+            jobs.spawn(async move { trust.accept(tcp).await.unwrap() });
+        }
+        let mut ids = std::collections::BTreeSet::new();
+        while let Some(result) = jobs.join_next().await {
+            ids.insert(result.unwrap().peer_id().to_owned());
+        }
+        ids
+    });
+    let ac = TlsConfig::new(&a, server.certificate()).unwrap();
+    let bc = TlsConfig::new(&b, server.certificate()).unwrap();
+    let (one, two) = tokio::join!(ac.connect(&address), bc.connect(&address));
+    assert_eq!(one.unwrap().peer_id(), server.noob_id().unwrap());
+    assert_eq!(two.unwrap().peer_id(), server.noob_id().unwrap());
+    assert_eq!(accept.await.unwrap(), expected);
 }

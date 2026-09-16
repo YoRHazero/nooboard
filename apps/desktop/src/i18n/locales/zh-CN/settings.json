@@ -1,0 +1,15 @@
+{
+  "textSync": "文字同步",
+  "mode": "发送模式",
+  "receive": "允许接收",
+  "history": "记录文字历史",
+  "localOnly": "仅保存在本机",
+  "retention": "保留时间",
+  "retentionLabel": "历史保留时间",
+  "limit": "记录上限",
+  "limitLabel": "历史记录上限",
+  "interface": "界面",
+  "appearance": "外观",
+  "appearanceLabel": "界面外观",
+  "reduceMotion": "减少动态效果"
+}

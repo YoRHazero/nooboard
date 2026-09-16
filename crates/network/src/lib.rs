@@ -1,10 +1,13 @@
 //! Authenticated TLS transport and bounded wire messages. No clipboard or storage access.
+pub mod discovery;
 mod identity;
+pub mod local;
+pub mod pairing;
 mod protocol;
 mod transport;
-pub use identity::{Identity, fingerprint};
-pub use protocol::{MAX_TEXT_BYTES, Message, PROTOCOL_VERSION};
-pub use transport::{Connection, TlsConfig};
+pub use identity::{Identity, fingerprint, new_session_id, noob_id};
+pub use protocol::{MAX_TEXT_BYTES, Message, MessageId, PROTOCOL_VERSION, valid_device_name};
+pub use transport::{Connection, ConnectionReceiver, ConnectionSender, TlsConfig};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

@@ -1,17 +1,29 @@
 //! UI-independent application backend. Only this crate coordinates the other libraries.
 mod app;
 mod bootstrap;
+mod devices;
 #[cfg(feature = "diagnostics")]
 pub mod diagnostics;
 mod history;
 mod link;
+mod local_network;
+pub use local_network::{LocalAddress, LocalNetwork};
 mod model;
+mod onboarding;
+pub use onboarding::{
+    NearbyDevice, OnboardingSnapshot, PairingError, PairingFailure, PairingSession, PairingStage,
+};
 mod ports;
 mod runtime;
 mod sync;
+mod transfers;
+mod view;
 pub use app::App;
-pub use model::{Endpoint, Event, HistoryEntry, Mode, Options, PairRequest, Settings, Status};
-pub use nooboard_network::fingerprint as certificate_fingerprint;
+pub(crate) use model::VerifiedPeer;
+pub use model::{Event, HistoryEntry, Mode, Options, PeerSettings, PeerStatus, Settings, Status};
+pub use nooboard_network::{MessageId, valid_device_name};
+pub use transfers::{Delivery, DeliveryState, Transfer};
+pub use view::{ActivityKind, ActivityRecord, AppSnapshot, ClipboardKind, CurrentClipboard, Fault};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -27,6 +39,10 @@ pub enum Error {
     Stopped,
     #[error("peer is offline or not ready to receive")]
     Offline,
+    #[error("no send targets selected")]
+    NoTargets,
+    #[error("too many pending transfers or paired devices")]
+    Busy,
     #[error("synchronization is paused")]
     Paused,
     #[error("clipboard does not contain eligible text")]

@@ -1,0 +1,8 @@
+{
+  "deliveryList": "逐设备发送结果",
+  "targetsTitle": "手动发送到",
+  "selectLabel": "选择 {{name}} {{id}}",
+  "saveSelection": "保存选择",
+  "result": "发送结果",
+  "unconfirmedHelp": "部分设备未确认接收，本次内容不会自动重发。"
+}

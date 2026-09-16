@@ -1,0 +1,257 @@
+.button,
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 550;
+  padding: 10px 14px;
+  min-height: 36px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition:
+    background 0.16s,
+    transform 0.16s;
+}
+.button:not(:disabled):active,
+.icon-button:not(:disabled):active {
+  transform: translateY(1px);
+}
+.button--primary {
+  color: var(--on-accent);
+  background: var(--accent);
+}
+.button--primary:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+.button--secondary {
+  background: transparent;
+  border-color: var(--line);
+}
+.button--secondary:hover:not(:disabled),
+.button--quiet:hover:not(:disabled),
+.icon-button:hover:not(:disabled) {
+  background: var(--hover);
+}
+.button--quiet,
+.icon-button {
+  background: transparent;
+  color: var(--muted);
+}
+.button--danger {
+  background: var(--danger);
+  color: var(--surface);
+}
+.icon-button {
+  padding: 8px;
+  width: 34px;
+  min-height: 32px;
+}
+.text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 3px 0;
+  font-size: 11px;
+}
+.text-button:hover {
+  color: var(--accent);
+}
+.button-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  padding: 3px;
+  border-radius: 7px;
+}
+.segmented button {
+  border: 0;
+  background: none;
+  padding: 6px 15px;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  transition:
+    background 0.16s,
+    color 0.16s;
+}
+.segmented button[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--surface);
+}
+.field-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.8;
+  margin-top: 10px;
+}
+.toggle {
+  border: 0;
+  width: 35px;
+  height: 21px;
+  border-radius: 20px;
+  padding: 3px;
+  display: inline-flex;
+  background: var(--line);
+  transition: background 0.16s;
+}
+.toggle > span {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 1px 3px #0002;
+  transition: transform 0.18s;
+}
+.toggle[aria-checked='true'] {
+  background: var(--accent);
+}
+.toggle[aria-checked='true'] > span {
+  transform: translateX(14px);
+}
+.empty-state {
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+  gap: 12px;
+  padding: 30px;
+}
+.empty-state__icon {
+  color: var(--faint);
+  margin-bottom: 8px;
+}
+.empty-state h3 {
+  font-size: 16px;
+  font-weight: 550;
+}
+.empty-state p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+.dialog {
+  border: 0;
+  border-radius: 16px;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  max-width: min(480px, calc(100vw - 32px));
+  width: 100%;
+  max-height: calc(100dvh - 48px);
+  box-shadow: var(--shadow);
+}
+.dialog::backdrop {
+  background: #20241b55;
+  backdrop-filter: blur(4px);
+}
+.dialog[open] .dialog__surface {
+  animation: dialog-enter 0.16s ease-out;
+}
+.dialog__surface {
+  background: var(--paper);
+  padding: 25px;
+}
+.dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.dialog h2 {
+  font-size: 19px;
+  font-weight: 600;
+}
+.dialog-copy {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.9;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 26px;
+}
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-size: 12px;
+  margin-top: 21px;
+}
+input:not([type='checkbox']):not([type='file']),
+select {
+  min-width: 0;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+input::placeholder {
+  color: var(--faint);
+}
+.form-error {
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.8;
+  margin-top: 15px;
+}
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+input[type='checkbox'] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+@keyframes dialog-enter {
+  from {
+    opacity: 0;
+    /* Keep the animated surface inside the dialog's scrollable bounds. */
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (pointer: coarse) {
+  .button,
+  .icon-button {
+    min-height: 42px;
+  }
+  .icon-button {
+    min-width: 42px;
+  }
+  .toggle {
+    position: relative;
+  }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    inset: -12px -5px;
+  }
+  input:not([type='checkbox']):not([type='file']),
+  select {
+    font-size: 16px;
+  }
+}

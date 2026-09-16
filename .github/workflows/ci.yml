@@ -18,7 +18,7 @@ jobs:
       matrix:
         os: [macos-14, windows-2022, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
         with:
@@ -27,7 +27,29 @@ jobs:
         run: rustup toolchain install 1.93.0 --profile minimal --component clippy,rustfmt
       - name: Install isolated Linux session tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb sway dbus-x11 gnome-keyring
+        run: sudo apt-get update && sudo apt-get install -y xvfb sway dbus-x11 gnome-keyring libwebkit2gtk-4.1-dev build-essential libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Test release tooling
+        run: node --test scripts/check_release_version.test.mjs scripts/publish_release.test.mjs
+      - name: Check desktop formatting
+        working-directory: apps/desktop
+        run: npm run format:check
+      - name: Check translations
+        working-directory: apps/desktop
+        run: npm run i18n:check
+      - name: Test desktop adapters
+        working-directory: apps/desktop
+        run: npm test
+      - name: Build desktop frontend
+        working-directory: apps/desktop
+        run: npm run build
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Check module boundaries
@@ -39,10 +61,19 @@ jobs:
       - name: Native clipboard smoke test (runner session)
         if: runner.os != 'Linux'
         run: cargo test -p nooboard-clipboard --all-features --locked -- --ignored --test-threads=1
+      - name: mDNS discovery, rename and withdrawal (multicast loopback)
+        if: runner.os == 'macOS'
+        run: cargo test -p nooboard-network --locked -- --ignored
       - name: X11, Wayland and Secret Service smoke tests
         if: runner.os == 'Linux'
         run: bash scripts/test_linux_native.sh
+      - name: Build native desktop executable
+        working-directory: apps/desktop
+        run: npm run tauri -- build --no-bundle
       - name: Build backend harness
         run: cargo build -p nooboard-core --example backend --locked
       - name: Build native integration harness
         run: cargo build -p nooboard-core --example link_probe --features diagnostics --locked
+      - name: Three native backend instances (isolated pasteboards)
+        if: runner.os == 'macOS'
+        run: python3 -B scripts/test_three_instances.py

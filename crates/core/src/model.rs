@@ -9,6 +9,7 @@ pub enum Mode {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
 pub struct Settings {
     pub mode: Mode,
     pub receive: bool,
@@ -16,6 +17,10 @@ pub struct Settings {
     pub history: bool,
     pub max_history_entries: u32,
     pub history_days: u32,
+    pub device_name: String,
+    pub listen_address: String,
+    pub pairing_listen_address: String,
+    pub discoverable: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -26,6 +31,10 @@ impl Default for Settings {
             history: true,
             max_history_entries: 1000,
             history_days: 30,
+            device_name: "Nooboard".into(),
+            listen_address: "0.0.0.0:24816".into(),
+            pairing_listen_address: "0.0.0.0:24817".into(),
+            discoverable: true,
         }
     }
 }
@@ -35,6 +44,12 @@ impl Settings {
             || self.max_history_entries > 100_000
             || self.history_days == 0
             || self.history_days > 3650
+            || !nooboard_network::valid_device_name(&self.device_name)
+            || self.listen_address.parse::<std::net::SocketAddr>().is_err()
+            || self
+                .pairing_listen_address
+                .parse::<std::net::SocketAddr>()
+                .is_err()
         {
             Err(crate::Error::Configuration)
         } else {
@@ -52,40 +67,76 @@ pub struct Options {
     pub profile: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum Endpoint {
-    Listen(String),
-    Connect(String),
+pub struct PeerSettings {
+    /// Optional dial address; peers without one may still connect to our listener.
+    pub address: Option<String>,
+    pub auto_send: bool,
 }
-#[derive(Clone, Serialize, Deserialize)]
-pub(crate) struct Peer {
-    pub certificate: Vec<u8>,
-    pub endpoint: Endpoint,
+impl PeerSettings {
+    pub(crate) fn validate(&self) -> crate::Result<()> {
+        if self.address.as_ref().is_some_and(|a| {
+            a.len() > 512
+                || a.chars().any(|c| c.is_whitespace() || c.is_control())
+                || a.rsplit_once(':').is_none_or(|(host, port)| {
+                    host.is_empty() || port.parse::<u16>().map_or(true, |p| p == 0)
+                })
+        }) {
+            Err(crate::Error::Configuration)
+        } else {
+            Ok(())
+        }
+    }
 }
-pub struct PairRequest {
+#[derive(Clone)]
+pub struct VerifiedPeer {
     pub certificate: Vec<u8>,
-    /// SHA-256 shown on the other device, checked independently before confirmation.
+    /// Full certificate SHA-256 confirmed out of band, independently of the address.
     pub confirmed_fingerprint: String,
-    pub endpoint: Endpoint,
+    pub device_name: String,
+    pub address: Option<String>,
 }
-#[derive(Clone, Debug)]
-pub struct Status {
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PeerStatus {
+    pub noob_id: String,
+    pub device_name: String,
     pub fingerprint: String,
-    pub peer_fingerprint: Option<String>,
+    pub settings: PeerSettings,
     pub online: bool,
-    pub peer_accepting: bool,
-    pub settings: Settings,
+    pub accepting: bool,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Status {
+    pub noob_id: String,
+    pub fingerprint: String,
+    /// Actual bound address, including the selected port when configured with port 0.
+    pub listen_address: String,
+    pub settings: Settings,
+    pub peers: Vec<PeerStatus>,
+    pub manual_targets: Vec<String>,
+    pub transfers: Vec<crate::Transfer>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Event {
     Status(Status),
-    Sent { sequence: u64 },
-    Applied { sequence: u64 },
-    Rejected { sequence: u64 },
-    Received { bytes: usize },
+    Copied {
+        revision: u64,
+        bytes: usize,
+    },
+    /// Creation and subsequent per-target updates share the same batch message ID.
+    Transfer(crate::Transfer),
+    Received {
+        source: String,
+        device_name: String,
+        id: nooboard_network::MessageId,
+        bytes: usize,
+    },
     HistoryChanged,
-    Fault(String),
+    Fault {
+        peer: Option<String>,
+        message: String,
+    },
 }
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Serialize, PartialEq, Eq)]
 pub struct HistoryEntry {
     pub id: i64,
     pub text: String,
@@ -103,12 +154,12 @@ impl std::fmt::Debug for HistoryEntry {
     }
 }
 impl From<nooboard_storage::HistoryEntry> for HistoryEntry {
-    fn from(entry: nooboard_storage::HistoryEntry) -> Self {
+    fn from(e: nooboard_storage::HistoryEntry) -> Self {
         Self {
-            id: entry.id,
-            text: entry.text,
-            source: entry.source,
-            copied_at_ms: entry.copied_at_ms,
+            id: e.id,
+            text: e.text,
+            source: e.source,
+            copied_at_ms: e.copied_at_ms,
         }
     }
 }

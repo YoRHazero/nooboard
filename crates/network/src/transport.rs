@@ -3,7 +3,7 @@ use rustls::{
     ClientConfig, RootCertStore, ServerConfig,
     pki_types::{CertificateDer, ServerName},
 };
-use std::{sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio::{
     io::{ReadHalf, WriteHalf},
     net::TcpStream,
@@ -16,19 +16,31 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const READ_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// Trust is configured with one explicitly confirmed peer certificate.
+/// Only explicitly confirmed certificates may establish business connections.
 /// All chain and CertificateVerify checks use rustls' built-in WebPKI verifiers.
 #[derive(Clone)]
 pub struct TlsConfig {
     client: Arc<ClientConfig>,
     server: Arc<ServerConfig>,
-    expected_peer: Vec<u8>,
+    peers: BTreeMap<String, Vec<u8>>,
 }
 impl TlsConfig {
     pub fn new(identity: &Identity, trusted_certificate: &[u8]) -> Result<Self> {
+        Self::with_peers(identity, &[trusted_certificate.to_vec()])
+    }
+    pub fn with_peers(identity: &Identity, certificates: &[Vec<u8>]) -> Result<Self> {
+        let mut peers = BTreeMap::new();
+        for certificate in certificates {
+            let id = crate::noob_id(certificate)?;
+            if peers.insert(id, certificate.clone()).is_some() {
+                return Err(Error::Identity);
+            }
+        }
         let provider = Arc::new(rustls::crypto::ring::default_provider());
         let mut roots = RootCertStore::empty();
-        roots.add(CertificateDer::from(trusted_certificate.to_vec()))?;
+        for certificate in certificates {
+            roots.add(CertificateDer::from(certificate.clone()))?;
+        }
         let mut client = ClientConfig::builder_with_provider(provider.clone())
             .with_protocol_versions(&[&rustls::version::TLS13])?
             .with_root_certificates(roots.clone())
@@ -43,7 +55,7 @@ impl TlsConfig {
             .with_protocol_versions(&[&rustls::version::TLS13])?
             .with_client_cert_verifier(verifier)
             .with_single_cert(vec![identity.cert.clone()], identity.key.clone_key())?;
-        client.alpn_protocols = vec![b"nooboard/1".to_vec()];
+        client.alpn_protocols = vec![b"nooboard/2".to_vec()];
         server.alpn_protocols = client.alpn_protocols.clone();
         // Sessions are always freshly authenticated; unpairing cannot leave resumed sessions.
         client.resumption = rustls::client::Resumption::disabled();
@@ -51,10 +63,20 @@ impl TlsConfig {
         Ok(Self {
             client: Arc::new(client),
             server: Arc::new(server),
-            expected_peer: trusted_certificate.to_vec(),
+            peers,
         })
     }
     pub async fn connect(&self, address: &str) -> Result<Connection> {
+        if self.peers.len() != 1 {
+            return Err(Error::Identity);
+        }
+        self.connect_peer(address, self.peers.keys().next().expect("one peer"))
+            .await
+    }
+    pub async fn connect_peer(&self, address: &str, expected_id: &str) -> Result<Connection> {
+        if !self.peers.contains_key(expected_id) {
+            return Err(Error::Identity);
+        }
         tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
             let tcp = TcpStream::connect(address).await?;
             tcp.set_nodelay(true)?;
@@ -62,7 +84,11 @@ impl TlsConfig {
             let tls = TlsConnector::from(self.client.clone())
                 .connect(name, tcp)
                 .await?;
-            self.finish(TlsStream::Client(tls)).await
+            let connection = self.finish(TlsStream::Client(tls)).await?;
+            if connection.peer_id != expected_id {
+                return Err(Error::Identity);
+            }
+            Ok(connection)
         })
         .await
         .map_err(|_| Error::Timeout)?
@@ -78,15 +104,17 @@ impl TlsConfig {
     }
     async fn finish(&self, mut stream: TlsStream<TcpStream>) -> Result<Connection> {
         let state = stream.get_ref().1;
-        if state.alpn_protocol() != Some(b"nooboard/1".as_slice())
-            || state
-                .peer_certificates()
-                .and_then(|c| c.first())
-                .map(|c| c.as_ref())
-                != Some(self.expected_peer.as_slice())
+        let certificate = state
+            .peer_certificates()
+            .and_then(|c| c.first())
+            .ok_or(Error::Identity)?;
+        let peer_id = crate::noob_id(certificate)?;
+        if state.alpn_protocol() != Some(b"nooboard/2".as_slice())
+            || self.peers.get(&peer_id).map(Vec::as_slice) != Some(certificate.as_ref())
         {
             return Err(Error::Identity);
         }
+        let peer_fingerprint = crate::fingerprint(certificate);
         protocol::write(
             &mut stream,
             &Message::Hello {
@@ -105,9 +133,10 @@ impl TlsConfig {
         let (sender, incoming) = mpsc::channel(16);
         let task = tokio::spawn(read_messages(reader, sender));
         Ok(Connection {
-            writer,
-            incoming,
-            task,
+            sender: ConnectionSender { writer },
+            receiver: ConnectionReceiver { incoming, task },
+            peer_id,
+            peer_fingerprint,
         })
     }
 }
@@ -128,15 +157,32 @@ async fn read_messages(
     }
 }
 pub struct Connection {
-    writer: WriteHalf<TlsStream<TcpStream>>,
-    incoming: mpsc::Receiver<Result<Message>>,
-    task: JoinHandle<()>,
+    sender: ConnectionSender,
+    receiver: ConnectionReceiver,
+    peer_id: String,
+    peer_fingerprint: String,
 }
 impl Connection {
-    /// Cancel-safe: the framing reader is owned by its dedicated task.
-    pub async fn receive(&mut self) -> Result<Message> {
-        self.incoming.recv().await.ok_or(Error::Closed)?
+    pub fn peer_id(&self) -> &str {
+        &self.peer_id
     }
+    pub fn peer_fingerprint(&self) -> &str {
+        &self.peer_fingerprint
+    }
+    pub fn into_split(self) -> (ConnectionSender, ConnectionReceiver) {
+        (self.sender, self.receiver)
+    }
+    pub async fn receive(&mut self) -> Result<Message> {
+        self.receiver.receive().await
+    }
+    pub async fn send(&mut self, message: &Message) -> Result<()> {
+        self.sender.send(message).await
+    }
+}
+pub struct ConnectionSender {
+    writer: WriteHalf<TlsStream<TcpStream>>,
+}
+impl ConnectionSender {
     /// A timeout or cancellation invalidates the stream. Drop it before reconnecting.
     pub async fn send(&mut self, message: &Message) -> Result<()> {
         tokio::time::timeout(WRITE_TIMEOUT, protocol::write(&mut self.writer, message))
@@ -144,7 +190,17 @@ impl Connection {
             .map_err(|_| Error::Timeout)?
     }
 }
-impl Drop for Connection {
+pub struct ConnectionReceiver {
+    incoming: mpsc::Receiver<Result<Message>>,
+    task: JoinHandle<()>,
+}
+impl ConnectionReceiver {
+    /// Cancel-safe: the framing reader is owned by its dedicated task.
+    pub async fn receive(&mut self) -> Result<Message> {
+        self.incoming.recv().await.ok_or(Error::Closed)?
+    }
+}
+impl Drop for ConnectionReceiver {
     fn drop(&mut self) {
         self.task.abort();
     }

@@ -1,0 +1,220 @@
+.app-main--home .main-inner {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.app-main--home .page-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.app-main--home .page-header {
+  margin-bottom: 25px;
+}
+.home-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.home-overview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 27px;
+  font-size: 11px;
+}
+.home-overview__status {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.home-overview__detail {
+  color: var(--muted);
+}
+.home-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.home-status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.home-status.is-online {
+  color: var(--green);
+}
+.home-status.is-online i {
+  background: var(--green);
+  box-shadow: 0 0 0 3px var(--green-soft);
+}
+.home-receipt {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.home-receipt.is-pending {
+  color: var(--accent);
+}
+.home-receipt.is-rejected,
+.home-receipt.is-unconfirmed {
+  color: var(--danger);
+}
+.home-stage {
+  position: relative;
+  display: grid;
+  align-items: center;
+  min-height: 390px;
+  flex: 1;
+  isolation: isolate;
+}
+.home-stage__scene {
+  position: relative;
+  width: 94%;
+  margin-inline: auto;
+  height: clamp(340px, calc(100dvh - 240px), 680px);
+}
+.stage-target {
+  position: absolute;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 45%;
+  z-index: 1;
+  -webkit-tap-highlight-color: transparent;
+}
+.stage-target--board {
+  z-index: 2;
+  border-radius: 25%;
+}
+.stage-target--mailbox {
+  border-radius: 30%;
+}
+.stage-target:focus-visible {
+  outline: none;
+}
+.stage-target:focus-visible .stage-target__label strong {
+  text-decoration: underline 2px;
+  text-underline-offset: 5px;
+}
+.stage-target__label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 18px);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 170px;
+  text-align: center;
+  transition:
+    color 0.18s,
+    translate 0.18s;
+}
+.stage-target--bird .stage-target__label {
+  top: auto;
+  bottom: calc(100% - 14px);
+}
+.stage-target__label strong {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 550;
+}
+.stage-target__label strong svg {
+  color: var(--faint);
+  transition:
+    color 0.18s,
+    translate 0.18s;
+}
+.stage-target:is(:hover, :focus-visible, .is-selected) .stage-target__label strong svg {
+  color: currentColor;
+  translate: 1px -1px;
+}
+.stage-target__label small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.stage-target:hover .stage-target__label,
+.stage-target:focus-visible .stage-target__label,
+.stage-target.is-selected .stage-target__label {
+  color: var(--accent);
+  translate: 0 -3px;
+}
+@media (max-width: 1040px) {
+  .home-overview__status {
+    gap: 8px 12px;
+  }
+  .home-stage__scene {
+    height: clamp(330px, calc(100dvh - 250px), 600px);
+  }
+}
+@media (max-width: 760px) {
+  .home-overview {
+    align-items: flex-start;
+  }
+  .home-overview__status {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .home-stage {
+    min-height: 330px;
+  }
+  .home-stage__scene {
+    height: 370px;
+  }
+  .stage-target__label {
+    max-width: 120px;
+  }
+  .stage-target__label strong {
+    font-size: 11px;
+  }
+}
+@media (max-width: 520px) {
+  .app-main--home .page-header {
+    margin-bottom: 18px;
+  }
+  .home-overview__detail {
+    font-size: 10px;
+    line-height: 1.7;
+  }
+  .home-overview {
+    gap: 10px;
+  }
+  .home-stage__scene {
+    height: 310px;
+  }
+  .home-stage {
+    min-height: 330px;
+  }
+  .stage-target__label {
+    max-width: 110px;
+  }
+  .stage-target--board .stage-target__label {
+    left: 40%;
+  }
+  .stage-target__label strong {
+    font-size: 10px;
+    gap: 3px;
+  }
+  .stage-target__label small {
+    font-size: 9px;
+  }
+  .stage-target--bird .stage-target__label {
+    bottom: calc(100% + 22px);
+  }
+  .home-receipt {
+    font-size: 10px;
+  }
+}
