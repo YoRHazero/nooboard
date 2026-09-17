@@ -113,4 +113,10 @@ impl Native {
             Self::Wayland(c) => c.write(text),
         }
     }
+    pub fn write_content(&mut self, content: &crate::Content) -> Result<Snapshot> {
+        match self {
+            Self::X11(c) => c.write_content(content),
+            Self::Wayland(c) => c.write_content(content),
+        }
+    }
 }

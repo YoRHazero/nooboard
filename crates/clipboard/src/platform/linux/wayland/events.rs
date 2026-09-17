@@ -19,7 +19,7 @@ use wayland_protocols_wlr::data_control::v1::client::{
 };
 
 pub(super) struct Payload {
-    pub bytes: Arc<Vec<u8>>,
+    pub formats: super::super::formats::Payload,
     pub marker: String,
 }
 pub(super) struct Offered {
@@ -108,8 +108,8 @@ macro_rules! dispatch_protocol {
             fn event(state: &mut Self, proxy: &$source::$source_ty, event: $source::Event, data: &Arc<Payload>, _: &Connection, _: &QueueHandle<Self>) {
                 match event {
                     $source::Event::Send { mime_type, fd } => {
-                        if state.writers.len() < 8 && (super::super::formats::UTF8_TYPES.contains(&mime_type.as_str()) || mime_type == data.marker)
-                            && let Some(writer) = Writer::new(fd, data.bytes.clone()) { state.writers.push(writer); }
+                        if state.writers.len() < 8 && let Some(bytes) = data.formats.data.get(&mime_type)
+                            && let Some(writer) = Writer::new(fd, bytes.clone()) { state.writers.push(writer); }
                     }
                     $source::Event::Cancelled => state.cancelled(proxy.id()),
                     _ => {}

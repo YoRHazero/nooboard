@@ -7,7 +7,7 @@ use crate::{
 use nooboard_clipboard::Clipboard;
 use nooboard_network::{Identity, MAX_TEXT_BYTES};
 use nooboard_storage::{Database, secrets::SecretStore};
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 use tokio::sync::{broadcast, mpsc, watch};
 
 pub(crate) async fn start(options: Options) -> Result<App> {
@@ -30,7 +30,13 @@ pub(crate) async fn start(options: Options) -> Result<App> {
     })
     .await
     .map_err(|_| Error::Stopped)??;
-    let app = start_parts(database, identity, Box::new(clipboard)).await?;
+    let app = start_parts(
+        database,
+        identity,
+        Box::new(clipboard),
+        options.default_receive_directory,
+    )
+    .await?;
     app.refresh_discovery().await?;
     Ok(app)
 }
@@ -38,9 +44,10 @@ pub(crate) async fn start_parts(
     database: Database,
     identity: Identity,
     clipboard: Box<dyn ClipboardPort>,
+    default_receive_directory: Option<PathBuf>,
 ) -> Result<App> {
     let store = Store::new(database);
-    let configuration = Configuration::load(&store, &identity).await?;
+    let configuration = Configuration::load(&store, &identity, default_receive_directory).await?;
     crate::history::prune(&store, &configuration.settings).await?;
     let initial = Status {
         noob_id: identity.noob_id()?,

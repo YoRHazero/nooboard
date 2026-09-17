@@ -7,9 +7,11 @@ import { homeStatus, latestTransfer, transferResult } from './status';
 export function HomePage({
   onDevices,
   onSettings,
+  onTransfers,
 }: {
   onDevices: () => void;
   onSettings: () => void;
+  onTransfers: (key?: string) => void;
 }) {
   const { t } = useI18n();
   const state = useSnapshot();
@@ -57,7 +59,7 @@ export function HomePage({
           )
         )}
       </div>
-      <HomeStage onDevices={onDevices} onSettings={onSettings} />
+      <HomeStage onDevices={onDevices} onSettings={onSettings} onTransfers={onTransfers} />
     </div>
   );
 }

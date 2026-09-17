@@ -98,6 +98,11 @@ impl Host {
         App::start(Options {
             database: directory.join("nooboard.sqlite3"),
             profile: "nooboard.desktop.v1".into(),
+            default_receive_directory: handle
+                .path()
+                .download_dir()
+                .ok()
+                .map(|p| p.join("Nooboard")),
         })
         .await
         .map(Running::Native)

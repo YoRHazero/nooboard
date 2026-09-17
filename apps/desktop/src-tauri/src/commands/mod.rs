@@ -3,6 +3,7 @@ pub mod devices;
 pub mod history;
 pub mod onboarding;
 pub mod settings;
+pub mod transfers;
 use crate::wire;
 use crate::{errors, host::Host};
 use tauri::State;

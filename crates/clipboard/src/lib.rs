@@ -1,5 +1,9 @@
 //! Native clipboard access on a dedicated platform thread, without arboard.
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
+mod file_urls;
+mod image_data;
 mod model;
+pub use image_data::{ImageData, ImageEncoding, MAX_IMAGE_BYTES};
 #[cfg(target_os = "macos")]
 #[path = "platform/macos.rs"]
 mod platform;
@@ -15,3 +19,5 @@ mod platform;
 mod worker;
 pub use model::{Content, Error, Origin, Result, Snapshot};
 pub use worker::Clipboard;
+#[cfg(test)]
+mod native_tests;

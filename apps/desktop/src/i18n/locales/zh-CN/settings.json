@@ -1,6 +1,6 @@
 {
-  "textSync": "文字同步",
-  "mode": "发送模式",
+  "textSync": "同步",
+  "mode": "文字发送模式",
   "receive": "允许接收",
   "history": "记录文字历史",
   "localOnly": "仅保存在本机",

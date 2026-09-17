@@ -2,6 +2,7 @@ import { type Problem } from '../i18n/errors';
 // Rust IPC identifiers are strings, preserving u64 values beyond Number.MAX_SAFE_INTEGER.
 export type MessageId = { session: string; sequence: string };
 export interface NativeSettings {
+  receive_directory?: string | null;
   pairing_listen_address?: string;
   discoverable?: boolean;
   mode: 'Manual' | 'Automatic';
@@ -39,6 +40,22 @@ export interface NativeTransfer {
   targets: { noob_id: string; device_name: string; state: NativeDeliveryState }[];
 }
 export interface NativeSnapshot {
+  content_transfers?: {
+    key: string;
+    id: MessageId;
+    peer: string;
+    device_name: string;
+    incoming: boolean;
+    kind: 'Image' | 'Files';
+    names: string[];
+    total_bytes: number;
+    completed_bytes: number;
+    prepared_bytes: number;
+    stage: import('../api/contracts').ContentStage;
+    error: import('../api/contracts').TransferFailure | null;
+    saved_paths: string[];
+    at_ms: number;
+  }[];
   local_network: {
     sync_port: number;
     pairing_port: number;
@@ -82,12 +99,19 @@ export interface NativeSnapshot {
   };
   current: {
     revision: string;
-    kind: 'Text' | 'Empty' | 'Unsupported' | 'Sensitive' | 'TooLarge';
+    kind: 'Text' | 'Empty' | 'Unsupported' | 'Sensitive' | 'TooLarge' | 'Image' | 'Files';
+    files?: string[];
+    preview?: string | null;
+    image_width?: number | null;
+    image_height?: number | null;
     text: string | null;
     source: string | null;
     copied_at_ms: number;
   };
   activities: {
+    content_task?: string | null;
+    content_node?: 'started' | 'finished' | null;
+    content_stage?: import('../api/contracts').ContentStage | null;
     sequence: string;
     kind: 'Copied' | 'Sent' | 'Received';
     summary: string;

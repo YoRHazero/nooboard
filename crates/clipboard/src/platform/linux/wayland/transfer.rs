@@ -42,7 +42,10 @@ impl Writer {
             let end = (self.offset + 65536).min(self.bytes.len());
             match self.file.write(&self.bytes[self.offset..end]) {
                 Ok(0) => return false,
-                Ok(n) => self.offset += n,
+                Ok(n) => {
+                    self.offset += n;
+                    self.deadline = Instant::now() + Duration::from_secs(5);
+                }
                 Err(e) if e.kind() == ErrorKind::WouldBlock => return true,
                 Err(e) if e.kind() == ErrorKind::Interrupted => continue,
                 Err(_) => return false,

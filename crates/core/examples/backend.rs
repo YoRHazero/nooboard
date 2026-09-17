@@ -22,6 +22,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let app = App::start(Options {
         database: PathBuf::from(&args[0]),
         profile: args[1].clone(),
+        default_receive_directory: None,
     })
     .await?;
     println!("Identity fingerprint: {}", app.status().fingerprint);

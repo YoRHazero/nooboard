@@ -12,6 +12,7 @@ use tokio::sync::{oneshot, watch};
 pub(crate) enum Command {
     Read(oneshot::Sender<Result<Snapshot>>),
     Write(String, oneshot::Sender<Result<Snapshot>>),
+    WriteContent(Content, oneshot::Sender<Result<Snapshot>>),
     Stop,
 }
 pub struct Clipboard {
@@ -101,6 +102,14 @@ impl Clipboard {
                             }
                             let _ = reply.send(result);
                         }
+                        Some(Command::WriteContent(content, reply)) => {
+                            let result = native.write_content(&content);
+                            if let Ok(snapshot) = &result {
+                                revision = snapshot.revision;
+                                let _ = events.send_replace(Ok(snapshot.clone()));
+                            }
+                            let _ = reply.send(result);
+                        }
                         None => {}
                     }
                     if native.revision() != revision {
@@ -139,6 +148,11 @@ impl Clipboard {
     pub async fn write_text(&self, text: String) -> Result<Snapshot> {
         let (tx, rx) = oneshot::channel();
         self.dispatch(Command::Write(text, tx))?;
+        rx.await.map_err(|_| Error::Stopped)?
+    }
+    pub async fn write_content(&self, content: Content) -> Result<Snapshot> {
+        let (tx, rx) = oneshot::channel();
+        self.dispatch(Command::WriteContent(content, tx))?;
         rx.await.map_err(|_| Error::Stopped)?
     }
     fn dispatch(&self, command: Command) -> Result<()> {

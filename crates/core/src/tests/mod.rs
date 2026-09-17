@@ -1,3 +1,4 @@
+mod content;
 mod history;
 mod multi_device;
 mod onboarding;
@@ -56,6 +57,12 @@ impl ClipboardPort for FakeClipboard {
             self.0.borrow().clone()
         })
     }
+    fn write_content(&self, content: Content) -> ClipboardFuture<'_> {
+        Box::pin(async move {
+            self.copy(content, Origin::Application);
+            self.0.borrow().clone()
+        })
+    }
 }
 fn test_database() -> Database {
     let mut db = Database::in_memory().unwrap();
@@ -78,11 +85,12 @@ async fn app(clipboard: &FakeClipboard) -> App {
         test_database(),
         Identity::generate().unwrap(),
         Box::new(clipboard.clone()),
+        None,
     )
     .await
     .unwrap()
 }
-async fn wait_for(mut condition: impl FnMut() -> bool) {
+pub(crate) async fn wait_for(mut condition: impl FnMut() -> bool) {
     tokio::time::timeout(Duration::from_secs(8), async {
         while !condition() {
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -108,7 +116,7 @@ fn ready(app: &App, peer: &App) -> bool {
         .iter()
         .any(|p| p.noob_id == peer.status().noob_id && p.online && p.accepting)
 }
-async fn pair(a: &App, b: &App) {
+pub(crate) async fn pair(a: &App, b: &App) {
     let (ar, br) = tokio::join!(a.trust_peer(request(b)), b.trust_peer(request(a)));
     ar.unwrap();
     br.unwrap();

@@ -1,4 +1,5 @@
 {
+  "fileSamples": "文件示例",
   "nativeVerification": "原生验证",
   "nativeEnvironment": "隔离剪贴板 · 临时身份与数据库 · 真实 TLS",
   "copyTest": "复制测试文字",

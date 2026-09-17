@@ -7,6 +7,7 @@ import type {
   Settings,
 } from '../api/contracts';
 import { batchState } from '../api/deliveries';
+import { contentActivityState } from '../api/contentTransfers';
 import { messageKey, type NativeDeliveryState, type NativeSnapshot } from './wire';
 
 const deliveryStates: Record<NativeDeliveryState, DeliveryState> = {
@@ -99,6 +100,9 @@ export class NativeStore {
         state: deliveryStates[t.state],
       }));
       return {
+        contentTask: record.content_task ?? undefined,
+        contentNode: record.content_node ?? undefined,
+        contentStage: record.content_stage ?? undefined,
         id,
         messageId: record.message_id ?? undefined,
         kind: record.kind === 'Sent' ? 'sent' : record.kind === 'Copied' ? 'copied' : 'received',
@@ -108,7 +112,13 @@ export class NativeStore {
         at: record.at_ms,
         targets,
         automatic: transfer?.automatic,
-        state: record.kind === 'Sent' ? (targets ? batchState(targets) : 'unconfirmed') : 'applied',
+        state: record.content_stage
+          ? contentActivityState(record.content_stage)
+          : record.kind === 'Sent'
+            ? targets
+              ? batchState(targets)
+              : 'unconfirmed'
+            : 'applied',
       };
     });
     this.identities = ids;
@@ -117,6 +127,21 @@ export class NativeStore {
     const { status, current } = frame;
     const onboarding = frame.onboarding;
     this.snapshot = {
+      contentTransfers: (frame.content_transfers ?? []).map((task) => ({
+        key: task.key,
+        peer: task.peer,
+        deviceName: task.device_name,
+        incoming: task.incoming,
+        kind: task.kind,
+        names: task.names,
+        totalBytes: task.total_bytes,
+        completedBytes: task.completed_bytes,
+        preparedBytes: task.prepared_bytes,
+        stage: task.stage,
+        error: task.error,
+        savedPaths: task.saved_paths,
+        at: task.at_ms,
+      })),
       onboarding: onboarding
         ? {
             nearby: onboarding.nearby.map((d) => ({
@@ -157,6 +182,10 @@ export class NativeStore {
         addressError: frame.local_network.error,
       },
       current: {
+        files: current.files,
+        preview: current.preview,
+        imageWidth: current.image_width,
+        imageHeight: current.image_height,
         id: `${frame.session}:${current.revision}`,
         text: current.text ?? '',
         kind: current.kind,
@@ -177,6 +206,7 @@ export class NativeStore {
       historyRevision: `${frame.session}:${frame.history_revision}`,
       activities,
       settings: {
+        receiveDirectory: status.settings.receive_directory,
         discoverable: status.settings.discoverable,
         mode: status.settings.mode === 'Automatic' ? 'automatic' : 'manual',
         receive: status.settings.receive,
@@ -199,7 +229,17 @@ export class NativeStore {
       if (!initial && sequence > this.watermark)
         this.emit({
           type:
-            activity.kind === 'copied' ? 'copied' : activity.kind === 'sent' ? 'sent' : 'received',
+            activity.contentNode === 'finished'
+              ? activity.state === 'applied'
+                ? activity.kind === 'sent'
+                  ? 'applied'
+                  : 'received'
+                : 'rejected'
+              : activity.kind === 'copied'
+                ? 'copied'
+                : activity.kind === 'sent'
+                  ? 'sent'
+                  : 'received',
           sequence: activity.id,
         });
       else if (!initial && activity.kind === 'sent') {

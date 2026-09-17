@@ -3,6 +3,7 @@ export type SendMode = 'manual' | 'automatic';
 export type Theme = 'system' | 'light' | 'dark';
 export type Platform = 'Windows' | 'Ubuntu' | 'macOS';
 export interface Settings {
+  receiveDirectory?: string | null;
   discoverable?: boolean;
   mode: SendMode;
   paused: boolean;
@@ -30,6 +31,57 @@ export interface TextItem {
   source: 'local' | 'remote';
   sourceNoobId?: string;
   copiedAt: number;
+}
+export interface ClipboardItem extends Omit<TextItem, 'kind'> {
+  kind?: TextItem['kind'] | 'Image' | 'Files';
+  files?: readonly string[];
+  preview?: string | null;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
+}
+export type ContentStage =
+  | 'Preparing'
+  | 'Queued'
+  | 'Waiting'
+  | 'Sending'
+  | 'Receiving'
+  | 'Verifying'
+  | 'Saving'
+  | 'Applying'
+  | 'Cancelling'
+  | 'Completed'
+  | 'Saved'
+  | 'Failed'
+  | 'Cancelled'
+  | 'Unconfirmed';
+export type TransferFailure =
+  | 'Denied'
+  | 'Directory'
+  | 'Unsupported'
+  | 'TooLarge'
+  | 'SourceChanged'
+  | 'Integrity'
+  | 'Io'
+  | 'Clipboard'
+  | 'Offline'
+  | 'Timeout'
+  | 'Busy'
+  | 'Cancelled'
+  | 'Protocol';
+export interface ContentTransfer {
+  key: string;
+  peer: string;
+  deviceName: string;
+  incoming: boolean;
+  kind: 'Image' | 'Files';
+  names: readonly string[];
+  totalBytes: number;
+  completedBytes: number;
+  preparedBytes: number;
+  stage: ContentStage;
+  error: TransferFailure | null;
+  savedPaths: readonly string[];
+  at: number;
 }
 export interface DeviceIdentity {
   noobId: string;
@@ -81,6 +133,9 @@ export interface Delivery {
 export type ActivityState =
   'pending' | 'applied' | 'partial' | 'rejected' | 'unconfirmed' | 'cancelled';
 export interface Activity {
+  contentTask?: string;
+  contentNode?: 'started' | 'finished';
+  contentStage?: ContentStage;
   /** Presentation identity, shared by all updates to a batch. */
   id: number;
   messageId?: { session: string; sequence: number | string };
@@ -131,7 +186,8 @@ export interface DesktopSnapshot {
   notice?: { id: string; message: Problem };
   connectionError?: Problem;
   localDevice: LocalDevice;
-  current: TextItem;
+  current: ClipboardItem;
+  contentTransfers?: readonly ContentTransfer[];
   history: readonly TextItem[];
   peers: readonly Peer[];
   manualTargets: readonly string[];
@@ -158,6 +214,10 @@ export interface DesktopClient {
   subscribe(listener: () => void): () => void;
   onEvent(listener: (event: DesktopEvent) => void): () => void;
   sendCurrent(): Promise<void>;
+  selectFiles(): Promise<void>;
+  selectReceiveDirectory(): Promise<void>;
+  cancelTransfer(key: string): Promise<void>;
+  copyReceived(key: string): Promise<void>;
   selectTargets(noobIds: string[]): Promise<void>;
   configurePeer(noobId: string, settings: Partial<PeerSettings>): Promise<void>;
   updateLocalDevice(patch: LocalDevicePatch): Promise<void>;

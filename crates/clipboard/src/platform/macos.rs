@@ -1,10 +1,12 @@
 use crate::{Content, Error, Origin, Result, Snapshot, worker::Command};
+use crate::{ImageData, ImageEncoding, MAX_IMAGE_BYTES, file_urls};
+use objc2::runtime::ProtocolObject;
 use objc2::{
     ClassType, msg_send,
     rc::{Retained, autoreleasepool},
 };
-use objc2_app_kit::NSPasteboard;
-use objc2_foundation::NSString;
+use objc2_app_kit::{NSPasteboard, NSPasteboardItem, NSPasteboardWriting};
+use objc2_foundation::{NSArray, NSData, NSString};
 use std::{
     sync::{Mutex, MutexGuard, mpsc},
     time::Duration,
@@ -100,16 +102,59 @@ impl Native {
                 "org.nspasteboard.TransientType",
             ]) {
                 Content::Sensitive
+            } else if has(&["public.file-url"]) {
+                let mut files = Vec::new();
+                if let Some(items) = self.board.pasteboardItems() {
+                    for item in items {
+                        if let Some(value) =
+                            item.stringForType(&NSString::from_str("public.file-url"))
+                        {
+                            match file_urls::parse(&value.to_string()) {
+                                Ok(paths) => files.extend(paths),
+                                Err(_) => {
+                                    return Ok(Snapshot {
+                                        revision,
+                                        content: Content::Unsupported,
+                                        origin: Origin::External,
+                                    });
+                                }
+                            }
+                        }
+                        if files.len() > 256 {
+                            return Err(Error::InvalidInput);
+                        }
+                    }
+                }
+                if files.is_empty() {
+                    Content::Unsupported
+                } else {
+                    Content::Files(files)
+                }
             } else if has(&[
-                "public.file-url",
                 "NSFilenamesPboardType",
-                "public.png",
-                "public.tiff",
-                "public.jpeg",
-                "public.heic",
-                "com.compuserve.gif",
-                "com.microsoft.bmp",
+                "com.apple.pasteboard.promised-file-url",
+                "com.apple.pasteboard.promised-file-content-type",
             ]) {
+                Content::Unsupported
+            } else if let Some((name, encoding)) = [
+                ("public.png", ImageEncoding::Png),
+                ("public.tiff", ImageEncoding::Tiff),
+                ("public.jpeg", ImageEncoding::Jpeg),
+                ("com.microsoft.bmp", ImageEncoding::Bmp),
+            ]
+            .into_iter()
+            .find(|(name, _)| has(&[name]))
+            {
+                let data = self
+                    .board
+                    .dataForType(&NSString::from_str(name))
+                    .ok_or(Error::Unavailable)?;
+                if data.len() > MAX_IMAGE_BYTES {
+                    Content::TooLarge
+                } else {
+                    Content::Image(ImageData::new(encoding, data.to_vec())?)
+                }
+            } else if has(&["public.heic", "com.compuserve.gif"]) {
                 Content::Unsupported
             } else if let Some(text) = self
                 .board
@@ -159,6 +204,57 @@ impl Native {
             }
             snapshot.origin = Origin::Application;
             Ok(snapshot)
+        })
+    }
+    pub fn write_content(&mut self, content: &Content) -> Result<Snapshot> {
+        if let Content::Text(text) = content {
+            return self.write(text);
+        }
+        let _access = access();
+        autoreleasepool(|_| {
+            let objects: Vec<Retained<ProtocolObject<dyn NSPasteboardWriting>>> = match content {
+                Content::Image(image)
+                    if image.encoding == ImageEncoding::Png
+                        && image.bytes.len() <= MAX_IMAGE_BYTES =>
+                {
+                    let item = NSPasteboardItem::new();
+                    if !item.setData_forType(
+                        &NSData::with_bytes(&image.bytes),
+                        &NSString::from_str("public.png"),
+                    ) {
+                        return Err(Error::Native);
+                    }
+                    vec![ProtocolObject::from_retained(item)]
+                }
+                Content::Files(files) => {
+                    let urls = file_urls::encode(files)?;
+                    let mut items = Vec::new();
+                    for url in urls.lines() {
+                        let item = NSPasteboardItem::new();
+                        if !item.setString_forType(
+                            &NSString::from_str(url),
+                            &NSString::from_str("public.file-url"),
+                        ) {
+                            return Err(Error::Native);
+                        }
+                        items.push(ProtocolObject::from_retained(item));
+                    }
+                    items
+                }
+                _ => return Err(Error::InvalidInput),
+            };
+            self.board.clearContents();
+            if !self
+                .board
+                .writeObjects(&NSArray::from_retained_slice(&objects))
+            {
+                return Err(Error::Native);
+            }
+            Ok(Snapshot {
+                revision: self.revision_inner(),
+                content: content.clone(),
+                origin: Origin::Application,
+            })
         })
     }
 }

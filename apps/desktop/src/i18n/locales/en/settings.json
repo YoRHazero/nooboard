@@ -1,7 +1,7 @@
 {
-  "textSync": "Text sync",
-  "mode": "Send mode",
-  "receive": "Accept incoming text",
+  "textSync": "Sync",
+  "mode": "Text send mode",
+  "receive": "Accept incoming content",
   "history": "Save text history",
   "localOnly": "Stored on this device only",
   "retention": "Keep history for",

@@ -20,12 +20,8 @@ impl Clipboard {
             && let Some(owned) = &self.owned
         {
             if request.target == self.atoms.TARGETS {
-                let mut targets = vec![
-                    self.atoms.TARGETS,
-                    self.atoms.TIMESTAMP,
-                    self.atoms.UTF8_STRING,
-                ];
-                for name in formats::UTF8_TYPES {
+                let mut targets = vec![self.atoms.TARGETS, self.atoms.TIMESTAMP];
+                for name in owned.data.keys() {
                     targets.push(
                         self.connection
                             .intern_atom(false, name.as_bytes())
@@ -34,9 +30,6 @@ impl Clipboard {
                             .map_err(|_| Error::Native)?
                             .atom,
                     );
-                }
-                if self.owned.as_ref().is_some_and(|bytes| bytes.is_ascii()) {
-                    targets.push(AtomEnum::STRING.into());
                 }
                 accepted = self
                     .connection
@@ -70,13 +63,11 @@ impl Clipboard {
                     .map_err(|_| Error::Native)?
                     .reply();
                 if let Ok(name) = name {
-                    let valid = formats::UTF8_TYPES
-                        .iter()
-                        .any(|t| name.name == t.as_bytes())
-                        || (request.target == AtomEnum::STRING.into()
-                            && self.owned.as_ref().is_some_and(|b| b.is_ascii()));
-                    if valid {
-                        let data = owned.clone();
+                    if let Some(data) = std::str::from_utf8(&name.name)
+                        .ok()
+                        .and_then(|name| owned.data.get(name))
+                    {
+                        let data = data.clone();
                         if data.len() <= CHUNK {
                             accepted = self
                                 .connection
@@ -170,6 +161,7 @@ impl Clipboard {
             .map_err(|_| Error::Native)?
             .check();
         transfer.offset = end;
+        transfer.deadline = Instant::now() + Duration::from_secs(5);
         if finished || result.is_err() {
             self.outgoing.remove(index);
         }

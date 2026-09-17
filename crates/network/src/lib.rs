@@ -6,6 +6,9 @@ pub mod pairing;
 mod protocol;
 mod transport;
 pub use identity::{Identity, fingerprint, new_session_id, noob_id};
+pub use protocol::{
+    ContentKind, ContentResult, FileEntry, MAX_CHUNK_BYTES, Manifest, TransferError,
+};
 pub use protocol::{MAX_TEXT_BYTES, Message, MessageId, PROTOCOL_VERSION, valid_device_name};
 pub use transport::{Connection, ConnectionReceiver, ConnectionSender, TlsConfig};
 

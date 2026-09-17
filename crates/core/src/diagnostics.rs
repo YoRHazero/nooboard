@@ -50,7 +50,8 @@ impl Session {
             })
             .await
             .map_err(|_| crate::Error::Stopped)??;
-        let app = crate::bootstrap::start_parts(database, identity, Box::new(clipboard)).await?;
+        let app =
+            crate::bootstrap::start_parts(database, identity, Box::new(clipboard), None).await?;
         Ok(Self { app, input })
     }
     /// A second native client simulates an external application copying text.
@@ -68,5 +69,104 @@ impl Session {
         self.app.shutdown().await?;
         self.input.shutdown().await?;
         Ok(())
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+    use crate::{
+        ClipboardKind, ContentStage,
+        tests::{pair, wait_for},
+    };
+    use nooboard_clipboard::{ImageData, ImageEncoding};
+
+    #[tokio::test]
+    #[ignore = "two private macOS pasteboards and real localhost TLS; not cross-device GUI validation"]
+    async fn native_images_and_files_both_directions() {
+        let a = Session::start().await.unwrap();
+        let b = Session::start().await.unwrap();
+        let root_a = tempfile::tempdir().unwrap();
+        let root_b = tempfile::tempdir().unwrap();
+        for (session, directory) in [(&a, &root_a), (&b, &root_b)] {
+            session
+                .app
+                .set_settings(Settings {
+                    receive_directory: Some(directory.path().into()),
+                    ..session.app.status().settings
+                })
+                .await
+                .unwrap();
+        }
+        pair(&a.app, &b.app).await;
+        let png = include_bytes!("tests/fixtures/alpha.png").to_vec();
+        let image = ImageData::new(ImageEncoding::Png, png.clone()).unwrap();
+        let source = tempfile::tempdir().unwrap();
+        let picture = source.path().join("图片 # 1.png");
+        let large = source.path().join("sample.bin");
+        std::fs::write(&picture, &png).unwrap();
+        let data: Vec<_> = (0..16 * 1024 * 1024).map(|i| (i % 251) as u8).collect();
+        std::fs::write(&large, &data).unwrap();
+        for (sender, receiver) in [(&a, &b), (&b, &a)] {
+            for content in [
+                Content::Image(image.clone()),
+                Content::Files(vec![picture.clone(), large.clone()]),
+            ] {
+                let expected = if matches!(content, Content::Image(_)) {
+                    ClipboardKind::Image
+                } else {
+                    ClipboardKind::Files
+                };
+                let revision = sender
+                    .input
+                    .write_content(content.clone())
+                    .await
+                    .unwrap()
+                    .revision;
+                wait_for(|| {
+                    sender.app.snapshot().current.revision >= revision
+                        && sender.app.snapshot().current.kind == expected
+                })
+                .await;
+                let id = sender.app.send_current().await.unwrap();
+                wait_for(|| {
+                    sender
+                        .app
+                        .snapshot()
+                        .content_transfers
+                        .iter()
+                        .any(|r| r.id == id && r.stage == ContentStage::Completed)
+                })
+                .await;
+                match (content, receiver.input.read().await.unwrap().content) {
+                    (Content::Image(sent), Content::Image(received)) => assert_eq!(
+                        sent.decode().unwrap().to_rgba8(),
+                        received.decode().unwrap().to_rgba8()
+                    ),
+                    (Content::Files(_), Content::Files(paths)) => {
+                        assert_eq!(std::fs::read(&paths[0]).unwrap(), png);
+                        assert_eq!(std::fs::read(&paths[1]).unwrap(), data);
+                        assert_ne!(paths[0], picture);
+                    }
+                    _ => panic!("native clipboard semantics changed"),
+                }
+            }
+        }
+        assert!(
+            a.app
+                .history(String::new(), 20, 0)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            b.app
+                .history(String::new(), 20, 0)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        a.shutdown().await.unwrap();
+        b.shutdown().await.unwrap();
     }
 }

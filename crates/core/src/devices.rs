@@ -2,7 +2,7 @@
 use crate::{Error, PeerSettings, Result, Settings, VerifiedPeer, ports::Store};
 use nooboard_network::{Identity, TlsConfig, fingerprint, noob_id, valid_device_name};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::PathBuf};
 
 pub(crate) const MAX_PEERS: usize = 64;
 #[derive(Clone, Serialize, Deserialize)]
@@ -45,7 +45,11 @@ pub(crate) struct Configuration {
     pub manual_targets: Vec<String>,
 }
 impl Configuration {
-    pub async fn load(store: &Store, identity: &Identity) -> Result<Self> {
+    pub async fn load(
+        store: &Store,
+        identity: &Identity,
+        default_receive_directory: Option<PathBuf>,
+    ) -> Result<Self> {
         let (current, settings, legacy) = store
             .run(|db| {
                 Ok((
@@ -55,7 +59,7 @@ impl Configuration {
                 ))
             })
             .await?;
-        let configuration = if let Some(bytes) = current {
+        let mut configuration = if let Some(bytes) = current {
             serde_json::from_slice::<Self>(&bytes).map_err(|_| Error::Configuration)?
         } else {
             let mut settings: Settings = settings
@@ -126,6 +130,9 @@ impl Configuration {
                 manual_targets,
             }
         };
+        if configuration.settings.receive_directory.is_none() {
+            configuration.settings.receive_directory = default_receive_directory;
+        }
         configuration.validate(identity)?;
         configuration.save(store).await?;
         Ok(configuration)

@@ -23,6 +23,9 @@ export function PreviewToolbar({ client }: { client: PreviewClient }) {
           <CopyPlus size={14} />
           {t('preview:copySample')}
         </button>
+        <button onClick={() => execute(() => client.sampleFiles())}>
+          {t('preview:fileSamples')}
+        </button>
         <select
           aria-label={t('preview:eventDevice')}
           value={peer?.noobId ?? ''}

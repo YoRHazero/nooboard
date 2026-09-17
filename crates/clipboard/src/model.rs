@@ -1,6 +1,8 @@
 #[derive(Clone, PartialEq, Eq)]
 pub enum Content {
     Text(String),
+    Image(crate::ImageData),
+    Files(Vec<std::path::PathBuf>),
     Empty,
     Unsupported,
     Sensitive,
@@ -10,6 +12,11 @@ impl std::fmt::Debug for Content {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Text(text) => f.debug_struct("Text").field("bytes", &text.len()).finish(),
+            Self::Image(image) => f.debug_tuple("Image").field(image).finish(),
+            Self::Files(paths) => f
+                .debug_struct("Files")
+                .field("count", &paths.len())
+                .finish(),
             Self::Empty => f.write_str("Empty"),
             Self::Unsupported => f.write_str("Unsupported"),
             Self::Sensitive => f.write_str("Sensitive"),

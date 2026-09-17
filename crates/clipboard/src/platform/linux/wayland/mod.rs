@@ -127,36 +127,74 @@ impl Clipboard {
         if offer.overflow {
             return Ok(self.snapshot(Content::Unsupported, Origin::External));
         }
-        if let Some(content) = formats::excluded(&offer.types) {
-            return Ok(self.snapshot(content, Origin::External));
+        if formats::excluded(&offer.types) == Some(Content::Sensitive) {
+            return Ok(self.snapshot(Content::Sensitive, Origin::External));
         }
         if self.own_selection() {
-            let bytes = self
+            let content = self
                 .state
                 .payload
                 .as_ref()
                 .ok_or(Error::Changed)?
-                .bytes
-                .as_ref()
+                .formats
+                .content
                 .clone();
-            return Ok(self.snapshot(
-                Content::Text(String::from_utf8(bytes).map_err(|_| Error::Native)?),
-                Origin::Application,
-            ));
+            return Ok(self.snapshot(content, Origin::Application));
+        }
+        let types = offer.types.clone();
+        if let Some(mime) = formats::FILE_TYPES
+            .iter()
+            .find(|m| types.iter().any(|t| t == **m))
+        {
+            let Some(bytes) = self.read_mime(mime, 4 * 1024 * 1024)? else {
+                return Ok(self.snapshot(Content::TooLarge, Origin::External));
+            };
+            if let Some(content) = formats::files(mime, &bytes) {
+                return Ok(self.snapshot(content, Origin::External));
+            }
+        }
+        if let Some(mime) = formats::IMAGE_TYPES
+            .iter()
+            .find(|m| types.iter().any(|t| t == **m))
+        {
+            let content = match self.read_mime(mime, crate::MAX_IMAGE_BYTES)? {
+                Some(bytes) => formats::image(mime, bytes)?,
+                None => Content::TooLarge,
+            };
+            return Ok(self.snapshot(content, Origin::External));
+        }
+        if types.iter().any(|t| t.starts_with("image/")) {
+            return Ok(self.snapshot(Content::Unsupported, Origin::External));
         }
         let Some(mime) = formats::UTF8_TYPES
             .iter()
-            .find(|t| offer.types.iter().any(|v| v == **t))
+            .find(|m| types.iter().any(|t| t == **m))
         else {
             return Ok(self.snapshot(Content::Unsupported, Origin::External));
         };
+        let content = match self.read_mime(mime, self.max_bytes)? {
+            Some(bytes) => match String::from_utf8(bytes) {
+                Ok(text) if !text.contains('\0') => Content::Text(text),
+                _ => Content::Unsupported,
+            },
+            None => Content::TooLarge,
+        };
+        Ok(self.snapshot(content, Origin::External))
+    }
+    fn read_mime(&mut self, mime: &str, limit: usize) -> Result<Option<Vec<u8>>> {
+        let offer = self
+            .state
+            .selection
+            .as_ref()
+            .and_then(|id| self.state.offers.get(id))
+            .ok_or(Error::Changed)?;
         let revision = self.revision();
         let (mut reader, writer) = UnixStream::pair().map_err(|_| Error::Native)?;
         reader.set_nonblocking(true).map_err(|_| Error::Native)?;
         offer.proxy.receive(mime, writer.as_fd());
         self.connection.flush().map_err(|_| Error::Stopped)?;
         drop(writer);
-        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut deadline = Instant::now() + Duration::from_secs(5);
         let mut bytes = Vec::new();
         let mut chunk = [0; 65536];
         loop {
@@ -167,23 +205,20 @@ impl Clipboard {
             match reader.read(&mut chunk) {
                 Ok(0) => break,
                 Ok(n) => {
-                    if bytes.len().saturating_add(n) > self.max_bytes {
-                        return Ok(self.snapshot(Content::TooLarge, Origin::External));
+                    if bytes.len().saturating_add(n) > limit {
+                        return Ok(None);
                     }
                     bytes.extend_from_slice(&chunk[..n]);
+                    deadline = Instant::now() + Duration::from_secs(5);
                 }
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                    self.wait_until(deadline, &[self.fd(), reader.as_raw_fd()])?;
+                    self.wait_until(deadline, &[self.fd(), reader.as_raw_fd()])?
                 }
                 Err(e) if e.kind() == ErrorKind::Interrupted => {}
                 Err(_) => return Err(Error::Unavailable),
             }
         }
-        let content = match String::from_utf8(bytes) {
-            Ok(text) if !text.contains('\0') => Content::Text(text),
-            _ => Content::Unsupported,
-        };
-        Ok(self.snapshot(content, Origin::External))
+        Ok(Some(bytes))
     }
     fn wait_until(&self, deadline: Instant, fds: &[i32]) -> Result<()> {
         let left = deadline
@@ -196,6 +231,14 @@ impl Clipboard {
         if text.len() > self.max_bytes || text.contains('\0') {
             return Err(Error::InvalidInput);
         }
+        self.write_content(&Content::Text(text.into()))
+    }
+    pub fn write_content(&mut self, content: &Content) -> Result<Snapshot> {
+        if let Content::Text(text) = content
+            && (text.len() > self.max_bytes || text.contains('\0'))
+        {
+            return Err(Error::InvalidInput);
+        }
         self.pump()?;
         static SERIAL: AtomicU64 = AtomicU64::new(0);
         let marker = format!(
@@ -204,11 +247,11 @@ impl Clipboard {
             SERIAL.fetch_add(1, Ordering::Relaxed)
         );
         let payload = Arc::new(Payload {
-            bytes: Arc::new(text.as_bytes().to_vec()),
+            formats: formats::Payload::new(content.clone())?,
             marker,
         });
         let source = self.manager.source(&self.queue.handle(), payload.clone());
-        for mime in formats::UTF8_TYPES {
+        for mime in payload.formats.data.keys() {
             source.offer(mime);
         }
         source.offer(&payload.marker);
@@ -221,7 +264,7 @@ impl Clipboard {
         loop {
             self.pump()?;
             if self.own_selection() {
-                return Ok(self.snapshot(Content::Text(text.into()), Origin::Application));
+                return Ok(self.snapshot(content.clone(), Origin::Application));
             }
             if self.state.payload.is_none() {
                 return Err(Error::Changed);

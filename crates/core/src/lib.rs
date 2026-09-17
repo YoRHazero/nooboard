@@ -13,10 +13,12 @@ mod onboarding;
 pub use onboarding::{
     NearbyDevice, OnboardingSnapshot, PairingError, PairingFailure, PairingSession, PairingStage,
 };
+mod content_transfer;
 mod ports;
 mod runtime;
 mod sync;
 mod transfers;
+pub use content_transfer::{ContentStage, ContentTransfer};
 mod view;
 pub use app::App;
 pub(crate) use model::VerifiedPeer;
@@ -45,7 +47,7 @@ pub enum Error {
     Busy,
     #[error("synchronization is paused")]
     Paused,
-    #[error("clipboard does not contain eligible text")]
+    #[error("clipboard does not contain supported content")]
     Ineligible,
     #[error("invalid configuration")]
     Configuration,

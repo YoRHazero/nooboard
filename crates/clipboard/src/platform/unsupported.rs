@@ -30,4 +30,7 @@ impl Native {
     pub fn write(&mut self, _: &str) -> Result<Snapshot> {
         Err(Error::UnsupportedPlatform)
     }
+    pub fn write_content(&mut self, _: &crate::Content) -> Result<Snapshot> {
+        Err(Error::UnsupportedPlatform)
+    }
 }

@@ -27,7 +27,7 @@
   "autoSync": "Auto-sync",
   "paused": "Sync paused",
   "receiveOff": "Receiving off",
-  "receiveOn": "Accept text",
+  "receiveOn": "Accept incoming content",
   "bird": "Bird",
   "offline": "Offline",
   "online": "Online",
@@ -100,5 +100,6 @@
   "menuMaximize": "Zoom",
   "menuFullscreen": "Toggle Full Screen",
   "menuBringAll": "Bring All to Front",
-  "paste": "Paste"
+  "paste": "Paste",
+  "transfers": "Transfers"
 }

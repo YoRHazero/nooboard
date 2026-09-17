@@ -11,6 +11,7 @@ pub enum Mode {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct Settings {
+    pub receive_directory: Option<PathBuf>,
     pub mode: Mode,
     pub receive: bool,
     pub paused: bool,
@@ -25,6 +26,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            receive_directory: None,
             mode: Mode::Manual,
             receive: true,
             paused: false,
@@ -41,6 +43,10 @@ impl Default for Settings {
 impl Settings {
     pub(crate) fn validate(&self) -> crate::Result<()> {
         if self.max_history_entries == 0
+            || self
+                .receive_directory
+                .as_ref()
+                .is_some_and(|p| !p.is_absolute())
             || self.max_history_entries > 100_000
             || self.history_days == 0
             || self.history_days > 3650
@@ -65,6 +71,9 @@ pub struct Options {
     pub database: PathBuf,
     /// Stable OS credential entry name. Different profiles have different identities.
     pub profile: String,
+    /// Host-resolved default, used only when no receive directory has been saved.
+    /// The directory is created lazily when receiving content.
+    pub default_receive_directory: Option<PathBuf>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PeerSettings {

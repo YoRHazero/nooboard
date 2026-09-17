@@ -66,6 +66,11 @@ impl Runtime {
                 config.settings = settings;
                 config.save(&self.store).await?;
                 self.config = config;
+                if self.config.settings.paused {
+                    self.cancel_content(None, false);
+                } else if !self.config.settings.receive {
+                    self.cancel_content(None, true);
+                }
                 if let Some(listener) = listener {
                     self.listener = listener;
                 }
@@ -174,6 +179,19 @@ impl Runtime {
                 if self.config.settings.paused {
                     return Err(Error::Paused);
                 }
+                if matches!(
+                    self.view.snapshot.current.kind,
+                    crate::ClipboardKind::Image | crate::ClipboardKind::Files
+                ) {
+                    if let Some(targets) = targets {
+                        self.select_targets(targets).await?;
+                    }
+                    let id =
+                        self.start_content(crate::content_transfer::workers::Source::Clipboard(
+                            self.view.snapshot.current.revision,
+                        ))?;
+                    return Ok(Reply::MessageId(id));
+                }
                 let snapshot = self.clipboard.read().await?;
                 self.observe(snapshot.clone(), false).await?;
                 let text = Self::eligible(snapshot.content)?;
@@ -202,6 +220,23 @@ impl Runtime {
                 )
                 .await?,
             )),
+            Command::SendFiles(paths) => {
+                self.start_content(crate::content_transfer::workers::Source::Files(paths))?;
+                Ok(Reply::Done)
+            }
+            Command::CancelContent(key) => {
+                if self.content.cancel(&key) {
+                    if self.content.row(&key).is_some_and(|r| !r.stage.pending()) {
+                        self.content_node(&key, "finished");
+                    }
+                    self.publish_snapshot();
+                }
+                Ok(Reply::Done)
+            }
+            Command::CopyContent(key) => {
+                self.copy_content(&key)?;
+                Ok(Reply::Done)
+            }
             Command::CopyHistory(id) => {
                 history::prune(&self.store, &self.config.settings).await?;
                 let entry = self

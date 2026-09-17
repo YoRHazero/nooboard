@@ -39,7 +39,7 @@
   "stopped": "The local service has stopped. Reconnect to continue.",
   "offline": "The selected device is unavailable.",
   "busy": "The paired-device or pending-send limit has been reached.",
-  "ineligible": "There is no sendable plain text on the clipboard.",
+  "ineligible": "The clipboard does not contain supported content.",
   "configuration": "Invalid settings. Check the device name, address and recipients.",
   "identityChanged": "This device’s identity has changed. Unpair it and pair again.",
   "fingerprint": "Device identity verification failed. Pairing wasn’t completed.",
@@ -51,5 +51,6 @@
   "diagnosticsDisabled": "Native verification isn’t enabled.",
   "discovery": "Nearby discovery is unavailable. Try adding a device by address.",
   "localAddress": "Unable to get local addresses.",
-  "serviceFault": "The local service encountered a problem. Try again or reconnect."
+  "serviceFault": "The local service encountered a problem. Try again or reconnect.",
+  "nativeOnly": "Open the desktop app to use the native file picker."
 }

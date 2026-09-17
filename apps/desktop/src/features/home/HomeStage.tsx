@@ -20,9 +20,11 @@ const fallback = posterTargets(1200, 700);
 export function HomeStage({
   onDevices,
   onSettings,
+  onTransfers,
 }: {
   onDevices: () => void;
   onSettings: () => void;
+  onTransfers: (key?: string) => void;
 }) {
   const { t } = useI18n();
   const { localDevice, settings } = useSnapshot();
@@ -115,6 +117,10 @@ export function HomeStage({
             {selected === 'bird' && <LocalPanel onSettings={onSettings} />}
             {selected === 'mailbox' && (
               <MailboxPanel
+                onTransfers={(key) => {
+                  panels.close(false);
+                  onTransfers(key);
+                }}
                 onDevices={() => {
                   panels.close(false);
                   onDevices();

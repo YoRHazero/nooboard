@@ -1,6 +1,63 @@
 use super::*;
 
 #[tokio::test]
+async fn default_receive_directory_initializes_new_and_unset_profiles_without_creating_folders() {
+    use crate::{devices::Configuration, ports::Store};
+
+    for saved_without_directory in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let database = root.path().join("settings.db");
+        let directory = root.path().join("下载 自定义位置").join("Nooboard");
+        let identity = Identity::generate().unwrap();
+        let store = Store::new(Database::open(&database).unwrap());
+        if saved_without_directory {
+            let previous = Configuration::load(&store, &identity, None).await.unwrap();
+            assert!(previous.settings.receive_directory.is_none());
+        }
+        let initial = Configuration::load(&store, &identity, Some(directory.clone()))
+            .await
+            .unwrap();
+        assert_eq!(initial.settings.receive_directory, Some(directory.clone()));
+        assert!(!directory.parent().unwrap().exists());
+        drop(store);
+
+        let store = Store::new(Database::open(&database).unwrap());
+        let restarted = Configuration::load(&store, &identity, Some(root.path().join("other")))
+            .await
+            .unwrap();
+        assert_eq!(restarted.settings.receive_directory, Some(directory));
+    }
+}
+
+#[tokio::test]
+async fn default_receive_directory_preserves_custom_settings_even_when_system_lookup_fails() {
+    use crate::{devices::Configuration, ports::Store};
+
+    let root = tempfile::tempdir().unwrap();
+    let custom = root.path().join("my files");
+    let mut database = Database::in_memory().unwrap();
+    database
+        .set_setting(
+            "settings",
+            &serde_json::to_vec(&Settings {
+                receive_directory: Some(custom.clone()),
+                ..Settings::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+    let store = Store::new(database);
+    let identity = Identity::generate().unwrap();
+    for default in [Some(root.path().join("Nooboard")), None] {
+        let loaded = Configuration::load(&store, &identity, default)
+            .await
+            .unwrap();
+        assert_eq!(loaded.settings.receive_directory, Some(custom.clone()));
+    }
+    assert!(!custom.exists());
+}
+
+#[tokio::test]
 async fn identity_confirmation_and_multiple_pairing_are_enforced() {
     let a = app(&FakeClipboard::new()).await;
     let b = app(&FakeClipboard::new()).await;
@@ -39,7 +96,7 @@ async fn legacy_pair_migrates_atomically_and_multi_device_settings_survive_resta
     db.set_setting("peer", &serde_json::to_vec(&serde_json::json!({"certificate":peer.certificate(),"endpoint":{"Connect":"127.0.0.1:1"}})).unwrap()).unwrap();
     db.record_text("existing history", "local", i64::MAX, 1000, 0)
         .unwrap();
-    let a = bootstrap::start_parts(db, identity, Box::new(FakeClipboard::new()))
+    let a = bootstrap::start_parts(db, identity, Box::new(FakeClipboard::new()), None)
         .await
         .unwrap();
     let own_id = a.status().noob_id;
@@ -63,6 +120,7 @@ async fn legacy_pair_migrates_atomically_and_multi_device_settings_survive_resta
         db,
         Identity::from_secret(&secret).unwrap(),
         Box::new(FakeClipboard::new()),
+        None,
     )
     .await
     .unwrap();
@@ -80,6 +138,7 @@ async fn legacy_pair_migrates_atomically_and_multi_device_settings_survive_resta
         Database::open(&path).unwrap(),
         Identity::from_secret(&secret).unwrap(),
         Box::new(FakeClipboard::new()),
+        None,
     )
     .await
     .unwrap();

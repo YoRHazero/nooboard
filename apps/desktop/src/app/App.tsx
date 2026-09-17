@@ -2,7 +2,18 @@ import { errorText } from '../i18n/errors';
 import { useI18n } from '../i18n/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MotionConfig, motion } from 'motion/react';
-import { House, History, Laptop, Monitor, Pause, Play, Settings2, X } from 'lucide-react';
+import {
+  House,
+  History,
+  Laptop,
+  Monitor,
+  Pause,
+  Play,
+  Settings2,
+  X,
+  ArrowLeftRight,
+} from 'lucide-react';
+import { TransfersPage } from '../features/transfers/TransfersPage';
 import { useClient, useCommand, useSnapshot } from '../api/NooboardProvider';
 import { Button, IconButton } from '../ui/controls';
 import { HomePage } from '../features/home/HomePage';
@@ -14,7 +25,7 @@ import type { PreviewClient } from '../preview/PreviewClient';
 
 import { PairingPrompt } from '../features/devices/PairingPrompt';
 
-type Page = 'home' | 'history' | 'devices' | 'settings';
+type Page = 'home' | 'history' | 'transfers' | 'devices' | 'settings';
 
 export function App({
   preview,
@@ -29,10 +40,12 @@ export function App({
   const pages = {
     home: { title: t('common:home'), icon: House },
     history: { title: t('common:history'), icon: History },
+    transfers: { title: t('common:transfers'), icon: ArrowLeftRight },
     devices: { title: t('common:devices'), icon: Monitor },
     settings: { title: t('common:settings'), icon: Settings2 },
   };
   const [page, setPage] = useState<Page>('home');
+  const [transferKey, setTransferKey] = useState<string>();
   const main = useRef<HTMLElement>(null);
   const { localDevice, settings, notice, connectionError } = useSnapshot();
   const [dismissed, setDismissed] = useState<string>();
@@ -146,9 +159,14 @@ export function App({
                 <HomePage
                   onDevices={() => navigate('devices')}
                   onSettings={() => navigate('settings')}
+                  onTransfers={(key) => {
+                    setTransferKey(key);
+                    navigate('transfers');
+                  }}
                 />
               )}
               {page === 'history' && <HistoryPage />}
+              {page === 'transfers' && <TransfersPage focusKey={transferKey} />}
               {page === 'devices' && <DevicesPage />}
               {page === 'settings' && <SettingsPage />}
             </div>

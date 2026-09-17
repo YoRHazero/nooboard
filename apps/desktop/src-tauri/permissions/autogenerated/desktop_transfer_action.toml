@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-transfer-action"
+description = "Enables the desktop_transfer_action command without any pre-configured scope."
+commands.allow = ["desktop_transfer_action"]
+
+[[permission]]
+identifier = "deny-desktop-transfer-action"
+description = "Denies the desktop_transfer_action command without any pre-configured scope."
+commands.deny = ["desktop_transfer_action"]

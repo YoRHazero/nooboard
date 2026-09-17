@@ -1,5 +1,7 @@
 import type { DesktopSnapshot, Peer, DeviceIdentity } from '../api/contracts';
 
+export const exampleFileNames = ['设计稿.png', 'Notes.txt'];
+
 export const examplePeer: Peer = {
   noobId: '8a4d72f109c3b65e4a20d81f765b30ce62da9e14f7c0539b12e846af90d52b73',
   deviceName: '工作室的电脑',

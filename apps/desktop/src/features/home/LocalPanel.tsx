@@ -11,6 +11,7 @@ export function LocalPanel({ onSettings }: { onSettings: () => void }) {
   return (
     <>
       <div className="local-mode">
+        <p className="field-note">{t('home:sendMode')}</p>
         <div className="segmented" aria-label={t('home:sendMode')}>
           <button
             aria-pressed={settings.mode === 'manual'}

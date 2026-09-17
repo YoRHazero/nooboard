@@ -5,10 +5,10 @@ import {
   type LanguagePreference,
 } from '../../i18n/language';
 import type { ReactNode } from 'react';
-import { History, Palette, Radio } from 'lucide-react';
+import { History, Palette, Radio, FolderOpen } from 'lucide-react';
 import { useClient, useCommand, useSnapshot } from '../../api/NooboardProvider';
 import type { Theme } from '../../api/contracts';
-import { Toggle } from '../../ui/controls';
+import { Button, Toggle } from '../../ui/controls';
 
 function SettingRow({
   title,
@@ -74,6 +74,23 @@ export function SettingsPage() {
             onChange={(paused) => update({ paused })}
           />
         </SettingRow>
+      </section>
+      <section className="settings-group">
+        <div className="settings-group__heading">
+          <FolderOpen size={19} />
+          <h2>{t('common:transfers')}</h2>
+        </div>
+        <SettingRow
+          title={t('transfers:receiveDirectory')}
+          description={t('transfers:directoryHelp')}
+        >
+          <Button variant="quiet" onClick={() => execute(() => client.selectReceiveDirectory())}>
+            {t('transfers:changeDirectory')}
+          </Button>
+        </SettingRow>
+        <p className="receive-directory-path">
+          {settings.receiveDirectory || t('transfers:noDirectory')}
+        </p>
       </section>
       <section className="settings-group">
         <div className="settings-group__heading">

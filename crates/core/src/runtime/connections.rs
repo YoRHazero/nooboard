@@ -47,6 +47,7 @@ impl Runtime {
         Ok(())
     }
     pub(super) fn disconnect(&mut self, peer: &str) {
+        self.disconnect_content(peer);
         if let Some(state) = self.peers.get_mut(peer) {
             state.session = None;
             state.peer_epoch = None;

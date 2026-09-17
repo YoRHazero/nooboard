@@ -39,7 +39,7 @@
   "stopped": "本机服务已停止，请重新连接。",
   "offline": "目标设备暂不可接收。",
   "busy": "配对设备或等待中的发送任务已达上限。",
-  "ineligible": "当前剪贴板没有可发送的普通文字。",
+  "ineligible": "剪贴板中没有可发送的内容。",
   "configuration": "设置无效，请检查设备名称、地址和发送目标。",
   "identityChanged": "这台设备的证书已改变，请解除旧配对后重新配对。",
   "fingerprint": "设备身份验证失败，配对未完成。",
@@ -51,5 +51,6 @@
   "diagnosticsDisabled": "原生验证功能没有启用。",
   "discovery": "附近设备发现暂不可用，可以通过地址添加设备。",
   "localAddress": "暂时无法获取本机地址。",
-  "serviceFault": "本机服务遇到异常，请重试或重新连接。"
+  "serviceFault": "本机服务遇到异常，请重试或重新连接。",
+  "nativeOnly": "请在桌面应用中使用文件选择器。"
 }

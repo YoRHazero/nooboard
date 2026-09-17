@@ -1,6 +1,6 @@
 import { useI18n } from '../../i18n/react';
 import { useState } from 'react';
-import { ArrowUpRight, ChevronDown } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, File, Image } from 'lucide-react';
 import { useClient, useCommand, useSnapshot } from '../../api/NooboardProvider';
 import { canSend, shortNoobId } from '../../api/devices';
 import { Button } from '../../ui/controls';
@@ -15,6 +15,8 @@ export function ClipboardPanel() {
   const [choosing, setChoosing] = useState(false);
   const selected = peers.filter((p) => manualTargets.includes(p.noobId));
   const available = selected.filter(canSend).length;
+  const image = current.kind === 'Image';
+  const files = current.kind === 'Files';
   const source = peers.find((p) => p.noobId === current.sourceNoobId);
   const sourceLabel =
     current.source === 'local'
@@ -37,18 +39,48 @@ export function ClipboardPanel() {
         <span className="clipboard-source" title={sourceLabel}>
           {sourceLabel} · {clockTime(current.copiedAt)}
         </span>
-        <span>{t('common:characters', { count: characterCount(current.text) })}</span>
+        <span>
+          {image
+            ? t('transfers:image')
+            : files
+              ? t('transfers:fileList', { count: current.files?.length ?? 0 })
+              : t('common:characters', { count: characterCount(current.text) })}
+        </span>
       </p>
-      <pre className="clipboard-sheet" tabIndex={0} aria-label={t('home:clipboardText')}>
-        {current.text ||
-          (current.kind === 'Sensitive'
-            ? t('home:sensitive')
-            : current.kind === 'Unsupported'
-              ? t('home:unsupported')
-              : current.kind === 'TooLarge'
-                ? t('home:tooLarge')
-                : t('common:emptyClipboard'))}
-      </pre>
+      {image ? (
+        <div className="clipboard-image">
+          {current.preview ? (
+            <img src={current.preview} alt={t('transfers:imagePreview')} />
+          ) : (
+            <Image size={38} strokeWidth={1} />
+          )}
+          <span>
+            {current.imageWidth && current.imageHeight
+              ? `${current.imageWidth} × ${current.imageHeight}`
+              : t('transfers:image')}
+          </span>
+        </div>
+      ) : files ? (
+        <ul className="clipboard-files" aria-label={t('transfers:files')}>
+          {current.files?.map((name, index) => (
+            <li key={index}>
+              <File size={17} />
+              <span>{name}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <pre className="clipboard-sheet" tabIndex={0} aria-label={t('home:clipboardText')}>
+          {current.text ||
+            (current.kind === 'Sensitive'
+              ? t('home:sensitive')
+              : current.kind === 'Unsupported'
+                ? t('home:unsupported')
+                : current.kind === 'TooLarge'
+                  ? t('home:tooLarge')
+                  : t('common:emptyClipboard'))}
+        </pre>
+      )}
       <div className="clipboard-footer">
         <div className="stage-panel__actions">
           <button
@@ -64,10 +96,14 @@ export function ClipboardPanel() {
           </button>
           <Button
             variant="primary"
-            disabled={!available || settings.paused || !current.text}
+            disabled={!available || settings.paused || (!current.text && !image && !files)}
             onClick={() => execute(() => client.sendCurrent())}
           >
-            {t('home:sendText')}
+            {image
+              ? t('transfers:sendImage')
+              : files
+                ? t('transfers:sendFiles')
+                : t('home:sendText')}
             <ArrowUpRight size={17} />
           </Button>
         </div>

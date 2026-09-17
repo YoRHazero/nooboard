@@ -26,6 +26,7 @@ impl Runtime {
         }
         self.observed_revision = snapshot.revision;
         self.view.current(snapshot.clone(), None);
+        self.preview_content(&snapshot);
         if snapshot.origin == Origin::Application {
             self.publish_snapshot();
             return Ok(());
@@ -228,6 +229,13 @@ impl Runtime {
             }
             Message::Applied { id } => self.delivery(&id, peer, DeliveryState::Applied),
             Message::Rejected { id } => self.delivery(&id, peer, DeliveryState::Rejected),
+            message @ (Message::Offer { .. }
+            | Message::Accept { .. }
+            | Message::Chunk { .. }
+            | Message::ChunkAck { .. }
+            | Message::Finish { .. }
+            | Message::Cancel { .. }
+            | Message::Outcome { .. }) => self.receive_content(peer, message)?,
             _ => return Err(Error::Configuration),
         }
         Ok(())

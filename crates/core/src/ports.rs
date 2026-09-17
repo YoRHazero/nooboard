@@ -14,6 +14,7 @@ pub(crate) trait ClipboardPort: Send + Sync {
     fn subscribe(&self) -> watch::Receiver<nooboard_clipboard::Result<Snapshot>>;
     fn read(&self) -> ClipboardFuture<'_>;
     fn write(&self, text: String) -> ClipboardFuture<'_>;
+    fn write_content(&self, content: nooboard_clipboard::Content) -> ClipboardFuture<'_>;
 }
 impl ClipboardPort for Clipboard {
     fn subscribe(&self) -> watch::Receiver<nooboard_clipboard::Result<Snapshot>> {
@@ -24,6 +25,9 @@ impl ClipboardPort for Clipboard {
     }
     fn write(&self, text: String) -> ClipboardFuture<'_> {
         Box::pin(self.write_text(text))
+    }
+    fn write_content(&self, content: nooboard_clipboard::Content) -> ClipboardFuture<'_> {
+        Box::pin(self.write_content(content))
     }
 }
 

@@ -27,7 +27,7 @@
   "autoSync": "自动同步",
   "paused": "同步已暂停",
   "receiveOff": "接收已关闭",
-  "receiveOn": "允许接收文字",
+  "receiveOn": "允许接收内容",
   "bird": "肥啾",
   "offline": "离线",
   "online": "在线",
@@ -100,5 +100,6 @@
   "menuMaximize": "缩放",
   "menuFullscreen": "切换全屏",
   "menuBringAll": "前置全部窗口",
-  "paste": "粘贴"
+  "paste": "粘贴",
+  "transfers": "传输"
 }

@@ -97,6 +97,18 @@ export class NativeClient implements DesktopClient {
   async sendCurrent() {
     await this.command('desktop_send');
   }
+  async selectFiles() {
+    await this.command('desktop_select_files');
+  }
+  async selectReceiveDirectory() {
+    await this.command('desktop_receive_directory');
+  }
+  async cancelTransfer(key: string) {
+    await this.command('desktop_transfer_action', { key, action: 'cancel' });
+  }
+  async copyReceived(key: string) {
+    await this.command('desktop_transfer_action', { key, action: 'copy' });
+  }
   async selectTargets(targets: string[]) {
     await this.command('desktop_select_targets', { targets });
   }

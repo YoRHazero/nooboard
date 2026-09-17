@@ -15,15 +15,27 @@ import type {
   Settings,
   TextItem,
 } from '../api/contracts';
-import { createSeed, examples } from './seed';
+import { createSeed, examples, exampleFileNames } from './seed';
 import { activitySummary } from '../api/activity';
 import { batchState, deliveryPending } from '../api/deliveries';
 import { canSend, validAddress, parsePort, validName } from '../api/devices';
 import { PreviewOnboarding } from './PreviewOnboarding';
 import { PreviewTransfers } from './PreviewTransfers';
 
-/** In-memory protocol-v2 interaction preview; never opens sockets or native clipboard access. */
+/** In-memory design preview; never opens sockets or native clipboard access. */
 export class PreviewClient implements DesktopClient {
+  async selectFiles() {
+    throw fail('nativeOnly');
+  }
+  async selectReceiveDirectory() {
+    throw fail('nativeOnly');
+  }
+  async cancelTransfer(_key: string) {
+    throw fail('nativeOnly');
+  }
+  async copyReceived(_key: string) {
+    throw fail('nativeOnly');
+  }
   readonly mode = 'preview' as const;
   async queryHistory(query: HistoryQuery): Promise<HistoryPage> {
     const rows = this.snapshot.history.filter(
@@ -153,6 +165,7 @@ export class PreviewClient implements DesktopClient {
       this.emit({ type: next.state === 'applied' ? 'applied' : 'rejected', sequence: id });
   }
   async sendCurrent() {
+    if (['Files', 'Image'].includes(this.snapshot.current.kind ?? '')) throw fail('nativeOnly');
     this.send(this.snapshot.manualTargets, false);
   }
   async selectTargets(noobIds: string[]) {
@@ -265,6 +278,82 @@ export class PreviewClient implements DesktopClient {
     }
   }
   // The following controls simulate external events without touching real devices.
+  async sampleFiles() {
+    const peer = this.snapshot.peers[0];
+    if (!peer) throw fail('noSampleDevice');
+    const key = `sample-files-${++this.sequence}`;
+    const at = Date.now();
+    this.publish({
+      current: {
+        id: this.sequence,
+        kind: 'Files',
+        files: exampleFileNames,
+        text: '',
+        source: 'local',
+        copiedAt: at,
+      },
+      contentTransfers: [
+        {
+          key,
+          peer: peer.noobId,
+          deviceName: peer.deviceName,
+          incoming: false,
+          kind: 'Files',
+          names: exampleFileNames,
+          totalBytes: 12582912,
+          preparedBytes: 12582912,
+          completedBytes: 5242880,
+          stage: 'Sending',
+          error: null,
+          savedPaths: [],
+          at,
+        },
+        {
+          key: `${key}-saved`,
+          peer: peer.noobId,
+          deviceName: peer.deviceName,
+          incoming: true,
+          kind: 'Image',
+          names: ['image.png'],
+          totalBytes: 4194304,
+          preparedBytes: 0,
+          completedBytes: 4194304,
+          stage: 'Saved',
+          error: 'Clipboard',
+          savedPaths: ['/example/nooboard/image.png'],
+          at: at - 60000,
+        },
+        {
+          key: `${key}-done`,
+          peer: peer.noobId,
+          deviceName: peer.deviceName,
+          incoming: true,
+          kind: 'Files',
+          names: ['Notes.txt'],
+          totalBytes: 2834,
+          preparedBytes: 0,
+          completedBytes: 2834,
+          stage: 'Completed',
+          error: null,
+          savedPaths: ['/example/nooboard/Notes.txt'],
+          at: at - 120000,
+        },
+      ],
+      activities: this.withActivity({
+        id: this.sequence,
+        contentTask: key,
+        contentNode: 'started',
+        contentStage: 'Sending',
+        sourceNoobId: peer.noobId,
+        sourceName: peer.deviceName,
+        title: exampleFileNames.join(', '),
+        kind: 'sent',
+        state: 'pending',
+        at,
+      }),
+    });
+    this.emit({ type: 'sent', sequence: this.sequence });
+  }
   async sampleCopy() {
     this.sample = (this.sample + 1) % examples.length;
     await this.copy(examples[this.sample]);
@@ -323,7 +412,7 @@ export class PreviewClient implements DesktopClient {
     this.generations.clear();
     this.sample = 0;
     this.sequence = 100;
-    this.publish({ ...createSeed(), onboarding: undefined });
+    this.publish({ ...createSeed(), onboarding: undefined, contentTransfers: [] });
     this.emit({ type: 'reset' });
   }
   dispose() {

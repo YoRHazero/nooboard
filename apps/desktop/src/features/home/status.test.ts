@@ -6,7 +6,7 @@ it('summarizes each connection and the currently available automatic scope', () 
   const state = createSeed();
   expect(homeStatus(state).label).toBe('2 台设备已连接');
   state.settings.mode = 'automatic';
-  expect(homeStatus(state).detail).toBe('自动同步 · 1 台可接收');
+  expect(homeStatus(state).detail).toBe('文字自动同步 · 1 台可接收');
   state.settings.paused = true;
   expect(homeStatus(state).label).toBe('同步已暂停');
 });

@@ -47,6 +47,12 @@ pub fn snapshot(snapshot: AppSnapshot) -> Value {
     {
         decimal(&mut transfer["id"]["sequence"]);
     }
+    for transfer in value["content_transfers"]
+        .as_array_mut()
+        .expect("content transfer array")
+    {
+        decimal(&mut transfer["id"]["sequence"]);
+    }
     value
 }
 fn decimal(value: &mut Value) {

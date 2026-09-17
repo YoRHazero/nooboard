@@ -24,6 +24,9 @@ pub(crate) enum Command {
     ConfigurePeer(String, PeerSettings),
     SelectTargets(Vec<String>),
     Send(Option<Vec<String>>),
+    SendFiles(Vec<std::path::PathBuf>),
+    CancelContent(String),
+    CopyContent(String),
     History {
         contains: String,
         limit: u32,
@@ -56,6 +59,18 @@ pub struct App {
     pub(crate) task: Option<JoinHandle<Result<()>>>,
 }
 impl App {
+    pub async fn send_files(&self, paths: Vec<std::path::PathBuf>) -> Result<()> {
+        self.request(Command::SendFiles(paths)).await?;
+        Ok(())
+    }
+    pub async fn cancel_transfer(&self, key: String) -> Result<()> {
+        self.request(Command::CancelContent(key)).await?;
+        Ok(())
+    }
+    pub async fn copy_received(&self, key: String) -> Result<()> {
+        self.request(Command::CopyContent(key)).await?;
+        Ok(())
+    }
     pub async fn start(options: Options) -> Result<Self> {
         crate::bootstrap::start(options).await
     }

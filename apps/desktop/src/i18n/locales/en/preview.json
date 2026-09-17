@@ -1,4 +1,5 @@
 {
+  "fileSamples": "File samples",
   "nativeVerification": "Native verification",
   "nativeEnvironment": "Isolated clipboard · Temporary identity and database · Real TLS",
   "copyTest": "Copy test text",

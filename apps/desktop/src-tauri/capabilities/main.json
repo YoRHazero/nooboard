@@ -19,6 +19,9 @@
     "allow-desktop-begin-pairing",
     "allow-desktop-accept-pairing",
     "allow-desktop-pairing-code",
-    "allow-desktop-dismiss-pairing"
+    "allow-desktop-dismiss-pairing",
+    "allow-desktop-select-files",
+    "allow-desktop-receive-directory",
+    "allow-desktop-transfer-action"
   ]
 }

@@ -1,5 +1,6 @@
 mod commands;
 mod connections;
+mod content;
 mod local_network;
 mod onboarding;
 mod replication;
@@ -31,6 +32,13 @@ struct PeerSession {
     peer_epoch: Option<u64>,
     accepting: bool,
 }
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        if let Some(task) = &self.preview_task {
+            task.abort();
+        }
+    }
+}
 impl PeerSession {
     fn new() -> Self {
         let (online, _) = watch::channel(false);
@@ -51,7 +59,9 @@ pub(crate) struct Runtime {
     onboarding: crate::onboarding::Onboarding,
     store: Store,
     identity: Identity,
-    clipboard: Box<dyn ClipboardPort>,
+    clipboard: std::sync::Arc<dyn ClipboardPort>,
+    content: crate::content_transfer::ContentTransfers,
+    preview_task: Option<tokio::task::JoinHandle<()>>,
     config: Configuration,
     peers: BTreeMap<String, PeerSession>,
     listener: Listener,
@@ -89,7 +99,7 @@ impl Runtime {
         .await?;
         let state = status.borrow().clone();
         let namespace = nooboard_network::new_session_id()?;
-        let view = crate::view::ViewState::new(namespace.clone(), state.clone(), initial);
+        let view = crate::view::ViewState::new(namespace.clone(), state.clone(), initial.clone());
         let (snapshots, _) = watch::channel(view.snapshot.clone());
         let (sender, events_pairing) = mpsc::channel(32);
         let endpoint = nooboard_network::pairing::Endpoint::bind(
@@ -124,7 +134,9 @@ impl Runtime {
             onboarding,
             store,
             identity,
-            clipboard,
+            clipboard: std::sync::Arc::from(clipboard),
+            content: crate::content_transfer::ContentTransfers::default(),
+            preview_task: None,
             config,
             peers: BTreeMap::new(),
             listener,
@@ -146,6 +158,7 @@ impl Runtime {
             runtime.start_dial(&peer)?;
         }
         runtime.refresh_local_network();
+        runtime.preview_content(&initial);
         runtime.publish();
         Ok(runtime)
     }
@@ -176,6 +189,7 @@ impl Runtime {
                     match snapshot { Ok(snapshot) => self.observe(snapshot, true).await, Err(e) => Err(e.into()) }
                 }
                 Some(event) = self.incoming.recv() => self.link_event(event).await,
+                Some(event) = self.content.incoming.recv() => { self.content_event(event).await; Ok(()) },
                 Some(event) = self.onboarding.events.recv() => self.pairing_event(event).await,
                 _ = interfaces.tick() => {
                     if self.refresh_local_network() { self.publish_snapshot(); }
@@ -222,6 +236,8 @@ impl Runtime {
         let _ = self.events.send(event);
     }
     fn publish_snapshot(&mut self) {
+        self.content.prune();
+        self.view.snapshot.content_transfers = self.content.snapshot();
         self.view.snapshot.onboarding = self.onboarding.snapshot.clone();
         self.snapshots.send_replace(
             self.view

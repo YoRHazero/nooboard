@@ -7,6 +7,8 @@ use std::collections::VecDeque;
 #[derive(Clone, Copy, Serialize, PartialEq, Eq)]
 pub enum ClipboardKind {
     Text,
+    Image,
+    Files,
     Empty,
     Unsupported,
     Sensitive,
@@ -19,14 +21,32 @@ pub struct CurrentClipboard {
     pub text: Option<String>,
     pub source: Option<String>,
     pub copied_at_ms: i64,
+    pub files: Vec<String>,
+    pub preview: Option<String>,
+    pub image_width: Option<u32>,
+    pub image_height: Option<u32>,
 }
 impl CurrentClipboard {
     pub(crate) fn from_native(snapshot: Snapshot, source: Option<String>) -> Self {
+        let files = match &snapshot.content {
+            Content::Files(paths) => paths
+                .iter()
+                .map(|p| {
+                    p.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned()
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
         let (kind, text) = match snapshot.content {
             Content::Text(text) if !text.contains('\0') => (ClipboardKind::Text, Some(text)),
             Content::Empty => (ClipboardKind::Empty, None),
             Content::Sensitive => (ClipboardKind::Sensitive, None),
             Content::TooLarge => (ClipboardKind::TooLarge, None),
+            Content::Image(_) => (ClipboardKind::Image, None),
+            Content::Files(_) => (ClipboardKind::Files, None),
             _ => (ClipboardKind::Unsupported, None),
         };
         Self {
@@ -35,6 +55,10 @@ impl CurrentClipboard {
             text,
             source,
             copied_at_ms: now_ms(),
+            files,
+            preview: None,
+            image_width: None,
+            image_height: None,
         }
     }
 }
@@ -53,6 +77,9 @@ pub struct ActivityRecord {
     pub source: Option<String>,
     pub device_name: Option<String>,
     pub message_id: Option<MessageId>,
+    pub content_task: Option<String>,
+    pub content_node: Option<String>,
+    pub content_stage: Option<crate::ContentStage>,
 }
 #[derive(Clone, Serialize)]
 pub struct Fault {
@@ -62,6 +89,7 @@ pub struct Fault {
 }
 #[derive(Clone, Serialize)]
 pub struct AppSnapshot {
+    pub content_transfers: Vec<crate::ContentTransfer>,
     pub local_network: crate::LocalNetwork,
     pub onboarding: crate::OnboardingSnapshot,
     pub session: String,
@@ -81,6 +109,7 @@ impl ViewState {
     pub fn new(session: String, status: Status, initial: Snapshot) -> Self {
         Self {
             snapshot: AppSnapshot {
+                content_transfers: Vec::new(),
                 local_network: crate::LocalNetwork::default(),
                 onboarding: crate::OnboardingSnapshot::default(),
                 session,
@@ -123,7 +152,28 @@ impl ViewState {
             source,
             device_name,
             message_id,
+            content_task: None,
+            content_node: None,
+            content_stage: None,
         });
+    }
+    pub fn content_node(&mut self, task: &crate::ContentTransfer, node: &str) {
+        self.record(
+            if task.incoming {
+                ActivityKind::Received
+            } else {
+                ActivityKind::Sent
+            },
+            &task.names.join(", "),
+            Some(task.peer.clone()),
+            Some(task.device_name.clone()),
+            None,
+        );
+        if let Some(activity) = self.activities.front_mut() {
+            activity.content_task = Some(task.key.clone());
+            activity.content_node = Some(node.into());
+            activity.content_stage = Some(task.stage);
+        }
     }
     pub fn publish(&mut self, mut status: Status, transfers: Vec<Transfer>) -> AppSnapshot {
         let mut completed = 0;

@@ -2,6 +2,7 @@ import { t } from '../../i18n/index';
 import type { Activity, DesktopSnapshot } from '../../api/contracts';
 import { canSend } from '../../api/devices';
 import { batchSummary } from '../../api/deliveries';
+import { contentStageLabel } from '../../api/contentTransfers';
 
 export function homeStatus({ settings, peers }: DesktopSnapshot) {
   if (settings.paused) return { label: t('common:paused'), detail: '', tone: 'quiet' };
@@ -24,6 +25,10 @@ export function homeStatus({ settings, peers }: DesktopSnapshot) {
   };
 }
 export function transferResult(activity: Activity) {
+  if (activity.contentTask)
+    return activity.contentNode === 'started'
+      ? t('transfers:nodeStarted')
+      : contentStageLabel(activity.contentStage ?? 'Unconfirmed');
   return activity.kind === 'sent' ? batchSummary(activity) : t('home:textReceived');
 }
 export function latestTransfer(state: DesktopSnapshot) {

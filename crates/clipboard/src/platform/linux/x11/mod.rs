@@ -34,7 +34,7 @@ pub(crate) struct Clipboard {
     max_bytes: usize,
     revision: u64,
     timestamp: Timestamp,
-    owned: Option<Arc<Vec<u8>>>,
+    owned: Option<Arc<formats::Payload>>,
     events: VecDeque<Event>,
     outgoing: Vec<Outgoing>,
 }
@@ -171,13 +171,8 @@ impl Clipboard {
         let (content, origin) = if owner == NONE {
             (Content::Empty, Origin::External)
         } else if owner == self.window {
-            let bytes = self.owned.as_ref().ok_or(Error::Changed)?;
-            (
-                Content::Text(
-                    String::from_utf8(bytes.as_ref().clone()).map_err(|_| Error::Native)?,
-                ),
-                Origin::Application,
-            )
+            let payload = self.owned.as_ref().ok_or(Error::Changed)?;
+            (payload.content.clone(), Origin::Application)
         } else {
             (self.read_external()?, Origin::External)
         };
@@ -216,8 +211,38 @@ impl Clipboard {
                 .name;
             names.push(String::from_utf8_lossy(&name).into_owned());
         }
-        if let Some(content) = formats::excluded(&names) {
-            return Ok(content);
+        if formats::excluded(&names) == Some(Content::Sensitive) {
+            return Ok(Content::Sensitive);
+        }
+        if let Some((index, mime)) = formats::FILE_TYPES
+            .iter()
+            .find_map(|mime| names.iter().position(|n| n == mime).map(|i| (i, *mime)))
+        {
+            match self.request(target_ids[index], 4 * 1024 * 1024)? {
+                selection::Data::Bytes {
+                    bytes, format: 8, ..
+                } => {
+                    if let Some(content) = formats::files(mime, &bytes) {
+                        return Ok(content);
+                    }
+                }
+                _ => return Ok(Content::Unsupported),
+            }
+        }
+        if let Some((index, mime)) = formats::IMAGE_TYPES
+            .iter()
+            .find_map(|mime| names.iter().position(|n| n == mime).map(|i| (i, *mime)))
+        {
+            return match self.request(target_ids[index], crate::MAX_IMAGE_BYTES)? {
+                selection::Data::Bytes {
+                    bytes, format: 8, ..
+                } => formats::image(mime, bytes),
+                selection::Data::TooLarge => Ok(Content::TooLarge),
+                _ => Ok(Content::Unsupported),
+            };
+        }
+        if names.iter().any(|n| n.starts_with("image/")) {
+            return Ok(Content::Unsupported);
         }
         let target = formats::UTF8_TYPES.iter().find_map(|preferred| {
             names
@@ -260,6 +285,15 @@ impl Clipboard {
         if text.len() > self.max_bytes || text.contains('\0') {
             return Err(Error::InvalidInput);
         }
+        self.write_content(&Content::Text(text.into()))
+    }
+    pub fn write_content(&mut self, content: &Content) -> Result<Snapshot> {
+        if let Content::Text(text) = content
+            && (text.len() > self.max_bytes || text.contains('\0'))
+        {
+            return Err(Error::InvalidInput);
+        }
+        let payload = Arc::new(formats::Payload::new(content.clone())?);
         self.pump()?;
         self.connection
             .change_property8(
@@ -288,11 +322,11 @@ impl Clipboard {
         if self.owner()? != self.window {
             return Err(Error::Changed);
         }
-        self.owned = Some(Arc::new(text.as_bytes().to_vec()));
+        self.owned = Some(payload);
         self.revision = self.revision.wrapping_add(1);
         Ok(Snapshot {
             revision: self.revision,
-            content: Content::Text(text.into()),
+            content: content.clone(),
             origin: Origin::Application,
         })
     }

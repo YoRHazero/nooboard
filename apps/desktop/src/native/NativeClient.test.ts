@@ -84,6 +84,86 @@ class Bridge implements NativeTransport {
 }
 
 describe('native snapshot and command bridge', () => {
+  it('keeps file progress separate from immutable mailbox nodes and never announces success at 100% bytes', () => {
+    const store = new NativeStore(appearance);
+    const events: DesktopEvent[] = [];
+    store.onEvent((event) => events.push(event));
+    store.apply(frame());
+    const progress = frame('2');
+    progress.current = { ...progress.current, kind: 'Files', text: null, files: ['photo.png'] };
+    progress.content_transfers = [
+      {
+        key: 'out:files:b',
+        id: { session: 's', sequence: '5' },
+        peer: 'b',
+        device_name: '设备',
+        incoming: false,
+        kind: 'Files',
+        names: ['photo.png'],
+        total_bytes: 1024,
+        completed_bytes: 500,
+        prepared_bytes: 1024,
+        stage: 'Sending',
+        error: null,
+        saved_paths: [],
+        at_ms: 1,
+      },
+    ];
+    progress.activities = [
+      {
+        sequence: '1',
+        kind: 'Sent',
+        summary: 'photo.png',
+        at_ms: 1,
+        source: 'b',
+        device_name: '设备',
+        message_id: null,
+        content_task: 'out:files:b',
+        content_node: 'started',
+        content_stage: 'Waiting',
+      },
+    ];
+    store.apply(progress);
+    expect(store.getSnapshot().current.kind).toBe('Files');
+    expect(store.getSnapshot().history).toHaveLength(0);
+    const finalizing = structuredClone(progress);
+    finalizing.revision = '3';
+    finalizing.content_transfers![0].completed_bytes = 1024;
+    finalizing.content_transfers![0].stage = 'Verifying';
+    store.apply(finalizing);
+    expect(events.map((event) => event.type)).toEqual(['sent']);
+    expect(store.getSnapshot().activities[0].contentStage).toBe('Waiting');
+    expect(store.getSnapshot().contentTransfers![0].stage).toBe('Verifying');
+    const finished = structuredClone(finalizing);
+    finished.revision = '4';
+    finished.content_transfers![0].stage = 'Saved';
+    finished.content_transfers![0].error = 'Clipboard';
+    finished.activities.unshift({
+      ...finished.activities[0],
+      sequence: '2',
+      content_node: 'finished',
+      content_stage: 'Saved',
+    });
+    store.apply(finished);
+    expect(store.getSnapshot().activities[0].state).toBe('partial');
+    expect(events.map((event) => event.type)).toEqual(['sent', 'rejected']);
+    store.apply({ ...finished, revision: '5' }, true);
+    expect(events).toHaveLength(2);
+  });
+  it('sends only task keys for file actions and delegates selection to native dialogs', async () => {
+    const bridge = new Bridge();
+    const client = new NativeClient(bridge, appearance);
+    await client.selectFiles();
+    await client.selectReceiveDirectory();
+    await client.cancelTransfer('out:s:5:b');
+    await client.copyReceived('in:s:7:a');
+    expect(bridge.calls).toEqual([
+      { command: 'desktop_select_files', args: undefined },
+      { command: 'desktop_receive_directory', args: undefined },
+      { command: 'desktop_transfer_action', args: { key: 'out:s:5:b', action: 'cancel' } },
+      { command: 'desktop_transfer_action', args: { key: 'in:s:7:a', action: 'copy' } },
+    ]);
+  });
   it('recovers old activities without replay, keeps exact IDs, and ignores stale snapshots', () => {
     const store = new NativeStore(appearance);
     const events: DesktopEvent[] = [];

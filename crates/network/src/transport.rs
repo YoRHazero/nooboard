@@ -55,7 +55,7 @@ impl TlsConfig {
             .with_protocol_versions(&[&rustls::version::TLS13])?
             .with_client_cert_verifier(verifier)
             .with_single_cert(vec![identity.cert.clone()], identity.key.clone_key())?;
-        client.alpn_protocols = vec![b"nooboard/2".to_vec()];
+        client.alpn_protocols = vec![b"nooboard/3".to_vec()];
         server.alpn_protocols = client.alpn_protocols.clone();
         // Sessions are always freshly authenticated; unpairing cannot leave resumed sessions.
         client.resumption = rustls::client::Resumption::disabled();
@@ -109,7 +109,7 @@ impl TlsConfig {
             .and_then(|c| c.first())
             .ok_or(Error::Identity)?;
         let peer_id = crate::noob_id(certificate)?;
-        if state.alpn_protocol() != Some(b"nooboard/2".as_slice())
+        if state.alpn_protocol() != Some(b"nooboard/3".as_slice())
             || self.peers.get(&peer_id).map(Vec::as_slice) != Some(certificate.as_ref())
         {
             return Err(Error::Identity);

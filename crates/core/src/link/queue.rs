@@ -11,11 +11,13 @@ pub(crate) struct Outbox(Arc<Inner>);
 struct Inner {
     queue: Mutex<Queue>,
     ready: Notify,
+    space: Notify,
 }
 #[derive(Default)]
 struct Queue {
     control: VecDeque<Message>,
     text: VecDeque<Job>,
+    bulk: VecDeque<Message>,
 }
 pub(crate) struct Job {
     pub message: Message,
@@ -34,6 +36,7 @@ impl Outbox {
         Self(Arc::new(Inner {
             queue: Mutex::new(Queue::default()),
             ready: Notify::new(),
+            space: Notify::new(),
         }))
     }
     pub fn text(&self, job: Job) -> Result<Option<MessageId>, ()> {
@@ -58,6 +61,26 @@ impl Outbox {
         q.control.push_back(message);
         self.0.ready.notify_one();
         Ok(())
+    }
+    pub async fn bulk(&self, message: Message) {
+        loop {
+            let notified = self.0.space.notified();
+            {
+                let mut q = self.0.queue.lock().expect("outbox lock");
+                if q.bulk.len() < 2 {
+                    q.bulk.push_back(message);
+                    self.0.ready.notify_one();
+                    return;
+                }
+            }
+            notified.await;
+        }
+    }
+    pub fn cancel_bulk(&self, id: &MessageId) {
+        let mut q = self.0.queue.lock().expect("outbox lock");
+        q.bulk
+            .retain(|m| !matches!(m, Message::Chunk { id: other, .. } if other == id));
+        self.0.space.notify_one();
     }
     pub fn cancel_text(&self, automatic_only: bool) -> Vec<MessageId> {
         let mut q = self.0.queue.lock().expect("outbox lock");
@@ -87,6 +110,13 @@ impl Outbox {
                 }
                 if let Some(job) = q.text.pop_front() {
                     return job;
+                }
+                if let Some(message) = q.bulk.pop_front() {
+                    self.0.space.notify_one();
+                    return Job {
+                        message,
+                        automatic: false,
+                    };
                 }
             }
             notified.await;
