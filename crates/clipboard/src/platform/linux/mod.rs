@@ -33,17 +33,21 @@ impl Wake {
 }
 pub(crate) enum Native {
     X11(x11::Clipboard),
-    Wayland(wayland::Clipboard),
+    Wayland(Box<wayland::Clipboard>),
 }
 impl Native {
     pub fn open(max_bytes: usize) -> Result<Self> {
         let backend = std::env::var("NOOBOARD_LINUX_BACKEND").ok();
         match backend.as_deref() {
             Some("x11") => x11::Clipboard::open(max_bytes).map(Self::X11),
-            Some("wayland") => wayland::Clipboard::open(max_bytes).map(Self::Wayland),
+            Some("wayland") => wayland::Clipboard::open(max_bytes)
+                .map(Box::new)
+                .map(Self::Wayland),
             Some(_) => Err(Error::InvalidInput),
             None if std::env::var_os("WAYLAND_DISPLAY").is_some() => {
-                wayland::Clipboard::open(max_bytes).map(Self::Wayland)
+                wayland::Clipboard::open(max_bytes)
+                    .map(Box::new)
+                    .map(Self::Wayland)
             }
             None if std::env::var_os("DISPLAY").is_some() => {
                 x11::Clipboard::open(max_bytes).map(Self::X11)

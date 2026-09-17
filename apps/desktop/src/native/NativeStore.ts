@@ -4,6 +4,7 @@ import type {
   DeliveryState,
   DesktopEvent,
   DesktopSnapshot,
+  DesktopState,
   Settings,
 } from '../api/contracts';
 import { batchState } from '../api/deliveries';
@@ -26,6 +27,7 @@ export type Appearance = Pick<Settings, 'theme' | 'reducedMotion'>;
 /** Maps authoritative snapshots to presentation identities; never infers receipt success. */
 export class NativeStore {
   private snapshot: DesktopSnapshot | null = null;
+  private desktop?: DesktopState;
   private session = '';
   private revision = -1n;
   private watermark = 0n;
@@ -55,6 +57,18 @@ export class NativeStore {
   }
   private emit(event: DesktopEvent) {
     this.events.forEach((fn) => fn(event));
+  }
+  setDesktop(desktop: DesktopState) {
+    if (this.desktop && desktop.revision <= this.desktop.revision) return;
+    this.desktop = desktop;
+    if (this.snapshot) {
+      this.snapshot = {
+        ...this.snapshot,
+        desktop,
+        settings: { ...this.snapshot.settings, closeToTray: desktop.closeToTray },
+      };
+      this.notify();
+    }
   }
   setAppearance(appearance: Appearance) {
     this.appearance = appearance;
@@ -127,6 +141,7 @@ export class NativeStore {
     const { status, current } = frame;
     const onboarding = frame.onboarding;
     this.snapshot = {
+      desktop: this.desktop,
       contentTransfers: (frame.content_transfers ?? []).map((task) => ({
         key: task.key,
         peer: task.peer,
@@ -206,6 +221,7 @@ export class NativeStore {
       historyRevision: `${frame.session}:${frame.history_revision}`,
       activities,
       settings: {
+        closeToTray: this.desktop?.closeToTray,
         receiveDirectory: status.settings.receive_directory,
         discoverable: status.settings.discoverable,
         mode: status.settings.mode === 'Automatic' ? 'automatic' : 'manual',

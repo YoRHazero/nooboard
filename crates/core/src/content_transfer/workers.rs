@@ -47,7 +47,7 @@ pub(crate) enum WorkerEvent {
     },
     Ready {
         key: String,
-        transaction: IncomingBatch,
+        transaction: Box<IncomingBatch>,
         image: Option<ImageData>,
     },
     Saved {
@@ -504,7 +504,7 @@ impl ReceiverJob {
                     self.events
                         .send(WorkerEvent::Ready {
                             key: key.into(),
-                            transaction,
+                            transaction: Box::new(transaction),
                             image,
                         })
                         .await

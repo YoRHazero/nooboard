@@ -3,6 +3,7 @@ import { Channel, invoke } from '@tauri-apps/api/core';
 import type {
   DesktopClient,
   DesktopEvent,
+  DesktopState,
   EntryId,
   HistoryQuery,
   HistoryPage,
@@ -44,16 +45,23 @@ export class NativeClient implements DesktopClient {
   async connect() {
     const generation = ++this.generation;
     let pending: NativeSnapshot | null = null;
+    let pendingDesktop: DesktopState | undefined;
     let connected = false;
     let stopped: Problem | undefined;
     const result = await this.bridge.connect((frame) => {
       if (generation !== this.generation) return;
+      if (frame.type === 'desktop') {
+        if (connected) this.store.setDesktop(frame.data);
+        else if (!pendingDesktop || frame.data.revision > pendingDesktop.revision)
+          pendingDesktop = frame.data;
+        return;
+      }
       if (frame.type === 'stopped') {
         stopped = frame.data;
         if (connected) this.store.stopped(frame.data);
         return;
       }
-      if (connected) this.store.apply(frame.data);
+      if (connected) this.store.apply(frame.data, frame.type === 'recovered');
       else if (
         !pending ||
         pending.session !== frame.data.session ||
@@ -63,6 +71,8 @@ export class NativeClient implements DesktopClient {
     });
     if (generation !== this.generation) return;
     this.diagnostic = result.diagnostic;
+    if (result.desktop) this.store.setDesktop(result.desktop);
+    if (pendingDesktop) this.store.setDesktop(pendingDesktop);
     this.store.apply(result.snapshot, true);
     if (pending) this.store.apply(pending, true);
     connected = true;
@@ -126,7 +136,13 @@ export class NativeClient implements DesktopClient {
     await this.command('desktop_settings', { patch });
   }
   async updateSettings(settings: Partial<Settings>) {
-    const { theme, reducedMotion, ...business } = settings;
+    const { theme, reducedMotion, closeToTray, ...business } = settings;
+    if (closeToTray !== undefined) {
+      const desktop = await this.command<DesktopState>('desktop_preferences', {
+        patch: { closeToTray },
+      });
+      this.store.setDesktop(desktop);
+    }
     if (Object.keys(business).length)
       await this.command('desktop_settings', {
         patch: {
@@ -150,6 +166,9 @@ export class NativeClient implements DesktopClient {
   }
   async unpair(noobId: string) {
     await this.command('desktop_unpair', { noobId });
+  }
+  async acknowledgeNavigation(id: number) {
+    await this.command('desktop_navigation_ack', { id });
   }
   async queryHistory(query: HistoryQuery): Promise<HistoryPage> {
     const page = await this.command<NativeHistoryPage>('desktop_history', { ...query });

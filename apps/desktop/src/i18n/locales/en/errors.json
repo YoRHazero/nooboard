@@ -1,4 +1,6 @@
 {
+  "desktopPreferences": "Desktop preferences could not be read or saved. Check the application data directory permissions.",
+  "trayUnsupported": "The system tray is not supported on this platform.",
   "generic": "Unable to complete this action. Please try again.",
   "invalidAddress": "Enter a complete address, such as 192.168.1.38:24817.",
   "invalidName": "Use 1–80 characters without line breaks or control characters.",

@@ -1,17 +1,22 @@
-import { Menu, Submenu, PredefinedMenuItem } from '@tauri-apps/api/menu';
+import { Menu, MenuItem, Submenu, PredefinedMenuItem } from '@tauri-apps/api/menu';
+import { getVersion } from '@tauri-apps/api/app';
 import type { PredefinedMenuItemOptions } from '@tauri-apps/api/menu';
 import { platform } from '@tauri-apps/plugin-os';
 import { i18n, t } from '../i18n';
 import type { resources } from '../i18n/resources';
 
 type Label = keyof typeof resources.en.common;
-type NativeItem = Submenu | PredefinedMenuItem;
+type NativeItem = Submenu | PredefinedMenuItem | MenuItem;
 /** Keep native actions and shortcuts while updating only our menu labels. */
 export async function initializeMenu() {
+  const version = await getVersion();
   const owned: (NativeItem | Menu)[] = [];
   const labels: { item: NativeItem; label: Label }[] = [];
   const item = async (kind: PredefinedMenuItemOptions['item'], label?: Label) => {
-    const native = await PredefinedMenuItem.new({ item: kind, text: label ? t(label) : undefined });
+    const native =
+      kind === 'Quit'
+        ? await MenuItem.new({ id: 'app-quit', text: t('menuQuit'), accelerator: 'CmdOrCtrl+Q' })
+        : await PredefinedMenuItem.new({ item: kind, text: label ? t(label) : undefined });
     owned.push(native);
     if (label) labels.push({ item: native, label });
     return native;
@@ -28,7 +33,7 @@ export async function initializeMenu() {
     if (mac)
       menus.push(
         await submenu('nooboard', [
-          await item({ About: { name: 'nooboard', version: '0.1.0' } }, 'menuAbout'),
+          await item({ About: { name: 'nooboard', version } }, 'menuAbout'),
           await item('Separator'),
           await item('Services', 'menuServices'),
           await item('Separator'),
@@ -77,7 +82,7 @@ export async function initializeMenu() {
     menus.push(windows);
     const help = await submenu(
       t('menuHelp'),
-      mac ? [] : [await item({ About: { name: 'nooboard', version: '0.1.0' } }, 'menuAbout')],
+      mac ? [] : [await item({ About: { name: 'nooboard', version } }, 'menuAbout')],
       'menuHelp',
     );
     menus.push(help);

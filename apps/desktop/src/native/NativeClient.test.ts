@@ -2,7 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { NativeClient, type NativeTransport } from './NativeClient';
 import { NativeStore } from './NativeStore';
 import type { NativeSnapshot, NativeFrame, NativeConnection } from './wire';
-import type { DesktopEvent } from '../api/contracts';
+import type { DesktopEvent, DesktopState } from '../api/contracts';
+
+const desktopState = (revision: number, visible = true): DesktopState => ({
+  revision,
+  traySupported: true,
+  trayAvailable: true,
+  closeToTray: true,
+  preferenceError: false,
+  language: 'en',
+  resolvedLanguage: 'en',
+  visible,
+  navigation: null,
+  version: '0.2.0',
+});
 
 const appearance = { theme: 'system' as const, reducedMotion: false };
 function frame(revision = '1'): NativeSnapshot {
@@ -84,6 +97,31 @@ class Bridge implements NativeTransport {
 }
 
 describe('native snapshot and command bridge', () => {
+  it('recovers hidden-window transfers without replay and preserves independent desktop state', async () => {
+    const bridge = new Bridge();
+    const client = new NativeClient(bridge, appearance);
+    const events: DesktopEvent[] = [];
+    client.onEvent((event) => events.push(event));
+    const connection = client.connect();
+    bridge.receivers[0]({ type: 'desktop', data: desktopState(2, false) });
+    bridge.resolve[0]({ snapshot: frame(), diagnostic: false, desktop: desktopState(1) });
+    await connection;
+    expect(client.getSnapshot().desktop?.visible).toBe(false);
+    bridge.receivers[0]({ type: 'recovered', data: sent(frame('4')) });
+    bridge.receivers[0]({
+      type: 'desktop',
+      data: { ...desktopState(3), navigation: { id: 3, page: 'transfers' } },
+    });
+    expect(client.getSnapshot().activities).toHaveLength(1);
+    expect(events).toEqual([]);
+    expect(client.getSnapshot().desktop?.navigation?.page).toBe('transfers');
+    client.store.setDesktop(desktopState(1));
+    expect(client.getSnapshot().desktop?.revision).toBe(3);
+    bridge.receivers[0]({ type: 'snapshot', data: sent(frame('5')) });
+    expect(client.getSnapshot().settings.closeToTray).toBe(true);
+    await client.acknowledgeNavigation(3);
+    expect(bridge.calls).toEqual([{ command: 'desktop_navigation_ack', args: { id: 3 } }]);
+  });
   it('keeps file progress separate from immutable mailbox nodes and never announces success at 100% bytes', () => {
     const store = new NativeStore(appearance);
     const events: DesktopEvent[] = [];

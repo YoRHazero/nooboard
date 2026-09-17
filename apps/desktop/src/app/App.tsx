@@ -22,6 +22,7 @@ import { DevicesPage } from '../features/devices/DevicesPage';
 import { SettingsPage } from '../features/settings/SettingsPage';
 import { PreviewToolbar } from '../preview/PreviewToolbar';
 import type { PreviewClient } from '../preview/PreviewClient';
+import { appVersion } from './version';
 
 import { PairingPrompt } from '../features/devices/PairingPrompt';
 
@@ -31,10 +32,12 @@ export function App({
   preview,
   footer,
   onReconnect,
+  onNavigateHandled,
 }: {
   preview?: PreviewClient;
   footer?: ReactNode;
   onReconnect?: () => Promise<void>;
+  onNavigateHandled?: (id: number) => Promise<void>;
 }) {
   const { t } = useI18n();
   const pages = {
@@ -47,10 +50,21 @@ export function App({
   const [page, setPage] = useState<Page>('home');
   const [transferKey, setTransferKey] = useState<string>();
   const main = useRef<HTMLElement>(null);
-  const { localDevice, settings, notice, connectionError } = useSnapshot();
+  const { localDevice, settings, notice, connectionError, desktop } = useSnapshot();
+  const lastNavigation = useRef<number | null>(null);
   const [dismissed, setDismissed] = useState<string>();
   const client = useClient();
   const { error, clearError, execute } = useCommand();
+  useEffect(() => {
+    const navigation = desktop?.navigation;
+    if (!navigation || lastNavigation.current === navigation.id) return;
+    lastNavigation.current = navigation.id;
+    setTransferKey(undefined);
+    setPage(navigation.page);
+    main.current?.scrollTo({ top: 0 });
+    clearError();
+    if (onNavigateHandled) execute(() => onNavigateHandled(navigation.id));
+  }, [desktop?.navigation, onNavigateHandled, clearError, execute]);
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
     document.documentElement.dataset.reducedMotion = String(settings.reducedMotion);
@@ -112,7 +126,7 @@ export function App({
               <span>{t('common:thisDevice')}</span>
             </div>
           </div>
-          <span className="sidebar-version">nooboard / 0.1</span>
+          <span className="sidebar-version">nooboard / {desktop?.version ?? appVersion}</span>
         </aside>
         <main className={`app-main ${page === 'home' ? 'app-main--home' : ''}`} ref={main}>
           <div className="main-inner">

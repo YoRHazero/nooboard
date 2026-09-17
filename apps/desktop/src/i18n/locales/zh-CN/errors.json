@@ -1,4 +1,6 @@
 {
+  "desktopPreferences": "无法读取或保存桌面偏好，请检查应用数据目录的权限。",
+  "trayUnsupported": "当前平台不支持托盘功能。",
   "generic": "操作未完成，请重试。",
   "invalidAddress": "请输入完整的配对地址，例如 192.168.1.38:24817。",
   "invalidName": "设备名称需为 1–80 个字符，不能包含控制字符。",

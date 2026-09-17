@@ -3,6 +3,7 @@ export type SendMode = 'manual' | 'automatic';
 export type Theme = 'system' | 'light' | 'dark';
 export type Platform = 'Windows' | 'Ubuntu' | 'macOS';
 export interface Settings {
+  closeToTray?: boolean;
   receiveDirectory?: string | null;
   discoverable?: boolean;
   mode: SendMode;
@@ -180,7 +181,20 @@ export interface Onboarding {
   error: Problem | null;
   session: PairingSession | null;
 }
+export interface DesktopState {
+  revision: number;
+  traySupported: boolean;
+  trayAvailable: boolean;
+  closeToTray: boolean;
+  preferenceError: boolean;
+  language: 'system' | 'en' | 'zh-CN';
+  resolvedLanguage: string;
+  visible: boolean;
+  navigation: { id: number; page: 'home' | 'transfers' | 'settings' } | null;
+  version: string;
+}
 export interface DesktopSnapshot {
+  desktop?: DesktopState;
   onboarding?: Onboarding;
   historyRevision?: string;
   notice?: { id: string; message: Problem };

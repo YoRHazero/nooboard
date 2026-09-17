@@ -1,4 +1,8 @@
 {
+  "background": "后台运行",
+  "closeToTray": "关闭窗口后继续在后台运行",
+  "closeToTrayHelp": "剪贴板同步和传输会在后台继续，可通过托盘菜单打开窗口或退出 Nooboard。",
+  "trayUnavailable": "托盘暂不可用，关闭窗口将沿用系统原有行为。",
   "textSync": "同步",
   "mode": "文字发送模式",
   "receive": "允许接收",

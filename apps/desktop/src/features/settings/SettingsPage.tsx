@@ -5,7 +5,7 @@ import {
   type LanguagePreference,
 } from '../../i18n/language';
 import type { ReactNode } from 'react';
-import { History, Palette, Radio, FolderOpen } from 'lucide-react';
+import { History, Palette, Radio, FolderOpen, PanelBottom } from 'lucide-react';
 import { useClient, useCommand, useSnapshot } from '../../api/NooboardProvider';
 import type { Theme } from '../../api/contracts';
 import { Button, Toggle } from '../../ui/controls';
@@ -32,13 +32,31 @@ function SettingRow({
 export function SettingsPage() {
   const { t } = useI18n();
   const language = useLanguagePreference();
-  const { settings } = useSnapshot();
+  const { settings, desktop } = useSnapshot();
   const client = useClient();
   const { execute } = useCommand();
   const update = (patch: Parameters<typeof client.updateSettings>[0]) =>
     execute(() => client.updateSettings(patch));
   return (
     <div className="settings-page">
+      {desktop?.traySupported && (
+        <section className="settings-group">
+          <div className="settings-group__heading">
+            <PanelBottom size={19} />
+            <h2>{t('settings:background')}</h2>
+          </div>
+          <SettingRow title={t('settings:closeToTray')} description={t('settings:closeToTrayHelp')}>
+            <Toggle
+              label={t('settings:closeToTray')}
+              checked={!!settings.closeToTray}
+              disabled={!desktop.trayAvailable || desktop.preferenceError}
+              onChange={(closeToTray) => update({ closeToTray })}
+            />
+          </SettingRow>
+          {!desktop.trayAvailable && <p role="status">{t('settings:trayUnavailable')}</p>}
+          {desktop.preferenceError && <p role="alert">{t('errors:desktopPreferences')}</p>}
+        </section>
+      )}
       <section className="settings-group">
         <div className="settings-group__heading">
           <Radio size={19} />

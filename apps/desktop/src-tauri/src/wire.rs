@@ -84,12 +84,15 @@ pub struct HistoryPage {
 #[serde(tag = "type", content = "data", rename_all = "camelCase")]
 pub enum Frame {
     Snapshot(Value),
+    Recovered(Value),
+    Desktop(crate::desktop::Snapshot),
     Stopped(crate::errors::UiError),
 }
 #[derive(Serialize)]
 pub struct Connection {
     pub snapshot: Value,
     pub diagnostic: bool,
+    pub desktop: crate::desktop::Snapshot,
 }
 #[cfg(test)]
 mod tests {

@@ -62,59 +62,58 @@ impl Clipboard {
                     .get_atom_name(request.target)
                     .map_err(|_| Error::Native)?
                     .reply();
-                if let Ok(name) = name {
-                    if let Some(data) = std::str::from_utf8(&name.name)
+                if let Ok(name) = name
+                    && let Some(data) = std::str::from_utf8(&name.name)
                         .ok()
                         .and_then(|name| owned.data.get(name))
-                    {
-                        let data = data.clone();
-                        if data.len() <= CHUNK {
-                            accepted = self
+                {
+                    let data = data.clone();
+                    if data.len() <= CHUNK {
+                        accepted = self
+                            .connection
+                            .change_property8(
+                                PropMode::REPLACE,
+                                request.requestor,
+                                property,
+                                request.target,
+                                &data,
+                            )
+                            .map_err(|_| Error::Native)?
+                            .check()
+                            .is_ok();
+                    } else if self.outgoing.len() < 8 {
+                        let alive = self
+                            .connection
+                            .change_window_attributes(
+                                request.requestor,
+                                &ChangeWindowAttributesAux::new()
+                                    .event_mask(EventMask::PROPERTY_CHANGE),
+                            )
+                            .map_err(|_| Error::Native)?
+                            .check()
+                            .is_ok();
+                        accepted = alive
+                            && self
                                 .connection
-                                .change_property8(
+                                .change_property32(
                                     PropMode::REPLACE,
                                     request.requestor,
                                     property,
-                                    request.target,
-                                    &data,
+                                    self.atoms.INCR,
+                                    &[data.len() as u32],
                                 )
                                 .map_err(|_| Error::Native)?
                                 .check()
                                 .is_ok();
-                        } else if self.outgoing.len() < 8 {
-                            let alive = self
-                                .connection
-                                .change_window_attributes(
-                                    request.requestor,
-                                    &ChangeWindowAttributesAux::new()
-                                        .event_mask(EventMask::PROPERTY_CHANGE),
-                                )
-                                .map_err(|_| Error::Native)?
-                                .check()
-                                .is_ok();
-                            accepted = alive
-                                && self
-                                    .connection
-                                    .change_property32(
-                                        PropMode::REPLACE,
-                                        request.requestor,
-                                        property,
-                                        self.atoms.INCR,
-                                        &[data.len() as u32],
-                                    )
-                                    .map_err(|_| Error::Native)?
-                                    .check()
-                                    .is_ok();
-                            if accepted {
-                                self.outgoing.push(Outgoing {
-                                    requestor: request.requestor,
-                                    property,
-                                    target: request.target,
-                                    data,
-                                    offset: 0,
-                                    deadline: Instant::now() + Duration::from_secs(5),
-                                });
-                            }
+                        if accepted {
+                            self.outgoing.push(Outgoing {
+                                requestor: request.requestor,
+                                property,
+                                target: request.target,
+                                data,
+                                offset: 0,
+                                deadline: Instant::now() + Duration::from_secs(5),
+                            });
                         }
                     }
                 }

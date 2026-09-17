@@ -1,4 +1,10 @@
 {
+  "trayOpen": "打开 Nooboard",
+  "trayPaused": "同步已暂停",
+  "trayStatus": "已连接：{{connected}} · 传输中：{{transfers}}",
+  "trayQuitTitle": "退出 Nooboard？",
+  "trayQuitMessage": "当前还有 {{count}} 项未完成传输。退出会取消这些任务，已保存的文件将保留。",
+  "trayKeepRunning": "继续运行",
   "home": "首页",
   "history": "文字历史",
   "devices": "设备",

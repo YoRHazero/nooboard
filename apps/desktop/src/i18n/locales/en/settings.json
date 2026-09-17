@@ -1,4 +1,8 @@
 {
+  "background": "Background running",
+  "closeToTray": "Keep running when the window is closed",
+  "closeToTrayHelp": "Clipboard sync and transfers continue in the background. Open the window or quit Nooboard from its tray menu.",
+  "trayUnavailable": "The tray is unavailable. Closing the window will use the usual system behavior.",
   "textSync": "Sync",
   "mode": "Text send mode",
   "receive": "Accept incoming content",

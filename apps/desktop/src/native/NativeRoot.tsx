@@ -45,6 +45,7 @@ export function NativeRoot({ client }: { client: NativeClient }) {
       <MailboxProvider>
         <App
           onReconnect={() => client.connect()}
+          onNavigateHandled={(id) => client.acknowledgeNavigation(id)}
           footer={client.diagnostic ? <DiagnosticToolbar client={client} /> : undefined}
         />
       </MailboxProvider>

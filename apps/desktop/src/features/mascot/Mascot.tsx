@@ -46,6 +46,17 @@ export function Mascot({
         scene.current = stage;
         fallback.disconnect();
         setLoaded(true);
+        let sleeping = false;
+        const hidden = () => document.hidden || client.getSnapshot().desktop?.visible === false;
+        const visibility = () => {
+          const next = hidden();
+          if (next === sleeping) return;
+          sleeping = next;
+          if (next) {
+            control.reset();
+            stage.sleep();
+          } else stage.wake();
+        };
         const update = () => {
           const state = client.getSnapshot();
           control.setMode(
@@ -56,16 +67,11 @@ export function Mascot({
                 : 'idle',
           );
           stage.setReduced(state.settings.reducedMotion || preference.matches);
-        };
-        const visibility = () => {
-          if (document.hidden) {
-            control.reset();
-            stage.sleep();
-          } else stage.wake();
+          visibility();
         };
         subscriptions.push(
           client.onEvent((event) => {
-            if (!document.hidden) control.event(event);
+            if (!hidden()) control.event(event);
           }),
           client.subscribe(update),
         );

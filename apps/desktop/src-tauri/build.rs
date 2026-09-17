@@ -1,6 +1,8 @@
 fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
+            "desktop_preferences",
+            "desktop_navigation_ack",
             "desktop_discover",
             "desktop_begin_pairing",
             "desktop_accept_pairing",

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-navigation-ack"
+description = "Enables the desktop_navigation_ack command without any pre-configured scope."
+commands.allow = ["desktop_navigation_ack"]
+
+[[permission]]
+identifier = "deny-desktop-navigation-ack"
+description = "Denies the desktop_navigation_ack command without any pre-configured scope."
+commands.deny = ["desktop_navigation_ack"]

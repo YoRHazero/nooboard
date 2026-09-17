@@ -2636,7 +2636,7 @@ dependencies = [
 
 [[package]]
 name = "nooboard-clipboard"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "image",
  "libc",
@@ -2655,7 +2655,7 @@ dependencies = [
 
 [[package]]
 name = "nooboard-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "base64 0.22.1",
  "nooboard-clipboard",
@@ -2670,7 +2670,7 @@ dependencies = [
 
 [[package]]
 name = "nooboard-desktop"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "nooboard-core",
  "rfd",
@@ -2680,13 +2680,14 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-os",
  "tauri-plugin-single-instance",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
 ]
 
 [[package]]
 name = "nooboard-network"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "chacha20poly1305",
  "hex",
@@ -2707,7 +2708,7 @@ dependencies = [
 
 [[package]]
 name = "nooboard-storage"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "keyring",
  "libc",

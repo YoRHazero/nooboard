@@ -1,4 +1,10 @@
 {
+  "trayOpen": "Open Nooboard",
+  "trayPaused": "Sync paused",
+  "trayStatus": "Connected: {{connected}} · Transfers: {{transfers}}",
+  "trayQuitTitle": "Quit Nooboard?",
+  "trayQuitMessage": "There are {{count}} unfinished transfers. Quitting will cancel them. Files already saved will be kept.",
+  "trayKeepRunning": "Keep running",
   "home": "Home",
   "history": "Text history",
   "devices": "Devices",

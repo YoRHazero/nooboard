@@ -2,7 +2,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { i18n } from './index';
 import { changeLanguage, initializeLanguage, loadLanguage, resolveLanguage } from './language';
 const nativeLocale = vi.hoisted(() => vi.fn<() => Promise<string | null>>());
+const nativePreferences = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/plugin-os', () => ({ locale: nativeLocale }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: nativePreferences }));
 let stored = new Map<string, string>();
 let cleanup: (() => void) | undefined;
 beforeEach(async () => {
@@ -15,6 +17,11 @@ beforeEach(async () => {
   vi.stubGlobal('document', { documentElement: { lang: '' } });
   vi.stubGlobal('window', new EventTarget());
   nativeLocale.mockResolvedValue('en-US');
+  let nativeLanguage: string | undefined;
+  nativePreferences.mockReset().mockImplementation(async (_command, args) => {
+    nativeLanguage = args.patch?.language ?? nativeLanguage ?? args.legacyLanguage ?? 'system';
+    return { language: nativeLanguage };
+  });
   await changeLanguage('system');
 });
 afterEach(async () => {
@@ -68,4 +75,21 @@ it('keeps switching usable when preference storage is unavailable', async () => 
   expect(loadLanguage()).toBe('system');
   await expect(changeLanguage('zh-CN')).resolves.toBeUndefined();
   expect(document.documentElement.lang).toBe('zh-CN');
+});
+
+it('uses the persisted native language instead of an older localStorage value', async () => {
+  stored.set('nooboard.language.v1', 'zh-CN');
+  nativePreferences.mockResolvedValue({ language: 'en' });
+  cleanup = await initializeLanguage(true);
+  expect(i18n.resolvedLanguage).toBe('en');
+  expect(nativePreferences).toHaveBeenCalledWith('desktop_preferences', {
+    legacyLanguage: 'zh-CN',
+  });
+});
+
+it('does not change the displayed language when a native save fails', async () => {
+  cleanup = await initializeLanguage(true);
+  nativePreferences.mockRejectedValueOnce({ code: 'desktopPreferences' });
+  await expect(changeLanguage('zh-CN')).rejects.toEqual({ code: 'desktopPreferences' });
+  expect(i18n.resolvedLanguage).toBe('en');
 });

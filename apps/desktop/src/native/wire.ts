@@ -123,10 +123,13 @@ export interface NativeSnapshot {
   fault: { sequence: string; peer: string | null; message: Problem } | null;
 }
 export type NativeFrame =
-  { type: 'snapshot'; data: NativeSnapshot } | { type: 'stopped'; data: Problem };
+  | { type: 'snapshot' | 'recovered'; data: NativeSnapshot }
+  | { type: 'desktop'; data: import('../api/contracts').DesktopState }
+  | { type: 'stopped'; data: Problem };
 export interface NativeConnection {
   snapshot: NativeSnapshot;
   diagnostic: boolean;
+  desktop?: import('../api/contracts').DesktopState;
 }
 export interface NativeHistoryPage {
   items: { id: string; text: string; source: string; copied_at_ms: number }[];
