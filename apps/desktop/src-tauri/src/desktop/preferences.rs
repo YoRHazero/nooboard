@@ -1,7 +1,22 @@
 //! Desktop-only preferences; business settings continue to live in core.
 use crate::errors::{UiError, ui};
 use serde::{Deserialize, Serialize};
-use std::{io::Write, path::PathBuf};
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+};
+
+/// Windows can report NotFound when an ancestor is a file, unlike Unix's NotADirectory.
+fn missing_file_is_valid(path: &Path) -> bool {
+    for parent in path.ancestors().skip(1) {
+        match std::fs::metadata(parent) {
+            Ok(metadata) => return metadata.is_dir(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => return false,
+        }
+    }
+    true
+}
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub enum Language {
@@ -62,7 +77,9 @@ impl PreferenceStore {
             .as_ref()
             .map(|p| match std::fs::read(p) {
                 Ok(bytes) => serde_json::from_slice(&bytes).map_err(|_| ()),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Preferences::default()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound && missing_file_is_valid(p) => {
+                    Ok(Preferences::default())
+                }
                 Err(_) => Err(()),
             })
             .unwrap_or_else(|| Ok(Preferences::default()));
@@ -126,7 +143,7 @@ mod tests {
     #[test]
     fn imports_language_once_and_preserves_preferences_across_restart() {
         let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("preferences.json");
+        let path = root.path().join("nested").join("preferences.json");
         let mut store = PreferenceStore::load(Some(path.clone()));
         store
             .update(Patch::default(), Some(Language::Chinese), true)
@@ -156,6 +173,7 @@ mod tests {
         let mut store = PreferenceStore::load(Some(parent.join("preferences.json")));
         assert!(store.failed);
         assert!(!store.value.close_to_tray);
+        assert!(PreferenceStore::load(Some(parent.join("nested/preferences.json"))).failed);
         assert!(
             store
                 .update(
