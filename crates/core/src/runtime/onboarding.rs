@@ -8,18 +8,25 @@ use nooboard_network::pairing::{Contact, Event, Stage};
 impl Runtime {
     pub(super) fn refresh_discovery(&mut self) {
         self.refresh_local_network();
+        if self
+            .onboarding
+            .discovery_refreshed
+            .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(3))
+        {
+            self.publish_snapshot();
+            return;
+        }
+        self.onboarding.discovery_refreshed = Some(std::time::Instant::now());
+        // Browsing again on the same daemon only refreshes its cache. Recreate
+        // the sockets and multicast memberships too, so a refresh can recover
+        // after network access becomes available. Pairing and TLS stay alive.
+        drop(self.onboarding.discovery.take());
+        self.onboarding.snapshot.nearby.clear();
         let result = (|| -> std::result::Result<(), String> {
-            if self.onboarding.discovery.is_none() {
-                let discovery =
-                    nooboard_network::discovery::Discovery::new(self.state.noob_id.clone())?;
-                self.onboarding.nearby = discovery.subscribe();
-                self.onboarding.discovery = Some(discovery);
-            }
-            self.onboarding
-                .discovery
-                .as_mut()
-                .expect("discovery")
-                .refresh()?;
+            let discovery =
+                nooboard_network::discovery::Discovery::new(self.state.noob_id.clone())?;
+            self.onboarding.nearby = discovery.subscribe();
+            self.onboarding.discovery = Some(discovery);
             self.advertise_discovery()
         })();
         self.onboarding.snapshot.discovery_error = result

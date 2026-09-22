@@ -124,6 +124,7 @@ impl Runtime {
             },
             endpoint,
             discovery: None,
+            discovery_refreshed: None,
             nearby,
             events: events_pairing,
             sender,

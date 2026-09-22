@@ -39,6 +39,7 @@ pub struct OnboardingSnapshot {
 pub(crate) struct Onboarding {
     pub endpoint: Endpoint,
     pub discovery: Option<nooboard_network::discovery::Discovery>,
+    pub discovery_refreshed: Option<std::time::Instant>,
     pub nearby: watch::Receiver<Vec<NearbyDevice>>,
     pub events: mpsc::Receiver<nooboard_network::pairing::Event>,
     pub sender: mpsc::Sender<nooboard_network::pairing::Event>,

@@ -23,7 +23,7 @@
   "paired": "Paired",
   "pair": "Pair",
   "noneNearby": "No nearby devices found",
-  "discoveryHelp": "Open nooboard on the other device and connect to the same network.",
+  "discoveryHelp": "Open nooboard on the other device, allow discovery, and connect to the same network. If it still does not appear, check local network permissions, firewall, and VPN settings, then refresh.",
   "discoverable": "Visible to nearby devices",
   "addByAddress": "Add by address",
   "pairingAddress": "Pairing address",

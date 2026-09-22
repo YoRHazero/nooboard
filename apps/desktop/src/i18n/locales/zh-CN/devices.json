@@ -23,7 +23,7 @@
   "paired": "已配对",
   "pair": "配对",
   "noneNearby": "未发现附近设备",
-  "discoveryHelp": "请确认对方已打开 nooboard，并连接同一网络。",
+  "discoveryHelp": "请确认对方已打开 nooboard 并允许被发现，且连接同一网络。若仍未出现，请检查系统的局域网权限、防火墙和 VPN，然后点击刷新。",
   "discoverable": "允许其他设备在局域网发现本机",
   "addByAddress": "通过地址添加",
   "pairingAddress": "对方配对地址",

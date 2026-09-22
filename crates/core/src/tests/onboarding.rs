@@ -119,6 +119,40 @@ async fn another_pairing_request_does_not_interrupt_existing_request_or_sync() {
 }
 
 #[tokio::test]
+async fn refreshing_discovery_preserves_pending_pairing_and_existing_sync() {
+    let ca = FakeClipboard::new();
+    let cb = FakeClipboard::new();
+    let a = app(&ca).await;
+    let b = app(&cb).await;
+    let c = app(&FakeClipboard::new()).await;
+    pair(&a, &b).await;
+    request_pair(&c, &b).await;
+    let request = session(&b);
+    let pairing_address = b.snapshot().onboarding.pairing_address;
+    b.refresh_discovery().await.unwrap();
+    // Exercise a second refresh after the rate limit, while a code is pending.
+    tokio::time::sleep(Duration::from_millis(3100)).await;
+    b.refresh_discovery().await.unwrap();
+    assert!(b.snapshot().onboarding.discovery_error.is_none());
+    assert_eq!(b.snapshot().onboarding.pairing_address, pairing_address);
+    assert_eq!(session(&b).id, request.id);
+    assert_eq!(session(&b).code, request.code);
+    ca.text("刷新发现时原有连接继续工作");
+    a.send_current().await.unwrap();
+    wait_for(|| cb.current() == Content::Text("刷新发现时原有连接继续工作".into())).await;
+    c.submit_pairing_code(session(&c).id, request.code.unwrap())
+        .await
+        .unwrap();
+    wait_for(|| {
+        session(&b).stage == PairingStage::Completed && session(&c).stage == PairingStage::Completed
+    })
+    .await;
+    for app in [a, b, c] {
+        app.shutdown().await.unwrap();
+    }
+}
+
+#[tokio::test]
 async fn dismissal_notifies_a_peer_waiting_for_local_input_without_waiting_for_timeout() {
     let a = app(&FakeClipboard::new()).await;
     let b = app(&FakeClipboard::new()).await;
