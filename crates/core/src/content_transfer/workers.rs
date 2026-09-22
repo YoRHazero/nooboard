@@ -1,6 +1,6 @@
 use super::{ContentStage, ContentTransfers};
 use crate::{link::queue::Outbox, ports::ClipboardPort};
-use nooboard_clipboard::{Content, ImageData, ImageEncoding, Snapshot};
+use nooboard_clipboard::{ImageData, ImageEncoding, Payload, ReadState, Snapshot};
 use nooboard_network::{
     ContentKind, ContentResult, FileEntry, Manifest, Message, MessageId, TransferError,
 };
@@ -84,7 +84,7 @@ pub(crate) fn prepare(
 ) {
     tokio::spawn(async move {
         let content = match source {
-            Source::Files(paths) => Ok(Content::Files(paths)),
+            Source::Files(paths) => Ok(ReadState::Ready(Payload::Files(paths))),
             Source::Clipboard(revision) => match clipboard.read().await {
                 Ok(snapshot) if snapshot.revision == revision => Ok(snapshot.content),
                 Ok(_) => Err(TransferError::SourceChanged),
@@ -93,7 +93,7 @@ pub(crate) fn prepare(
         };
         let update = events.clone();
         let batch_id = id.clone();
-        let permit = if matches!(&content, Ok(Content::Image(_))) {
+        let permit = if matches!(&content, Ok(ReadState::Ready(Payload::Image(_)))) {
             tokio::select! {
                 permit = image_limit.acquire_owned() => permit.ok(),
                 _ = cancelled(cancel.clone()) => None,
@@ -107,7 +107,7 @@ pub(crate) fn prepare(
                 return Err(TransferError::Cancelled);
             }
             match content? {
-                Content::Files(paths) => {
+                ReadState::Ready(Payload::Files(paths)) => {
                     let mut last = Instant::now() - Duration::from_secs(1);
                     PreparedBatch::from_paths(&paths, &cancel, |done, total| {
                         if last.elapsed() >= Duration::from_millis(100) || done == total {
@@ -122,12 +122,12 @@ pub(crate) fn prepare(
                     .map(|batch| (ContentKind::Files, Arc::new(batch)))
                     .map_err(storage_error)
                 }
-                Content::Image(image) => {
+                ReadState::Ready(Payload::Image(image)) => {
                     let png = image.png().map_err(|_| TransferError::Unsupported)?;
                     if cancel.load(Ordering::Acquire) {
                         return Err(TransferError::Cancelled);
                     }
-                    PreparedBatch::from_bytes("image.png", &png.bytes)
+                    PreparedBatch::from_bytes("image.png", png.bytes())
                         .map(|b| (ContentKind::Image, Arc::new(b)))
                         .map_err(storage_error)
                 }
@@ -492,7 +492,7 @@ impl ReceiverJob {
                                 .map_err(storage_error)?;
                             let image = ImageData::new(ImageEncoding::Png, bytes)
                                 .map_err(|_| TransferError::Unsupported)?;
-                            image.decode().map_err(|_| TransferError::Unsupported)?;
+                            image.validate().map_err(|_| TransferError::Unsupported)?;
                             Some(image)
                         } else {
                             None

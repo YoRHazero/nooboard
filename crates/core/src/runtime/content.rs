@@ -6,7 +6,7 @@ use crate::{
         workers::{self, ReceiverJob, SenderJob, Source, WorkerEvent},
     },
 };
-use nooboard_clipboard::{Content, ImageData, ImageEncoding, Snapshot};
+use nooboard_clipboard::{ImageData, ImageEncoding, Payload, ReadState, Snapshot};
 use nooboard_network::{ContentKind, ContentResult, Message, MessageId, TransferError};
 use std::{
     path::PathBuf,
@@ -462,7 +462,7 @@ impl Runtime {
                         row.stage = ContentStage::Applying;
                         self.apply_content(
                             key,
-                            image.map(Content::Image).unwrap_or(Content::Files(paths)),
+                            image.map(Payload::Image).unwrap_or(Payload::Files(paths)),
                         );
                     }
                 }
@@ -522,7 +522,7 @@ impl Runtime {
         if let Some(task) = self.preview_task.take() {
             task.abort();
         }
-        if let Content::Image(image) = &snapshot.content {
+        if let ReadState::Ready(Payload::Image(image)) = &snapshot.content {
             let image = image.clone();
             let events = self.content.events.clone();
             let revision = snapshot.revision;
@@ -533,15 +533,15 @@ impl Runtime {
                 };
                 let result = tokio::task::spawn_blocking(move || {
                     let _permit = permit;
-                    image.thumbnail()
+                    crate::preview::thumbnail(&image)
                 })
                 .await
-                .unwrap_or(Err(nooboard_clipboard::Error::Native));
+                .unwrap_or(Err(nooboard_clipboard::Error::Stopped));
                 let _ = events.send(WorkerEvent::Preview { revision, result }).await;
             }));
         }
     }
-    fn apply_content(&self, key: String, content: Content) {
+    fn apply_content(&self, key: String, content: Payload) {
         let clipboard = self.clipboard.clone();
         let events = self.content.events.clone();
         let lock = self.content.apply_lock.clone();
@@ -576,7 +576,7 @@ impl Runtime {
                     saved_content(kind, paths)
                 })
                 .await
-                .map_err(|_| nooboard_clipboard::Error::Native)??;
+                .map_err(|_| nooboard_clipboard::Error::Stopped)??;
                 clipboard.write_content(content).await
             }
             .await;
@@ -586,7 +586,7 @@ impl Runtime {
         Ok(())
     }
 }
-fn saved_content(kind: ContentKind, paths: Vec<PathBuf>) -> nooboard_clipboard::Result<Content> {
+fn saved_content(kind: ContentKind, paths: Vec<PathBuf>) -> nooboard_clipboard::Result<Payload> {
     if kind == ContentKind::Image {
         use std::io::Read;
         let file =
@@ -596,10 +596,10 @@ fn saved_content(kind: ContentKind, paths: Vec<PathBuf>) -> nooboard_clipboard::
             .read_to_end(&mut bytes)
             .map_err(|_| nooboard_clipboard::Error::Unavailable)?;
         let image = ImageData::new(ImageEncoding::Png, bytes)?;
-        image.decode()?;
-        Ok(Content::Image(image))
+        image.validate()?;
+        Ok(Payload::Image(image))
     } else if paths.iter().all(|p| p.is_file()) {
-        Ok(Content::Files(paths))
+        Ok(Payload::Files(paths))
     } else {
         Err(nooboard_clipboard::Error::Unavailable)
     }

@@ -1,7 +1,9 @@
 //! Opt-in native integration harness. Identities and SQLite live only in memory.
 //! macOS uses a private pasteboard; Linux/Windows require an isolated test desktop.
 use crate::{App, Result, Settings};
-use nooboard_clipboard::{Clipboard, Content};
+use nooboard_clipboard::{
+    Clipboard, ClipboardService, Options as ClipboardOptions, Payload, ReadState,
+};
 use nooboard_network::{Identity, MAX_TEXT_BYTES};
 use nooboard_storage::Database;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -15,59 +17,73 @@ pub async fn trust_peer(app: &App, fixture: PeerFixture) -> Result<String> {
 pub struct Session {
     pub app: App,
     input: Clipboard,
+    input_service: ClipboardService,
 }
 impl Session {
     pub async fn start() -> Result<Self> {
-        let (database, identity, clipboard, input) =
-            tokio::task::spawn_blocking(|| -> Result<_> {
-                let name = format!(
-                    "nooboard.diagnostic.{}.{}",
-                    std::process::id(),
-                    SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_nanos()
-                );
-                let clipboard = Clipboard::open_diagnostic(
-                    name.clone(),
-                    Duration::from_millis(30),
-                    MAX_TEXT_BYTES,
-                )?;
-                let input =
-                    Clipboard::open_diagnostic(name, Duration::from_millis(30), MAX_TEXT_BYTES)?;
-                let mut database = Database::in_memory()?;
-                database.set_setting(
-                    "settings",
-                    &serde_json::to_vec(&Settings {
-                        listen_address: "127.0.0.1:0".into(),
-                        pairing_listen_address: "127.0.0.1:0".into(),
-                        discoverable: false,
-                        ..Settings::default()
-                    })
-                    .map_err(|_| crate::Error::Configuration)?,
-                )?;
-                Ok((database, Identity::generate()?, clipboard, input))
+        let name = format!(
+            "nooboard.diagnostic.{}.{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
+        let options = ClipboardOptions {
+            limits: nooboard_clipboard::Limits {
+                text_bytes: MAX_TEXT_BYTES,
+                ..Default::default()
+            },
+            poll_interval: Duration::from_millis(30),
+            #[cfg(target_os = "macos")]
+            diagnostic_name: Some(name),
+            ..Default::default()
+        };
+        #[cfg(not(target_os = "macos"))]
+        let _ = name;
+        let (service, clipboard) = ClipboardService::start(options.clone()).await?;
+        let (input_service, input) = ClipboardService::start(options).await?;
+        let mut database = Database::in_memory()?;
+        database.set_setting(
+            "settings",
+            &serde_json::to_vec(&Settings {
+                listen_address: "127.0.0.1:0".into(),
+                pairing_listen_address: "127.0.0.1:0".into(),
+                discoverable: false,
+                ..Settings::default()
             })
-            .await
-            .map_err(|_| crate::Error::Stopped)??;
-        let app =
-            crate::bootstrap::start_parts(database, identity, Box::new(clipboard), None).await?;
-        Ok(Self { app, input })
+            .map_err(|_| crate::Error::Configuration)?,
+        )?;
+        let mut app = crate::bootstrap::start_parts(
+            database,
+            Identity::generate()?,
+            Box::new(clipboard),
+            None,
+        )
+        .await?;
+        app.clipboard_service = Some(service);
+        Ok(Self {
+            app,
+            input,
+            input_service,
+        })
     }
     /// A second native client simulates an external application copying text.
     pub async fn copy(&self, text: String) -> Result<()> {
-        self.input.write_text(text).await?;
+        self.input.write(Payload::Text(text)).await?;
         Ok(())
     }
     pub async fn read(&self) -> Result<Option<String>> {
         Ok(match self.input.read().await?.content {
-            Content::Text(text) => Some(text),
+            ReadState::Ready(Payload::Text(text)) => Some(text),
             _ => None,
         })
     }
     pub async fn shutdown(self) -> Result<()> {
-        self.app.shutdown().await?;
-        self.input.shutdown().await?;
+        let app = self.app.shutdown().await;
+        let input = self.input_service.shutdown().await;
+        app?;
+        input?;
         Ok(())
     }
 }
@@ -109,22 +125,18 @@ mod tests {
         std::fs::write(&large, &data).unwrap();
         for (sender, receiver) in [(&a, &b), (&b, &a)] {
             for content in [
-                Content::Image(image.clone()),
-                Content::Files(vec![picture.clone(), large.clone()]),
+                Payload::Image(image.clone()),
+                Payload::Files(vec![picture.clone(), large.clone()]),
             ] {
-                let expected = if matches!(content, Content::Image(_)) {
+                let expected = if matches!(content, Payload::Image(_)) {
                     ClipboardKind::Image
                 } else {
                     ClipboardKind::Files
                 };
-                let revision = sender
-                    .input
-                    .write_content(content.clone())
-                    .await
-                    .unwrap()
-                    .revision;
+                let revision = sender.app.snapshot().current.revision;
+                sender.input.write(content.clone()).await.unwrap();
                 wait_for(|| {
-                    sender.app.snapshot().current.revision >= revision
+                    sender.app.snapshot().current.revision > revision
                         && sender.app.snapshot().current.kind == expected
                 })
                 .await;
@@ -139,11 +151,10 @@ mod tests {
                 })
                 .await;
                 match (content, receiver.input.read().await.unwrap().content) {
-                    (Content::Image(sent), Content::Image(received)) => assert_eq!(
-                        sent.decode().unwrap().to_rgba8(),
-                        received.decode().unwrap().to_rgba8()
-                    ),
-                    (Content::Files(_), Content::Files(paths)) => {
+                    (Payload::Image(sent), ReadState::Ready(Payload::Image(received))) => {
+                        assert_eq!(sent.rgba().unwrap(), received.rgba().unwrap())
+                    }
+                    (Payload::Files(_), ReadState::Ready(Payload::Files(paths))) => {
                         assert_eq!(std::fs::read(&paths[0]).unwrap(), png);
                         assert_eq!(std::fs::read(&paths[1]).unwrap(), data);
                         assert_ne!(paths[0], picture);

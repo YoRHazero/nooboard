@@ -25,9 +25,9 @@ impl Clipboard {
                     targets.push(
                         self.connection
                             .intern_atom(false, name.as_bytes())
-                            .map_err(|_| Error::Native)?
+                            .map_err(|e| Error::backend("X11 clipboard", e))?
                             .reply()
-                            .map_err(|_| Error::Native)?
+                            .map_err(|e| Error::backend("X11 clipboard", e))?
                             .atom,
                     );
                 }
@@ -40,7 +40,7 @@ impl Clipboard {
                         AtomEnum::ATOM,
                         &targets,
                     )
-                    .map_err(|_| Error::Native)?
+                    .map_err(|e| Error::backend("X11 clipboard", e))?
                     .check()
                     .is_ok();
             } else if request.target == self.atoms.TIMESTAMP {
@@ -53,14 +53,14 @@ impl Clipboard {
                         AtomEnum::INTEGER,
                         &[self.timestamp],
                     )
-                    .map_err(|_| Error::Native)?
+                    .map_err(|e| Error::backend("X11 clipboard", e))?
                     .check()
                     .is_ok();
             } else {
                 let name = self
                     .connection
                     .get_atom_name(request.target)
-                    .map_err(|_| Error::Native)?
+                    .map_err(|e| Error::backend("X11 clipboard", e))?
                     .reply();
                 if let Ok(name) = name
                     && let Some(data) = std::str::from_utf8(&name.name)
@@ -78,7 +78,7 @@ impl Clipboard {
                                 request.target,
                                 &data,
                             )
-                            .map_err(|_| Error::Native)?
+                            .map_err(|e| Error::backend("X11 clipboard", e))?
                             .check()
                             .is_ok();
                     } else if self.outgoing.len() < 8 {
@@ -89,7 +89,7 @@ impl Clipboard {
                                 &ChangeWindowAttributesAux::new()
                                     .event_mask(EventMask::PROPERTY_CHANGE),
                             )
-                            .map_err(|_| Error::Native)?
+                            .map_err(|e| Error::backend("X11 clipboard", e))?
                             .check()
                             .is_ok();
                         accepted = alive
@@ -102,7 +102,7 @@ impl Clipboard {
                                     self.atoms.INCR,
                                     &[data.len() as u32],
                                 )
-                                .map_err(|_| Error::Native)?
+                                .map_err(|e| Error::backend("X11 clipboard", e))?
                                 .check()
                                 .is_ok();
                         if accepted {
@@ -157,7 +157,7 @@ impl Clipboard {
                 transfer.target,
                 &transfer.data[transfer.offset..end],
             )
-            .map_err(|_| Error::Native)?
+            .map_err(|e| Error::backend("X11 clipboard", e))?
             .check();
         transfer.offset = end;
         transfer.deadline = Instant::now() + Duration::from_secs(5);

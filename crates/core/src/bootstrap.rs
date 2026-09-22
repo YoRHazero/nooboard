@@ -4,17 +4,17 @@ use crate::{
     ports::{ClipboardPort, Store},
     runtime::Runtime,
 };
-use nooboard_clipboard::Clipboard;
+use nooboard_clipboard::{ClipboardService, Limits, Options as ClipboardOptions};
 use nooboard_network::{Identity, MAX_TEXT_BYTES};
 use nooboard_storage::{Database, secrets::SecretStore};
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
 use tokio::sync::{broadcast, mpsc, watch};
 
 pub(crate) async fn start(options: Options) -> Result<App> {
     if options.profile.is_empty() {
         return Err(Error::Configuration);
     }
-    let (database, identity, clipboard) = tokio::task::spawn_blocking(move || -> Result<_> {
+    let (database, identity) = tokio::task::spawn_blocking(move || -> Result<_> {
         let database = Database::open(&options.database)?;
         let secrets = SecretStore::new(&options.profile)?;
         let identity = match secrets.get()? {
@@ -25,18 +25,26 @@ pub(crate) async fn start(options: Options) -> Result<App> {
                 identity
             }
         };
-        let clipboard = Clipboard::open(Duration::from_millis(250), MAX_TEXT_BYTES)?;
-        Ok((database, identity, clipboard))
+        Ok((database, identity))
     })
     .await
     .map_err(|_| Error::Stopped)??;
-    let app = start_parts(
+    let (service, clipboard) = ClipboardService::start(ClipboardOptions {
+        limits: Limits {
+            text_bytes: MAX_TEXT_BYTES,
+            ..Limits::default()
+        },
+        ..ClipboardOptions::default()
+    })
+    .await?;
+    let mut app = start_parts(
         database,
         identity,
         Box::new(clipboard),
         options.default_receive_directory,
     )
     .await?;
+    app.clipboard_service = Some(service);
     app.refresh_discovery().await?;
     Ok(app)
 }
@@ -75,6 +83,7 @@ pub(crate) async fn start_parts(
     let snapshots = runtime.snapshots.subscribe();
     let task = tokio::spawn(runtime.run(requests));
     Ok(App {
+        clipboard_service: None,
         commands,
         status,
         snapshots,

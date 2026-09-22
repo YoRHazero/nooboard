@@ -17,7 +17,7 @@ core → clipboard
 ```
 
 - `core`：组装底层模块，协调设备、同步与历史业务。
-- `clipboard`：封装 macOS、Windows、Linux 原生剪贴板；本库的实现不依赖 arboard。
+- `clipboard`：封装 macOS、Windows、Linux 原生剪贴板；通过独立服务所有者和可共享句柄管理读写、观察与关闭，不依赖 arboard。接口及架构见 [clipboard 文档](crates/clipboard/README.md)。
 - `network`：连接、协议与经过身份验证的加密传输。
 - `storage`：历史记录与配置持久化。
 

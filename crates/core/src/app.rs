@@ -50,6 +50,7 @@ pub(crate) struct Request {
 
 /// Owns the backend lifetime. Dropping App stops background work; prefer shutdown().
 pub struct App {
+    pub(crate) clipboard_service: Option<nooboard_clipboard::ClipboardService>,
     pub(crate) commands: mpsc::Sender<Request>,
     pub(crate) status: watch::Receiver<Status>,
     pub(crate) snapshots: watch::Receiver<crate::AppSnapshot>,
@@ -207,11 +208,22 @@ impl App {
         Ok(())
     }
     pub async fn shutdown(mut self) -> Result<()> {
-        self.request(Command::Stop).await?;
-        if let Some(task) = self.task.take() {
-            task.await.map_err(|_| Error::Stopped)??;
-        }
-        Ok(())
+        let requested = self.request(Command::Stop).await;
+        let outcome = if let Some(task) = self.task.take() {
+            task.await
+                .map_err(|_| Error::Stopped)
+                .and_then(|outcome| outcome)
+        } else {
+            Ok(())
+        };
+        let clipboard = if let Some(service) = self.clipboard_service.take() {
+            service.shutdown().await.map_err(Error::from)
+        } else {
+            Ok(())
+        };
+        requested?;
+        outcome?;
+        clipboard
     }
 }
 impl Drop for App {

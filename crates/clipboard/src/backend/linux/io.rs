@@ -17,7 +17,10 @@ pub(super) fn poll(fds: &[RawFd], timeout: Option<Duration>) -> Result<Vec<bool>
         if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
             return Ok(vec![false; fds.len()]);
         }
-        return Err(Error::Native);
+        return Err(Error::backend(
+            "wait for clipboard descriptors",
+            io::Error::last_os_error(),
+        ));
     }
     if descriptors.iter().any(|d| d.revents & libc::POLLNVAL != 0) {
         return Err(Error::Stopped);

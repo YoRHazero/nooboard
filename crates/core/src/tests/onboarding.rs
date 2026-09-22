@@ -36,7 +36,7 @@ async fn one_time_code_pairs_both_devices_then_uses_existing_tls_without_auto_se
     wait_for(|| outcome(&a, &id, &b.status().noob_id) == Some(DeliveryState::Applied)).await;
     assert_eq!(
         cb.current(),
-        Content::Text("配对码完成后使用原有 TLS".into())
+        ReadState::Ready(Payload::Text("配对码完成后使用原有 TLS".into()))
     );
     a.shutdown().await.unwrap();
     b.shutdown().await.unwrap();
@@ -109,7 +109,7 @@ async fn another_pairing_request_does_not_interrupt_existing_request_or_sync() {
     ));
     ca.text("已有连接继续工作");
     a.send_current().await.unwrap();
-    wait_for(|| cb.current() == Content::Text("已有连接继续工作".into())).await;
+    wait_for(|| cb.current() == ReadState::Ready(Payload::Text("已有连接继续工作".into()))).await;
     assert_eq!(session(&b).id, request);
     c.dismiss_pairing(session(&c).id).await.unwrap();
     b.dismiss_pairing(request).await.unwrap();
@@ -139,7 +139,10 @@ async fn refreshing_discovery_preserves_pending_pairing_and_existing_sync() {
     assert_eq!(session(&b).code, request.code);
     ca.text("刷新发现时原有连接继续工作");
     a.send_current().await.unwrap();
-    wait_for(|| cb.current() == Content::Text("刷新发现时原有连接继续工作".into())).await;
+    wait_for(|| {
+        cb.current() == ReadState::Ready(Payload::Text("刷新发现时原有连接继续工作".into()))
+    })
+    .await;
     c.submit_pairing_code(session(&c).id, request.code.unwrap())
         .await
         .unwrap();

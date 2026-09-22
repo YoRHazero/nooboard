@@ -2,13 +2,17 @@ use super::Runtime;
 use crate::{
     Delivery, DeliveryState, Error, Event, Mode, Result, Transfer, history, link::queue::Job,
 };
-use nooboard_clipboard::{Content, Origin, Snapshot};
+use nooboard_clipboard::{Origin, Payload, ReadState, Snapshot};
 use nooboard_network::{MAX_TEXT_BYTES, Message, MessageId};
 
 impl Runtime {
-    pub(super) fn eligible(content: Content) -> Result<String> {
+    pub(super) fn eligible(content: ReadState) -> Result<String> {
         match content {
-            Content::Text(text) if text.len() <= MAX_TEXT_BYTES && !text.contains('\0') => Ok(text),
+            ReadState::Ready(Payload::Text(text))
+                if text.len() <= MAX_TEXT_BYTES && !text.contains('\0') =>
+            {
+                Ok(text)
+            }
             _ => Err(Error::Ineligible),
         }
     }

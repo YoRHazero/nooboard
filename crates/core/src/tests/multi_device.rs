@@ -16,8 +16,11 @@ async fn three_peers_fan_out_once_and_keep_independent_receipts() {
         assert_eq!(node.status().peers.len(), 2);
     }
     ca.text("fan out 🦀");
-    wait_for(|| cb.current() == Content::Text("fan out 🦀".into()) && cc.current() == cb.current())
-        .await;
+    wait_for(|| {
+        cb.current() == ReadState::Ready(Payload::Text("fan out 🦀".into()))
+            && cc.current() == cb.current()
+    })
+    .await;
     wait_for(|| {
         a.status().transfers.iter().any(|t| {
             t.targets.len() == 2 && t.targets.iter().all(|d| d.state == DeliveryState::Applied)
@@ -33,7 +36,8 @@ async fn three_peers_fan_out_once_and_keep_independent_receipts() {
     assert!(c.status().transfers.is_empty());
     cb.text("new local copy on B");
     wait_for(|| {
-        ca.current() == Content::Text("new local copy on B".into()) && cc.current() == ca.current()
+        ca.current() == ReadState::Ready(Payload::Text("new local copy on B".into()))
+            && cc.current() == ca.current()
     })
     .await;
     settle().await;
@@ -60,7 +64,7 @@ async fn remote_updates_do_not_relay_to_a_third_device() {
     ca.text("only direct peers");
     wait_for(|| cb.current() == ca.current()).await;
     settle().await;
-    assert_eq!(cc.current(), Content::Empty);
+    assert_eq!(cc.current(), ReadState::Empty);
     assert!(b.status().transfers.is_empty());
     a.shutdown().await.unwrap();
     b.shutdown().await.unwrap();
@@ -94,7 +98,10 @@ async fn manual_targets_are_separate_and_unpair_does_not_disconnect_others() {
     ca.text("still connected");
     a.send_current().await.unwrap();
     wait_for(|| cc.current() == ca.current()).await;
-    assert_eq!(cb.current(), Content::Text("manual batch".into()));
+    assert_eq!(
+        cb.current(),
+        ReadState::Ready(Payload::Text("manual batch".into()))
+    );
     a.shutdown().await.unwrap();
     b.shutdown().await.unwrap();
     c.shutdown().await.unwrap();
@@ -126,9 +133,10 @@ async fn reconnect_does_not_replay_and_one_offline_target_does_not_fail_a_batch(
     b.trust_peer(request_b).await.unwrap();
     wait_for(|| ready(&a, &b) && ready(&b, &a)).await;
     settle().await;
-    assert_eq!(cb.current(), Content::Empty);
+    assert_eq!(cb.current(), ReadState::Empty);
     ca.text("fresh after reconnect");
-    wait_for(|| cb.current() == Content::Text("fresh after reconnect".into())).await;
+    wait_for(|| cb.current() == ReadState::Ready(Payload::Text("fresh after reconnect".into())))
+        .await;
     a.shutdown().await.unwrap();
     b.shutdown().await.unwrap();
     c.shutdown().await.unwrap();
@@ -149,7 +157,7 @@ async fn missing_receipt_does_not_block_receiving_or_other_destinations() {
     wait_for(|| outcome(&a, &id, &b.status().noob_id) == Some(DeliveryState::Applied)).await;
     assert_eq!(
         ca.current(),
-        Content::Text("incoming while receipt is pending".into())
+        ReadState::Ready(Payload::Text("incoming while receipt is pending".into()))
     );
     assert_eq!(
         outcome(&a, &id, &raw.id()),
@@ -193,8 +201,13 @@ async fn a_backpressured_writer_still_receives_and_does_not_block_healthy_peers(
         })
         .await
         .unwrap();
-    wait_for(|| ca.current() == Content::Text("receiving while our writer is congested".into()))
-        .await;
+    wait_for(|| {
+        ca.current()
+            == ReadState::Ready(Payload::Text(
+                "receiving while our writer is congested".into(),
+            ))
+    })
+    .await;
     let sent = a.send_to(vec![b.status().noob_id]).await.unwrap();
     wait_for(|| outcome(&a, &sent, &b.status().noob_id) == Some(DeliveryState::Applied)).await;
     assert_eq!(cb.current(), ca.current());

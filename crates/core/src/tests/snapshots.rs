@@ -74,10 +74,19 @@ async fn snapshot_recovers_current_without_recording_startup_or_exposing_nontext
     assert!(copied.activities[0].kind == ActivityKind::Copied);
     assert!(copied.history_revision > first.history_revision);
     for (content, kind) in [
-        (Content::Sensitive, ClipboardKind::Sensitive),
-        (Content::TooLarge, ClipboardKind::TooLarge),
-        (Content::Unsupported, ClipboardKind::Unsupported),
-        (Content::Empty, ClipboardKind::Empty),
+        (
+            ReadState::Skipped(SkipReason::Sensitive),
+            ClipboardKind::Sensitive,
+        ),
+        (
+            ReadState::Skipped(SkipReason::TooLarge),
+            ClipboardKind::TooLarge,
+        ),
+        (
+            ReadState::Skipped(SkipReason::Unsupported),
+            ClipboardKind::Unsupported,
+        ),
+        (ReadState::Empty, ClipboardKind::Empty),
     ] {
         clipboard.copy(content, Origin::External);
         wait_for(|| app.snapshot().current.kind == kind).await;

@@ -1,23 +1,15 @@
-//! Native clipboard access on a dedicated platform thread, without arboard.
-#[cfg(any(target_os = "macos", target_os = "linux", test))]
-mod file_urls;
-mod image_data;
+//! Native clipboard access with an explicitly owned service and shareable async handles.
+//! Snapshots describe the latest observation; intermediate changes may coalesce.
+mod api;
+mod backend;
+mod error;
+mod formats;
 mod model;
-pub use image_data::{ImageData, ImageEncoding, MAX_IMAGE_BYTES};
-#[cfg(target_os = "macos")]
-#[path = "platform/macos.rs"]
-mod platform;
-#[cfg(target_os = "windows")]
-#[path = "platform/windows.rs"]
-mod platform;
-#[cfg(target_os = "linux")]
-#[path = "platform/linux/mod.rs"]
-mod platform;
-#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-#[path = "platform/unsupported.rs"]
-mod platform;
-mod worker;
-pub use model::{Content, Error, Origin, Result, Snapshot};
-pub use worker::Clipboard;
-#[cfg(test)]
-mod native_tests;
+mod options;
+mod runtime;
+
+pub use api::{Clipboard, ClipboardService};
+pub use error::{Error, Result};
+pub use formats::image::{ImageData, ImageEncoding, MAX_IMAGE_BYTES};
+pub use model::{Origin, Payload, ReadState, ServiceStatus, SkipReason, Snapshot};
+pub use options::{BackendPreference, Limits, Options};

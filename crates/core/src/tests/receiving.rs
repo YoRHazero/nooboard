@@ -9,7 +9,10 @@ async fn last_arrival_wins_regardless_of_sender_sequence_and_duplicates_do_not_w
     let old = b.text(100, "first").await;
     c.text(1, "second").await;
     b.text(2, "last arrival").await;
-    assert_eq!(clipboard.current(), Content::Text("last arrival".into()));
+    assert_eq!(
+        clipboard.current(),
+        ReadState::Ready(Payload::Text("last arrival".into()))
+    );
     assert_eq!(clipboard.revision(), 3);
     b.connection
         .send(&Message::Text {
@@ -24,7 +27,10 @@ async fn last_arrival_wins_regardless_of_sender_sequence_and_duplicates_do_not_w
         Message::Applied { id: old }
     );
     assert_eq!(clipboard.revision(), 3);
-    assert_eq!(clipboard.current(), Content::Text("last arrival".into()));
+    assert_eq!(
+        clipboard.current(),
+        ReadState::Ready(Payload::Text("last arrival".into()))
+    );
     assert_eq!(a.history("".into(), 100, 0).await.unwrap().len(), 3);
     a.shutdown().await.unwrap();
 }
@@ -77,9 +83,12 @@ async fn receiver_epoch_rejects_text_queued_before_pause() {
         next_business(&mut b.connection).await,
         Message::Rejected { id }
     );
-    assert_eq!(clipboard.current(), Content::Empty);
+    assert_eq!(clipboard.current(), ReadState::Empty);
     b.text(2, "fresh").await;
-    assert_eq!(clipboard.current(), Content::Text("fresh".into()));
+    assert_eq!(
+        clipboard.current(),
+        ReadState::Ready(Payload::Text("fresh".into()))
+    );
     a.shutdown().await.unwrap();
 }
 #[tokio::test]
@@ -140,7 +149,7 @@ async fn simultaneous_incoming_messages_are_serialized_in_received_event_order()
     }
     assert_eq!(arrivals.len(), 2);
     assert_ne!(arrivals[0].0, arrivals[1].0);
-    let Content::Text(final_text) = clipboard.current() else {
+    let ReadState::Ready(Payload::Text(final_text)) = clipboard.current() else {
         panic!("text expected")
     };
     assert_eq!(final_text.len(), arrivals.last().unwrap().1);

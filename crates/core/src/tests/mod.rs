@@ -9,35 +9,38 @@ use crate::{
     App, DeliveryState, Error, Mode, PeerSettings, Settings, VerifiedPeer, bootstrap,
     ports::{ClipboardFuture, ClipboardPort},
 };
-use nooboard_clipboard::{Content, Origin, Snapshot};
+use nooboard_clipboard::{Origin, Payload, ReadState, SkipReason, Snapshot};
 use nooboard_network::{Connection, Identity, Message, MessageId, TlsConfig};
 use nooboard_storage::Database;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::watch;
 
 #[derive(Clone)]
-struct FakeClipboard(Arc<watch::Sender<nooboard_clipboard::Result<Snapshot>>>);
+struct FakeClipboard(Arc<watch::Sender<Option<Snapshot>>>);
 impl FakeClipboard {
     fn new() -> Self {
-        let (sender, _) = watch::channel(Ok(Snapshot {
+        let (sender, _) = watch::channel(Some(Snapshot {
             revision: 0,
-            content: Content::Empty,
+            content: ReadState::Empty,
             origin: Origin::External,
         }));
         Self(Arc::new(sender))
     }
-    fn copy(&self, content: Content, origin: Origin) {
+    fn copy(&self, content: ReadState, origin: Origin) {
         let revision = self.0.borrow().as_ref().unwrap().revision + 1;
-        let _ = self.0.send_replace(Ok(Snapshot {
+        let _ = self.0.send_replace(Some(Snapshot {
             revision,
             content,
             origin,
         }));
     }
     fn text(&self, text: &str) {
-        self.copy(Content::Text(text.into()), Origin::External);
+        self.copy(
+            ReadState::Ready(Payload::Text(text.into())),
+            Origin::External,
+        );
     }
-    fn current(&self) -> Content {
+    fn current(&self) -> ReadState {
         self.0.borrow().as_ref().unwrap().content.clone()
     }
     fn revision(&self) -> u64 {
@@ -45,22 +48,33 @@ impl FakeClipboard {
     }
 }
 impl ClipboardPort for FakeClipboard {
-    fn subscribe(&self) -> watch::Receiver<nooboard_clipboard::Result<Snapshot>> {
+    fn subscribe(&self) -> watch::Receiver<Option<Snapshot>> {
         self.0.subscribe()
     }
     fn read(&self) -> ClipboardFuture<'_> {
-        Box::pin(async { self.0.borrow().clone() })
+        Box::pin(async {
+            self.0
+                .borrow()
+                .clone()
+                .ok_or(nooboard_clipboard::Error::Stopped)
+        })
     }
     fn write(&self, text: String) -> ClipboardFuture<'_> {
         Box::pin(async move {
-            self.copy(Content::Text(text), Origin::Application);
-            self.0.borrow().clone()
+            self.copy(ReadState::Ready(Payload::Text(text)), Origin::Application);
+            self.0
+                .borrow()
+                .clone()
+                .ok_or(nooboard_clipboard::Error::Stopped)
         })
     }
-    fn write_content(&self, content: Content) -> ClipboardFuture<'_> {
+    fn write_content(&self, content: Payload) -> ClipboardFuture<'_> {
         Box::pin(async move {
-            self.copy(content, Origin::Application);
-            self.0.borrow().clone()
+            self.copy(ReadState::Ready(content), Origin::Application);
+            self.0
+                .borrow()
+                .clone()
+                .ok_or(nooboard_clipboard::Error::Stopped)
         })
     }
 }

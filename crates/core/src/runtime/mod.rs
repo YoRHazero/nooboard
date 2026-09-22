@@ -166,6 +166,7 @@ impl Runtime {
     pub async fn run(mut self, mut requests: mpsc::Receiver<Request>) -> Result<()> {
         let mut clipboard = self.clipboard.subscribe();
         clipboard.mark_changed();
+        let mut clipboard_status = self.clipboard.subscribe_status();
         let mut maintenance = tokio::time::interval(Duration::from_secs(30));
         let mut receipts = tokio::time::interval(Duration::from_secs(1));
         let mut interfaces = tokio::time::interval(Duration::from_secs(5));
@@ -187,8 +188,17 @@ impl Runtime {
                 changed = clipboard.changed() => {
                     if changed.is_err() { return Err(crate::Error::Stopped); }
                     let snapshot = clipboard.borrow_and_update().clone();
-                    match snapshot { Ok(snapshot) => self.observe(snapshot, true).await, Err(e) => Err(e.into()) }
+                    match snapshot { Some(snapshot) => self.observe(snapshot, true).await, None => Ok(()) }
                 }
+                changed = async { clipboard_status.as_mut().expect("enabled status subscription").changed().await }, if clipboard_status.is_some() => {
+                    let status = clipboard_status.as_mut().expect("status subscription").borrow_and_update().clone();
+                    if changed.is_err() { clipboard_status = None; }
+                    match status {
+                        nooboard_clipboard::ServiceStatus::Unavailable(error) => Err(error.into()),
+                        nooboard_clipboard::ServiceStatus::Stopped { error } => return Err(error.unwrap_or(nooboard_clipboard::Error::Stopped).into()),
+                        _ => Ok(()),
+                    }
+                },
                 Some(event) = self.incoming.recv() => self.link_event(event).await,
                 Some(event) = self.content.incoming.recv() => { self.content_event(event).await; Ok(()) },
                 Some(event) = self.onboarding.events.recv() => self.pairing_event(event).await,

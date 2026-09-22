@@ -10,7 +10,11 @@ async fn history_is_independent_of_sending_and_filters_nontext() {
     let rows = app.history("".into(), 100, 0).await.unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].text, " 中文 🦀\r\n ");
-    for content in [Content::Sensitive, Content::Unsupported, Content::TooLarge] {
+    for content in [
+        ReadState::Skipped(SkipReason::Sensitive),
+        ReadState::Skipped(SkipReason::Unsupported),
+        ReadState::Skipped(SkipReason::TooLarge),
+    ] {
         clipboard.copy(content, Origin::External);
         settle().await;
     }
@@ -28,7 +32,10 @@ async fn history_is_independent_of_sending_and_filters_nontext() {
     settle().await;
     assert_eq!(app.history("".into(), 100, 0).await.unwrap().len(), 2);
     app.copy_history(rows[0].id).await.unwrap();
-    assert_eq!(clipboard.current(), Content::Text(rows[0].text.clone()));
+    assert_eq!(
+        clipboard.current(),
+        ReadState::Ready(Payload::Text(rows[0].text.clone()))
+    );
     app.clear_history().await.unwrap();
     assert!(app.history("".into(), 100, 0).await.unwrap().is_empty());
     app.shutdown().await.unwrap();

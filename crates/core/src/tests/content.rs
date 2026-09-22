@@ -39,7 +39,7 @@ async fn files_fan_out_independently_save_bytes_and_only_publish_local_file_refe
     std::fs::write(&path, &bytes).unwrap();
     std::fs::write(&empty, b"").unwrap();
     ca.copy(
-        Content::Files(vec![path.clone(), empty.clone()]),
+        ReadState::Ready(Payload::Files(vec![path.clone(), empty.clone()])),
         Origin::External,
     );
     settle().await;
@@ -79,7 +79,7 @@ async fn files_fan_out_independently_save_bytes_and_only_publish_local_file_refe
             .error,
         Some(TransferError::Directory)
     );
-    let Content::Files(paths) = cb.current() else {
+    let ReadState::Ready(Payload::Files(paths)) = cb.current() else {
         panic!("local file references expected")
     };
     assert_eq!(std::fs::read(&paths[0]).unwrap(), bytes);
@@ -93,7 +93,7 @@ async fn files_fan_out_independently_save_bytes_and_only_publish_local_file_refe
     assert!(b.history(String::new(), 20, 0).await.unwrap().is_empty());
     assert!(b.status().transfers.is_empty());
     assert!(c.status().transfers.is_empty());
-    assert_eq!(cc.current(), Content::Empty);
+    assert_eq!(cc.current(), ReadState::Empty);
     a.shutdown().await.unwrap();
     b.shutdown().await.unwrap();
     c.shutdown().await.unwrap();
@@ -113,7 +113,10 @@ async fn image_content_saves_png_applies_pixels_and_can_be_copied_again_without_
         include_bytes!("fixtures/alpha.png").to_vec(),
     )
     .unwrap();
-    ca.copy(Content::Image(image.clone()), Origin::External);
+    ca.copy(
+        ReadState::Ready(Payload::Image(image.clone())),
+        Origin::External,
+    );
     settle().await;
     a.send_current().await.unwrap();
     wait_for(|| {
@@ -123,24 +126,21 @@ async fn image_content_saves_png_applies_pixels_and_can_be_copied_again_without_
             .is_some_and(|r| r.stage == ContentStage::Completed)
     })
     .await;
-    let Content::Image(received) = cb.current() else {
+    let ReadState::Ready(Payload::Image(received)) = cb.current() else {
         panic!("image content expected")
     };
-    assert_eq!(
-        received.decode().unwrap().to_rgba8(),
-        image.decode().unwrap().to_rgba8()
-    );
+    assert_eq!(received.rgba().unwrap(), image.rgba().unwrap());
     let task = b.snapshot().content_transfers[0].clone();
     assert_eq!(
         std::fs::read(&task.saved_paths[0]).unwrap(),
-        received.bytes.as_slice()
+        received.bytes()
     );
     cb.text("new local text");
     settle().await;
     let revision = cb.revision();
     b.copy_received(task.key).await.unwrap();
     wait_for(|| cb.revision() > revision).await;
-    assert!(matches!(cb.current(), Content::Image(_)));
+    assert!(matches!(cb.current(), ReadState::Ready(Payload::Image(_))));
     assert_eq!(b.history(String::new(), 20, 0).await.unwrap().len(), 1);
     a.shutdown().await.unwrap();
     b.shutdown().await.unwrap();
@@ -187,7 +187,7 @@ async fn receiving_cancel_cleans_staging_and_late_finish_cannot_apply() {
     ));
     peer.connection.send(&Message::Finish { id }).await.unwrap();
     settle().await;
-    assert_eq!(clipboard.current(), Content::Empty);
+    assert_eq!(clipboard.current(), ReadState::Empty);
     wait_for(|| std::fs::read_dir(root.path()).unwrap().count() == 0).await;
     assert_eq!(
         app.snapshot().content_transfers[0].stage,
@@ -290,7 +290,7 @@ async fn saved_file_survives_clipboard_failure_and_recopy_never_resends_or_adds_
         fail: Arc<AtomicBool>,
     }
     impl ClipboardPort for BusyClipboard {
-        fn subscribe(&self) -> watch::Receiver<nooboard_clipboard::Result<Snapshot>> {
+        fn subscribe(&self) -> watch::Receiver<Option<Snapshot>> {
             self.inner.subscribe()
         }
         fn read(&self) -> ClipboardFuture<'_> {
@@ -299,7 +299,7 @@ async fn saved_file_survives_clipboard_failure_and_recopy_never_resends_or_adds_
         fn write(&self, text: String) -> ClipboardFuture<'_> {
             self.inner.write(text)
         }
-        fn write_content(&self, content: Content) -> ClipboardFuture<'_> {
+        fn write_content(&self, content: Payload) -> ClipboardFuture<'_> {
             if self.fail.load(Ordering::Acquire) {
                 Box::pin(async { Err(nooboard_clipboard::Error::Unavailable) })
             } else {
@@ -340,11 +340,11 @@ async fn saved_file_survives_clipboard_failure_and_recopy_never_resends_or_adds_
     let task = b.snapshot().content_transfers[0].clone();
     assert_eq!(task.error, Some(TransferError::Clipboard));
     assert_eq!(std::fs::read(&task.saved_paths[0]).unwrap(), b"file bytes");
-    assert_eq!(cb.current(), Content::Empty);
+    assert_eq!(cb.current(), ReadState::Empty);
     fail.store(false, Ordering::Release);
     b.copy_received(task.key).await.unwrap();
     wait_for(|| b.snapshot().content_transfers[0].stage == ContentStage::Completed).await;
-    assert!(matches!(cb.current(), Content::Files(_)));
+    assert!(matches!(cb.current(), ReadState::Ready(Payload::Files(_))));
     assert!(b.history(String::new(), 20, 0).await.unwrap().is_empty());
     assert!(b.status().transfers.is_empty());
     assert!(b.snapshot().content_transfers.iter().all(|r| r.incoming));
@@ -405,7 +405,7 @@ async fn progressing_transfer_outlives_the_text_receipt_deadline() {
                 offset: ((index + 1) * 65536) as u64
             }
         );
-        assert_eq!(clipboard.current(), Content::Empty);
+        assert_eq!(clipboard.current(), ReadState::Empty);
     }
     assert!(started.elapsed() > Duration::from_secs(30));
     peer.connection
@@ -420,7 +420,7 @@ async fn progressing_transfer_outlives_the_text_receipt_deadline() {
             error: None
         }
     );
-    let Content::Files(paths) = clipboard.current() else {
+    let ReadState::Ready(Payload::Files(paths)) = clipboard.current() else {
         panic!("files expected");
     };
     assert_eq!(std::fs::read(&paths[0]).unwrap(), bytes);

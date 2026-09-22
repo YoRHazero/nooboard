@@ -21,6 +21,7 @@ thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [dev-dependencies]
 tempfile.workspace = true

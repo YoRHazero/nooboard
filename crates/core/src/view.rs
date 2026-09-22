@@ -1,6 +1,6 @@
 //! Recoverable session state for consumers; no UI framework or persistent activity history.
 use crate::{MessageId, Status, Transfer, history::now_ms};
-use nooboard_clipboard::{Content, Snapshot};
+use nooboard_clipboard::{Payload, ReadState, SkipReason, Snapshot};
 use serde::Serialize;
 use std::collections::VecDeque;
 
@@ -29,7 +29,7 @@ pub struct CurrentClipboard {
 impl CurrentClipboard {
     pub(crate) fn from_native(snapshot: Snapshot, source: Option<String>) -> Self {
         let files = match &snapshot.content {
-            Content::Files(paths) => paths
+            ReadState::Ready(Payload::Files(paths)) => paths
                 .iter()
                 .map(|p| {
                     p.file_name()
@@ -41,12 +41,14 @@ impl CurrentClipboard {
             _ => Vec::new(),
         };
         let (kind, text) = match snapshot.content {
-            Content::Text(text) if !text.contains('\0') => (ClipboardKind::Text, Some(text)),
-            Content::Empty => (ClipboardKind::Empty, None),
-            Content::Sensitive => (ClipboardKind::Sensitive, None),
-            Content::TooLarge => (ClipboardKind::TooLarge, None),
-            Content::Image(_) => (ClipboardKind::Image, None),
-            Content::Files(_) => (ClipboardKind::Files, None),
+            ReadState::Ready(Payload::Text(text)) if !text.contains('\0') => {
+                (ClipboardKind::Text, Some(text))
+            }
+            ReadState::Empty => (ClipboardKind::Empty, None),
+            ReadState::Skipped(SkipReason::Sensitive) => (ClipboardKind::Sensitive, None),
+            ReadState::Skipped(SkipReason::TooLarge) => (ClipboardKind::TooLarge, None),
+            ReadState::Ready(Payload::Image(_)) => (ClipboardKind::Image, None),
+            ReadState::Ready(Payload::Files(_)) => (ClipboardKind::Files, None),
             _ => (ClipboardKind::Unsupported, None),
         };
         Self {
