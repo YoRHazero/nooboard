@@ -5,23 +5,14 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[features]
+default = ["sqlite"]
+sqlite = ["dep:rusqlite", "dep:sha2"]
+
 [dependencies]
-thiserror.workspace = true
-rusqlite = { version = "0.40", features = ["bundled"] }
-sha2 = "0.10"
-tempfile.workspace = true
-
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
-
-[target.'cfg(target_os = "windows")'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
-
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
-keyring = { version = "3.6.3", features = ["apple-native", "windows-native"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-keyring = { version = "3.6.3", features = ["sync-secret-service", "crypto-rust", "vendored"] }
+tokio.workspace = true
+rusqlite = { version = "0.40", features = ["bundled"], optional = true }
+sha2 = { version = "0.10", optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true

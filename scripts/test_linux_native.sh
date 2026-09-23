@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Isolated desktop/credential tests. Needs Xvfb, Sway, dbus-run-session and gnome-keyring.
+# Isolated clipboard tests. Needs Xvfb and Sway.
 set -euo pipefail
 test_root=$(mktemp -d)
 pids=()
@@ -32,7 +32,3 @@ done
 [[ -S "$test_root/wayland/wayland-1" ]] || { cat "$test_root/sway.log"; exit 1; }
 XDG_RUNTIME_DIR="$test_root/wayland" WAYLAND_DISPLAY=wayland-1 NOOBOARD_LINUX_BACKEND=wayland \
   cargo test -p nooboard-clipboard --locked -- --ignored --test-threads=1
-
-mkdir -m 700 "$test_root/keyring" "$test_root/data"
-XDG_RUNTIME_DIR="$test_root/keyring" XDG_DATA_HOME="$test_root/data" \
-  dbus-run-session -- bash scripts/test_secret_service.sh

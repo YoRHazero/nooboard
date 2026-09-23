@@ -1,29 +1,14 @@
-//! SQLite persistence and native secret storage. Business policies belong to core.
-mod database;
-pub mod files;
-mod history;
-pub mod secrets;
-mod settings;
-pub use database::Database;
-pub use history::{HistoryEntry, HistoryQuery};
+#![doc = include_str!("../README.md")]
+mod api;
+mod backend;
+mod error;
+mod model;
+mod options;
+mod runtime;
 
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("database operation failed")]
-    Database(#[from] rusqlite::Error),
-    #[error("filesystem operation failed")]
-    Io(#[from] std::io::Error),
-    #[error("database schema is newer than this application")]
-    NewerSchema,
-    #[error("invalid storage argument: {0}")]
-    InvalidArgument(&'static str),
-    #[error("transfer cancelled")]
-    Cancelled,
-    #[error("transfer exceeds size or item limits")]
-    TooLarge,
-    #[error("source file changed while preparing the transfer")]
-    SourceChanged,
-    #[error("received file size or checksum does not match")]
-    Integrity,
-}
-pub type Result<T> = std::result::Result<T, Error>;
+pub use api::{History, Settings, Storage, StorageService};
+pub use error::{Error, ErrorKind, Result};
+pub use model::*;
+pub use options::{BackendConfig, Options};
+#[cfg(feature = "sqlite")]
+pub use options::{SqliteLocation, SqliteOptions};

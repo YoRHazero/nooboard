@@ -19,11 +19,13 @@ core → clipboard
 - `core`：组装底层模块，协调设备、同步与历史业务。
 - `clipboard`：封装 macOS、Windows、Linux 原生剪贴板；通过独立服务所有者和可共享句柄管理读写、观察与关闭，不依赖 arboard。接口及架构见 [clipboard 文档](crates/clipboard/README.md)。
 - `network`：连接、协议与经过身份验证的加密传输。
-- `storage`：历史记录与配置持久化。
+- `storage`：通过独立服务和请求句柄持久化文字历史与文本配置；数据库驱动隔离在后端适配器中。接口、文件结构和工作流程见 [storage 文档](crates/storage/README.md)。
 
 底层库之间不直接互相依赖。React + TypeScript 交互设计稿位于 `apps/desktop`，首页通过肥啾舞台上的木板、肥啾与信箱展开操作。Tauri 桌面入口只依赖 core，图片和文件手动传输留到后续轮次。
 
 ## 验证计划
+
+当前处于 `clipboard → storage → network → core` 的分阶段重构。storage 已删除旧 `Database`、files 和 secrets 接口，core 尚未适配，因此全工作区构建、桌面入口和下方 core 示例暂不可用。此阶段按 [storage 验证命令](crates/storage/README.md#验证) 独立验收；全库验证命令保留，供后续整合使用。
 
 工具链固定为 Rust 1.93.0。仅构建四个库无需 Node.js；完整桌面工程需要 Node.js 22.12+，先在 `apps/desktop` 执行 `npm ci` 和 `npm run build`。Windows 构建需要 MSVC C++ Build Tools 与 Windows SDK，macOS 需要 Xcode Command Line Tools。
 
@@ -42,14 +44,13 @@ GitHub Actions 在 macOS 14、Windows Server 2022、Ubuntu 24.04 runner 上执�
 cargo test -p nooboard-clipboard --all-features --locked -- --ignored --test-threads=1
 ```
 
-Ubuntu 原生验证使用 `bash scripts/test_linux_native.sh`，需要 `Xvfb`、`sway`、`dbus-run-session`、`dbus-send` 和 `gnome-keyring-daemon`。脚本创建并清理独立 X11、Wayland、D-Bus 与密钥环会话。
+Ubuntu 原生剪贴板验证使用 `bash scripts/test_linux_native.sh`，需要 `Xvfb` 和 `sway`。脚本创建并清理独立 X11 与 Wayland 会话。
 
 ## Ubuntu 会话要求
 
 - X11：使用 `x11rb` 和 XFixes 监听 CLIPBOARD 所有权变化，支持 UTF-8、STRING 及 INCR 分块传输；不使用 PRIMARY 选区。
 - Wayland：优先使用 `ext-data-control-v1`，其次使用 `wlr-data-control-v1`。合成器必须暴露相应协议和 seat；只有普通 `wl_data_device` 的会话会明确报错。具体可用性取决于合成器版本和授权配置。
 - 自动选择：有 `WAYLAND_DISPLAY` 时选择 Wayland，否则使用 `DISPLAY` 对应的 X11。可以显式设置 `NOOBOARD_LINUX_BACKEND=x11` 或 `wayland`；Wayland 不可用时不会静默改用 XWayland。
-- 身份存储：需要当前 D-Bus 会话中的、可解锁的 Secret Service，例如 GNOME Keyring。没有服务时明确失败，不使用内存假密钥环代替持久存储。
 - SSH/headless 会话通常没有桌面剪贴板；开发测试应另建虚拟显示，不能把 SSH 转发的 X11 剪贴板当成远端独立桌面。
 
 普通使用不依赖 `xclip`、`wl-copy` 或外部剪贴板进程。Linux 后端通过协议事件响应变化，并以短周期维护超时传输。
@@ -61,7 +62,7 @@ cargo run -p nooboard-core --example backend -- --help
 cargo run -p nooboard-core --example backend -- /path/to/private/nooboard.db my-device
 ```
 
-第二个参数是稳定的身份配置名；私钥保存在 macOS Keychain、Windows Credential Store 或 Linux Secret Service。历史和设置保存在指定 SQLite 文件中，**历史目前为明文**，请使用当前用户的私有目录。默认仅手动发送、允许接收并记录文字历史，最多 1000 条、保留 30 天。
+以下说明描述重构前的 core 工作流程，待 network/core 接入后更新。第二个参数是稳定的身份配置名；原有系统凭据实现已从 storage 删除，后续由 network 重建。历史和设置保存在指定 SQLite 文件中，**历史目前为明文**，请使用当前用户的私有目录。默认仅手动发送、允许接收并记录文字历史，最多 1000 条、保留 30 天。
 
 命令行示例与桌面应用使用同一套配对码流程。默认同步监听 `0.0.0.0:24816`，配对监听 `0.0.0.0:24817`，分别用 `listen` 和 `pair-listen` 修改。
 

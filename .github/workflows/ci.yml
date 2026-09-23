@@ -27,7 +27,7 @@ jobs:
         run: rustup toolchain install 1.93.0 --profile minimal --component clippy,rustfmt
       - name: Install isolated Linux session tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb sway dbus-x11 gnome-keyring libwebkit2gtk-4.1-dev build-essential libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+        run: sudo apt-get update && sudo apt-get install -y xvfb sway libwebkit2gtk-4.1-dev build-essential libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - uses: actions/setup-node@v4
         with:
           node-version: '22.14.0'
@@ -54,6 +54,10 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Check module boundaries
         run: python scripts/check_architecture.py
+      - name: Storage contract and runtime tests
+        run: cargo test -p nooboard-storage --all-features --locked
+      - name: Storage without a database driver
+        run: cargo test -p nooboard-storage --no-default-features --locked
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Test
@@ -64,7 +68,7 @@ jobs:
       - name: mDNS discovery, rename and withdrawal (multicast loopback)
         if: runner.os == 'macOS'
         run: cargo test -p nooboard-network --locked -- --ignored
-      - name: X11, Wayland and Secret Service smoke tests
+      - name: X11 and Wayland smoke tests
         if: runner.os == 'Linux'
         run: bash scripts/test_linux_native.sh
       - name: Build native desktop executable
