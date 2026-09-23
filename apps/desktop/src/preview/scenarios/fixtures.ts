@@ -1,3 +1,4 @@
+import { version } from '../../../package.json';
 import type { Peer, DeviceIdentity } from '../../desktop/api';
 
 export const exampleFileNames = ['设计稿.png', 'Notes.txt'];
@@ -50,7 +51,7 @@ import type { BackendSnapshot, Snapshot, HistoryItem } from '../../desktop/bridg
 export function hostFixture(): Snapshot {
   return {
     revision: 0,
-    version: '0.2.1',
+    version,
     visible: true,
     closeToTray: false,
     language: 'system',
