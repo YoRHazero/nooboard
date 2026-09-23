@@ -1,7 +1,7 @@
 import { useI18n } from '../../i18n/react';
 import { ChevronRight } from 'lucide-react';
-import type { Peer } from '../../api/contracts';
-import { peerState, shortNoobId } from '../../api/devices';
+import type { Peer } from '../../desktop/api';
+import { peerState, shortNoobId } from '../../features/devices/selectors';
 import { Toggle } from '../../ui/controls';
 import { DeviceName, DeviceIcon } from './DeviceName';
 

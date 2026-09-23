@@ -1,8 +1,8 @@
 import { t } from '../../i18n/index';
-import type { Activity, DesktopSnapshot } from '../../api/contracts';
-import { canSend } from '../../api/devices';
-import { batchSummary } from '../../api/deliveries';
-import { contentStageLabel } from '../../api/contentTransfers';
+import type { Activity, DesktopSnapshot } from '../../desktop/api';
+import { canSend } from '../../features/devices/selectors';
+import { batchSummary } from '../../features/transfers/deliveries';
+import { contentStageLabel } from '../../features/transfers/content';
 
 export function homeStatus({ settings, peers }: DesktopSnapshot) {
   if (settings.paused) return { label: t('common:paused'), detail: '', tone: 'quiet' };

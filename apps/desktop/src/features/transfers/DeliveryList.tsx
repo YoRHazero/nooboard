@@ -1,6 +1,6 @@
 import { useI18n } from '../../i18n/react';
-import type { Activity } from '../../api/contracts';
-import { deliveryLabel } from '../../api/deliveries';
+import type { Activity } from '../../desktop/api';
+import { deliveryLabel } from '../../features/transfers/deliveries';
 import { DeviceName } from '../devices/DeviceName';
 export function DeliveryList({ activity }: { activity: Activity }) {
   const { t } = useI18n();

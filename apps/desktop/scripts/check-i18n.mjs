@@ -60,7 +60,7 @@ for (const file of await files(root)) {
     !/\.tsx?$/.test(file) ||
     file.includes('.test.') ||
     file.startsWith(path.join(root, 'i18n')) ||
-    file === path.join(root, 'preview/seed.ts')
+    file === path.join(root, 'preview/scenarios/fixtures.ts')
   )
     continue;
   visit(parse(await read(file), { sourceType: 'module', plugins: ['typescript', 'jsx'] }), file);

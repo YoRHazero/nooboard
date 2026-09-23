@@ -2,14 +2,14 @@ import { type Problem, problem, errorText, toProblem } from '../../i18n/errors';
 import { useI18n } from '../../i18n/react';
 import { useEffect, useState } from 'react';
 import { ArrowRight, RefreshCw, Radio, Monitor, ChevronDown } from 'lucide-react';
-import { useClient, useSnapshot } from '../../api/NooboardProvider';
+import { useDesktop, useSnapshot } from '../../desktop/api';
 import { Dialog } from '../../ui/Dialog';
 import { Button } from '../../ui/controls';
-import { shortNoobId, validAddress } from '../../api/devices';
+import { shortNoobId, validAddress } from '../../features/devices/selectors';
 
 export function DiscoverDialog({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
-  const client = useClient();
+  const client = useDesktop();
   const { onboarding, peers, settings } = useSnapshot();
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -104,7 +104,7 @@ export function DiscoverDialog({ onClose }: { onClose: () => void }) {
           checked={settings.discoverable ?? true}
           onChange={(e) =>
             void client
-              .updateSettings({ discoverable: e.target.checked })
+              .updateSyncSettings({ discoverable: e.target.checked })
               .catch((e) => setError(toProblem(e)))
           }
         />

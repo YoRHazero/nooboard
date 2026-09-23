@@ -1,0 +1,1931 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Contract",
+  "description": "Schema root includes both directions. It is never instantiated or sent.",
+  "type": "object",
+  "required": [
+    "connection",
+    "frame",
+    "reply",
+    "request"
+  ],
+  "properties": {
+    "connection": {
+      "$ref": "#/definitions/Connection"
+    },
+    "frame": {
+      "$ref": "#/definitions/Frame"
+    },
+    "reply": {
+      "$ref": "#/definitions/Reply"
+    },
+    "request": {
+      "$ref": "#/definitions/Request"
+    }
+  },
+  "definitions": {
+    "ActivityKind": {
+      "type": "string",
+      "enum": [
+        "Copied",
+        "Sent",
+        "Received"
+      ]
+    },
+    "ActivityRecord": {
+      "type": "object",
+      "required": [
+        "at",
+        "kind",
+        "sequence",
+        "summary"
+      ],
+      "properties": {
+        "at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "contentNode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "contentStage": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ContentStage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contentTask": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deviceName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/definitions/ActivityKind"
+        },
+        "messageId": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MessageId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sequence": {
+          "type": "string"
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "AddressChange": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "clear"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "set"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "AppState": {
+      "type": "string",
+      "enum": [
+        "Running",
+        "Stopping",
+        "Stopped",
+        "Failed"
+      ]
+    },
+    "BackendSnapshot": {
+      "type": "object",
+      "required": [
+        "activities",
+        "configuration",
+        "contentTransfers",
+        "current",
+        "historyRevision",
+        "localDevice",
+        "manualTargets",
+        "onboarding",
+        "peers",
+        "revision",
+        "session",
+        "settings",
+        "state",
+        "transfers"
+      ],
+      "properties": {
+        "activities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ActivityRecord"
+          }
+        },
+        "configuration": {
+          "$ref": "#/definitions/ConfigurationStatus"
+        },
+        "contentTransfers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ContentTransfer"
+          }
+        },
+        "current": {
+          "$ref": "#/definitions/Clipboard"
+        },
+        "fault": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Fault"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "historyRevision": {
+          "type": "string"
+        },
+        "localDevice": {
+          "$ref": "#/definitions/LocalDevice"
+        },
+        "manualTargets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "onboarding": {
+          "$ref": "#/definitions/Onboarding"
+        },
+        "peers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Peer"
+          }
+        },
+        "revision": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        },
+        "settings": {
+          "$ref": "#/definitions/SyncSettings"
+        },
+        "state": {
+          "$ref": "#/definitions/AppState"
+        },
+        "transfers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Transfer"
+          }
+        }
+      }
+    },
+    "Clipboard": {
+      "type": "object",
+      "required": [
+        "copiedAt",
+        "files",
+        "kind",
+        "revision"
+      ],
+      "properties": {
+        "copiedAt": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "imageHeight": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "imageWidth": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "kind": {
+          "$ref": "#/definitions/ClipboardKind"
+        },
+        "preview": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "type": "string"
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ClipboardKind": {
+      "type": "string",
+      "enum": [
+        "Text",
+        "Image",
+        "Files",
+        "Empty",
+        "Unsupported",
+        "Sensitive",
+        "TooLarge"
+      ]
+    },
+    "ConfigurationStatus": {
+      "type": "object",
+      "required": [
+        "effectiveRevision",
+        "restartRequired",
+        "savedRevision"
+      ],
+      "properties": {
+        "effectiveRevision": {
+          "type": "string"
+        },
+        "restartRequired": {
+          "type": "boolean"
+        },
+        "savedRevision": {
+          "type": "string"
+        }
+      }
+    },
+    "Connection": {
+      "type": "object",
+      "required": [
+        "diagnostic",
+        "host",
+        "snapshot"
+      ],
+      "properties": {
+        "diagnostic": {
+          "type": "boolean"
+        },
+        "host": {
+          "$ref": "#/definitions/Snapshot"
+        },
+        "snapshot": {
+          "$ref": "#/definitions/BackendSnapshot"
+        }
+      }
+    },
+    "ContentKind": {
+      "type": "string",
+      "enum": [
+        "Image",
+        "Files"
+      ]
+    },
+    "ContentStage": {
+      "type": "string",
+      "enum": [
+        "Preparing",
+        "Queued",
+        "Waiting",
+        "Sending",
+        "Receiving",
+        "Verifying",
+        "Saving",
+        "Applying",
+        "Cancelling",
+        "Completed",
+        "Saved",
+        "Failed",
+        "Cancelled",
+        "Unconfirmed"
+      ]
+    },
+    "ContentTransfer": {
+      "type": "object",
+      "required": [
+        "at",
+        "completedBytes",
+        "deviceName",
+        "id",
+        "incoming",
+        "key",
+        "kind",
+        "names",
+        "peer",
+        "savedPaths",
+        "stage",
+        "totalBytes"
+      ],
+      "properties": {
+        "at": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "completedBytes": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "deviceName": {
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TransferFailure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/definitions/MessageId"
+        },
+        "incoming": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/ContentKind"
+        },
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "peer": {
+          "type": "string"
+        },
+        "savedPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stage": {
+          "$ref": "#/definitions/ContentStage"
+        },
+        "totalBytes": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Delivery": {
+      "type": "object",
+      "required": [
+        "deviceName",
+        "noobId",
+        "state"
+      ],
+      "properties": {
+        "deviceName": {
+          "type": "string"
+        },
+        "noobId": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/definitions/DeliveryState"
+        }
+      }
+    },
+    "DeliveryState": {
+      "type": "string",
+      "enum": [
+        "Queued",
+        "Sending",
+        "AwaitingReceipt",
+        "Applied",
+        "Rejected",
+        "Unconfirmed",
+        "Offline",
+        "Cancelled",
+        "Superseded",
+        "QueueFull"
+      ]
+    },
+    "Fault": {
+      "type": "object",
+      "required": [
+        "message",
+        "sequence"
+      ],
+      "properties": {
+        "message": {
+          "$ref": "#/definitions/UiError"
+        },
+        "sequence": {
+          "type": "string"
+        }
+      }
+    },
+    "Frame": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/BackendSnapshot"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "snapshot"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/BackendSnapshot"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "recovered"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/Snapshot"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "host"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/UiError"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "stopped"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "HistoryItem": {
+      "type": "object",
+      "required": [
+        "copiedAt",
+        "id",
+        "source",
+        "text"
+      ],
+      "properties": {
+        "copiedAt": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "HistoryPage": {
+      "type": "object",
+      "required": [
+        "hasMore",
+        "items"
+      ],
+      "properties": {
+        "hasMore": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/HistoryItem"
+          }
+        }
+      }
+    },
+    "HistoryQuery": {
+      "type": "object",
+      "required": [
+        "contains",
+        "offset",
+        "source"
+      ],
+      "properties": {
+        "contains": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "source": {
+          "$ref": "#/definitions/HistorySource"
+        }
+      },
+      "additionalProperties": false
+    },
+    "HistorySource": {
+      "type": "string",
+      "enum": [
+        "all",
+        "local",
+        "remote"
+      ]
+    },
+    "Language": {
+      "type": "string",
+      "enum": [
+        "system",
+        "en",
+        "zh-CN"
+      ]
+    },
+    "LocalAddress": {
+      "type": "object",
+      "required": [
+        "interface",
+        "ip",
+        "pairingAddress"
+      ],
+      "properties": {
+        "interface": {
+          "type": "string"
+        },
+        "ip": {
+          "type": "string"
+        },
+        "pairingAddress": {
+          "type": "string"
+        }
+      }
+    },
+    "LocalDevice": {
+      "type": "object",
+      "required": [
+        "addresses",
+        "deviceName",
+        "fingerprint",
+        "noobId",
+        "pairingPort",
+        "platform",
+        "syncPort"
+      ],
+      "properties": {
+        "addressError": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UiError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "addresses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LocalAddress"
+          }
+        },
+        "deviceName": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "noobId": {
+          "type": "string"
+        },
+        "pairingPort": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "platform": {
+          "type": "string"
+        },
+        "syncPort": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "LocalDevicePatch": {
+      "type": "object",
+      "properties": {
+        "deviceName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pairingPort": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 1.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "MessageId": {
+      "type": "object",
+      "required": [
+        "sequence",
+        "session"
+      ],
+      "properties": {
+        "sequence": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        }
+      }
+    },
+    "Navigation": {
+      "type": "object",
+      "required": [
+        "id",
+        "page"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "page": {
+          "$ref": "#/definitions/Page"
+        }
+      }
+    },
+    "NearbyDevice": {
+      "type": "object",
+      "required": [
+        "addresses",
+        "deviceName",
+        "key",
+        "noobId",
+        "syncPort"
+      ],
+      "properties": {
+        "addresses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deviceName": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "noobId": {
+          "type": "string"
+        },
+        "syncPort": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "Onboarding": {
+      "type": "object",
+      "required": [
+        "nearby"
+      ],
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UiError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nearby": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/NearbyDevice"
+          }
+        },
+        "session": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PairingSession"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "Page": {
+      "type": "string",
+      "enum": [
+        "home",
+        "transfers",
+        "settings"
+      ]
+    },
+    "PairingSession": {
+      "type": "object",
+      "required": [
+        "attemptsLeft",
+        "deviceName",
+        "expiresAt",
+        "id",
+        "incoming",
+        "stage"
+      ],
+      "properties": {
+        "attemptsLeft": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deviceName": {
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UiError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expiresAt": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "id": {
+          "type": "string"
+        },
+        "incoming": {
+          "type": "boolean"
+        },
+        "noobId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stage": {
+          "$ref": "#/definitions/PairingStage"
+        }
+      }
+    },
+    "PairingStage": {
+      "type": "string",
+      "enum": [
+        "Requesting",
+        "AwaitingApproval",
+        "ShowingCode",
+        "EnteringCode",
+        "Verifying",
+        "Saving",
+        "Completed",
+        "Failed"
+      ]
+    },
+    "Patch": {
+      "type": "object",
+      "properties": {
+        "closeToTray": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "language": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Language"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Peer": {
+      "type": "object",
+      "required": [
+        "accepting",
+        "deviceName",
+        "fingerprint",
+        "noobId",
+        "online",
+        "settings"
+      ],
+      "properties": {
+        "accepting": {
+          "type": "boolean"
+        },
+        "deviceName": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "noobId": {
+          "type": "string"
+        },
+        "online": {
+          "type": "boolean"
+        },
+        "settings": {
+          "$ref": "#/definitions/PeerSettings"
+        }
+      }
+    },
+    "PeerPatch": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AddressChange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "autoSend": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "PeerSettings": {
+      "type": "object",
+      "required": [
+        "autoSend"
+      ],
+      "properties": {
+        "address": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "autoSend": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ProbeAction": {
+      "type": "string",
+      "enum": [
+        "copy",
+        "receive"
+      ]
+    },
+    "Reply": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "done"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/MessageId"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "sent"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "revision"
+              ],
+              "properties": {
+                "revision": {
+                  "type": "string"
+                }
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "saved"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/HistoryPage"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "history"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/Snapshot"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "host"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Request": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "discover"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "address"
+              ],
+              "properties": {
+                "address": {
+                  "type": "string"
+                },
+                "expected": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "beginPairing"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "acceptPairing"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "code",
+                "id"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "pairingCode"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "dismissPairing"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "patch"
+              ],
+              "properties": {
+                "patch": {
+                  "$ref": "#/definitions/SyncSettingsPatch"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "updateSyncSettings"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "patch"
+              ],
+              "properties": {
+                "patch": {
+                  "$ref": "#/definitions/LocalDevicePatch"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "updateLocalDevice"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "noobId",
+                "patch"
+              ],
+              "properties": {
+                "noobId": {
+                  "type": "string"
+                },
+                "patch": {
+                  "$ref": "#/definitions/PeerPatch"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "configurePeer"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "targets"
+              ],
+              "properties": {
+                "targets": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "selectTargets"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "noobId"
+              ],
+              "properties": {
+                "noobId": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "unpair"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "sendCurrent"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "selectFiles"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "selectReceiveDirectory"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "key"
+              ],
+              "properties": {
+                "key": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "cancelTransfer"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "key"
+              ],
+              "properties": {
+                "key": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "copyReceived"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "query"
+              ],
+              "properties": {
+                "query": {
+                  "$ref": "#/definitions/HistoryQuery"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "queryHistory"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "copyHistory"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "deleteHistory"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "clearHistory"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "patch"
+              ],
+              "properties": {
+                "legacyLanguage": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Language"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "patch": {
+                  "$ref": "#/definitions/Patch"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "hostPreferences"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0.0
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "acknowledgeNavigation"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "action"
+              ],
+              "properties": {
+                "action": {
+                  "$ref": "#/definitions/ProbeAction"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "probe"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "SendMode": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "automatic"
+      ]
+    },
+    "Snapshot": {
+      "type": "object",
+      "required": [
+        "closeToTray",
+        "language",
+        "preferenceError",
+        "resolvedLanguage",
+        "revision",
+        "trayAvailable",
+        "traySupported",
+        "version",
+        "visible"
+      ],
+      "properties": {
+        "closeToTray": {
+          "type": "boolean"
+        },
+        "language": {
+          "$ref": "#/definitions/Language"
+        },
+        "navigation": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Navigation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "preferenceError": {
+          "type": "boolean"
+        },
+        "resolvedLanguage": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "trayAvailable": {
+          "type": "boolean"
+        },
+        "traySupported": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string"
+        },
+        "visible": {
+          "type": "boolean"
+        }
+      }
+    },
+    "SyncSettings": {
+      "type": "object",
+      "required": [
+        "discoverable",
+        "history",
+        "historyDays",
+        "maxHistoryEntries",
+        "mode",
+        "paused",
+        "receive"
+      ],
+      "properties": {
+        "discoverable": {
+          "type": "boolean"
+        },
+        "history": {
+          "type": "boolean"
+        },
+        "historyDays": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "maxHistoryEntries": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "mode": {
+          "$ref": "#/definitions/SendMode"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "receive": {
+          "type": "boolean"
+        },
+        "receiveDirectory": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "SyncSettingsPatch": {
+      "type": "object",
+      "properties": {
+        "discoverable": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "history": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "historyDays": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "maxHistoryEntries": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SendMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "paused": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "receive": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Transfer": {
+      "type": "object",
+      "required": [
+        "automatic",
+        "bytes",
+        "id",
+        "targets"
+      ],
+      "properties": {
+        "automatic": {
+          "type": "boolean"
+        },
+        "bytes": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "id": {
+          "$ref": "#/definitions/MessageId"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Delivery"
+          }
+        }
+      }
+    },
+    "TransferFailure": {
+      "type": "string",
+      "enum": [
+        "Denied",
+        "Directory",
+        "Unsupported",
+        "TooLarge",
+        "SourceChanged",
+        "Integrity",
+        "Io",
+        "Clipboard",
+        "Offline",
+        "Timeout",
+        "Busy",
+        "Cancelled",
+        "Protocol"
+      ]
+    },
+    "UiError": {
+      "type": "object",
+      "required": [
+        "code"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          }
+        }
+      }
+    }
+  }
+}

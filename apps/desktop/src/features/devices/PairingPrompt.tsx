@@ -2,8 +2,8 @@ import { type Problem, errorText, toProblem } from '../../i18n/errors';
 import { useI18n } from '../../i18n/react';
 import { useEffect, useState } from 'react';
 import { Check, KeyRound, LoaderCircle } from 'lucide-react';
-import { useClient, useSnapshot } from '../../api/NooboardProvider';
-import type { PairingSession } from '../../api/contracts';
+import { useDesktop, useSnapshot } from '../../desktop/api';
+import type { PairingSession } from '../../desktop/api';
 import { Dialog } from '../../ui/Dialog';
 import { Button } from '../../ui/controls';
 export function PairingPrompt() {
@@ -14,7 +14,7 @@ export function PairingPrompt() {
 }
 function SessionPrompt({ session }: { session: PairingSession }) {
   const { t } = useI18n();
-  const client = useClient();
+  const client = useDesktop();
   const [code, setCode] = useState('');
   const [error, setError] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);

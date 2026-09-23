@@ -1,4 +1,4 @@
-import { useSnapshot } from '../../api/NooboardProvider';
+import { useSnapshot } from '../../desktop/api';
 import { useMailbox } from './MailboxProvider';
 import { ActivityList } from './ActivityList';
 import { PairedDevices } from './PairedDevices';

@@ -2,7 +2,7 @@
 pub mod lifecycle;
 mod preferences;
 pub mod tray;
-use crate::errors::{UiError, ui};
+use crate::ipc::errors::{UiError, ui};
 pub use preferences::{Language, Patch};
 use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, OnceLock};
@@ -10,20 +10,20 @@ use tauri::{AppHandle, Manager, State};
 use tokio::sync::watch;
 
 pub const TRAY_SUPPORTED: bool = cfg!(any(target_os = "macos", target_os = "windows"));
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum Page {
     Home,
     Transfers,
     Settings,
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Navigation {
     pub id: u32,
     pub page: Page,
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub revision: u32,
@@ -127,7 +127,6 @@ impl Desktop {
     }
 }
 
-#[tauri::command]
 pub fn desktop_preferences(
     handle: AppHandle,
     desktop: State<'_, Desktop>,
@@ -152,7 +151,6 @@ pub fn desktop_preferences(
     Ok(desktop.snapshot())
 }
 
-#[tauri::command]
 pub fn desktop_navigation_ack(desktop: State<'_, Desktop>, id: u32) {
     desktop.acknowledge(id);
 }

@@ -8,7 +8,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { useClient } from '../../api/NooboardProvider';
+import { useDesktop } from '../../desktop/api';
 import type { PlaybackState } from '../mascot/playback';
 import { ActivityInbox } from './ActivityInbox';
 
@@ -18,7 +18,7 @@ const MailboxContext = createContext<{
 } | null>(null);
 
 export function MailboxProvider({ children }: { children: ReactNode }) {
-  const client = useClient();
+  const client = useDesktop();
   const [inbox] = useState(() => new ActivityInbox(client.getSnapshot().activities[0] ?? null));
   useEffect(() => {
     const unsubscribe = client.subscribe(() => inbox.sync(client.getSnapshot().activities));

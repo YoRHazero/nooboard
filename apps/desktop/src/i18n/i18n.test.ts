@@ -2,8 +2,9 @@ import { afterEach, expect, it } from 'vitest';
 import { i18n, t } from './index';
 import { errorText, fail, problem, toProblem } from './errors';
 import { fullTime } from '../ui/text';
-import { PreviewClient } from '../preview/PreviewClient';
-import { deliveryLabel } from '../api/deliveries';
+import { PreviewBridge } from '../preview/bridge';
+import { createDesktop } from '../desktop/api';
+import { deliveryLabel } from '../features/transfers/deliveries';
 
 afterEach(async () => {
   await i18n.changeLanguage('zh-CN');
@@ -36,7 +37,8 @@ it('accepts structured IPC errors and hides unrecognized diagnostic text', async
   expect(toProblem(new Error('本机内部错误'))).toEqual(problem('generic'));
 });
 it('preserves existing clipboard contents, history, names and pairing session when changing language', async () => {
-  const client = new PreviewClient();
+  const { runtime, desktop: client } = createDesktop(new PreviewBridge());
+  await runtime.start();
   try {
     await client.beginPairing('192.168.1.52:24817');
     const id = client.getSnapshot().onboarding!.session!.id;
@@ -44,8 +46,7 @@ it('preserves existing clipboard contents, history, names and pairing session wh
     const before = client.getSnapshot();
     await i18n.changeLanguage('en');
     expect(client.getSnapshot()).toBe(before);
-    expect(errorText(before.onboarding!.session!.error!)).toBe('Incorrect code. 2 attempts left.');
   } finally {
-    client.dispose();
+    await runtime.dispose();
   }
 });

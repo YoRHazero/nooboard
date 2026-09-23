@@ -1,8 +1,8 @@
 import { useI18n } from '../../i18n/react';
 import { ArrowUpRight, Check, ChevronDown } from 'lucide-react';
-import { useClient, useCommand, useSnapshot } from '../../api/NooboardProvider';
-import { canSend } from '../../api/devices';
-import { batchSummary } from '../../api/deliveries';
+import { useDesktop, useCommand, useSnapshot } from '../../desktop/api';
+import { canSend } from '../../features/devices/selectors';
+import { batchSummary } from '../../features/transfers/deliveries';
 import { Button } from '../../ui/controls';
 import { characterCount } from '../../ui/text';
 import { DeliveryList } from '../transfers/DeliveryList';
@@ -10,7 +10,7 @@ import { DeliveryList } from '../transfers/DeliveryList';
 export function SendSelection() {
   const { t } = useI18n();
   const { peers, manualTargets, current, settings, activities } = useSnapshot();
-  const client = useClient();
+  const client = useDesktop();
   const { execute } = useCommand();
   const selected = peers.filter((p) => manualTargets.includes(p.noobId));
   const available = selected.filter(canSend).length;

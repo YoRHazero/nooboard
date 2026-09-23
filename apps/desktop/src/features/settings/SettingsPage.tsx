@@ -1,13 +1,14 @@
 import { useI18n } from '../../i18n/react';
-import {
-  changeLanguage,
-  useLanguagePreference,
-  type LanguagePreference,
-} from '../../i18n/language';
 import type { ReactNode } from 'react';
 import { History, Palette, Radio, FolderOpen, PanelBottom } from 'lucide-react';
-import { useClient, useCommand, useSnapshot } from '../../api/NooboardProvider';
-import type { Theme } from '../../api/contracts';
+import {
+  useDesktop,
+  useCommand,
+  useSnapshot,
+  usePreferences,
+  type LanguagePreference,
+} from '../../desktop/api';
+import type { Theme } from '../../desktop/api';
 import { Button, Toggle } from '../../ui/controls';
 
 function SettingRow({
@@ -31,16 +32,16 @@ function SettingRow({
 }
 export function SettingsPage() {
   const { t } = useI18n();
-  const language = useLanguagePreference();
-  const { settings, desktop } = useSnapshot();
-  const client = useClient();
+  const { language, appearance } = usePreferences();
+  const { settings, host, configuration } = useSnapshot();
+  const client = useDesktop();
   const { execute } = useCommand();
-  const update = (patch: Parameters<typeof client.updateSettings>[0]) =>
-    execute(() => client.updateSettings(patch));
+  const update = (patch: Parameters<typeof client.updateSyncSettings>[0]) =>
+    execute(() => client.updateSyncSettings(patch));
   return (
     <div className="settings-page">
-      {settings.restartRequired && <p role="status">{t('settings:restartRequired')}</p>}
-      {desktop?.traySupported && (
+      {configuration.restartRequired && <p role="status">{t('settings:restartRequired')}</p>}
+      {host.traySupported && (
         <section className="settings-group">
           <div className="settings-group__heading">
             <PanelBottom size={19} />
@@ -49,13 +50,15 @@ export function SettingsPage() {
           <SettingRow title={t('settings:closeToTray')} description={t('settings:closeToTrayHelp')}>
             <Toggle
               label={t('settings:closeToTray')}
-              checked={!!settings.closeToTray}
-              disabled={!desktop.trayAvailable || desktop.preferenceError}
-              onChange={(closeToTray) => update({ closeToTray })}
+              checked={!!host.closeToTray}
+              disabled={!host.trayAvailable || host.preferenceError}
+              onChange={(closeToTray) =>
+                execute(() => client.updateHostPreferences({ closeToTray }))
+              }
             />
           </SettingRow>
-          {!desktop.trayAvailable && <p role="status">{t('settings:trayUnavailable')}</p>}
-          {desktop.preferenceError && <p role="alert">{t('errors:desktopPreferences')}</p>}
+          {!host.trayAvailable && <p role="status">{t('settings:trayUnavailable')}</p>}
+          {host.preferenceError && <p role="alert">{t('errors:desktopPreferences')}</p>}
         </section>
       )}
       <section className="settings-group">
@@ -158,7 +161,7 @@ export function SettingsPage() {
             aria-label={t('common:language')}
             value={language}
             onChange={(event) =>
-              execute(() => changeLanguage(event.target.value as LanguagePreference))
+              execute(() => client.setLanguage(event.target.value as LanguagePreference))
             }
           >
             <option value="system">{t('common:system')}</option>
@@ -169,8 +172,10 @@ export function SettingsPage() {
         <SettingRow title={t('settings:appearance')}>
           <select
             aria-label={t('settings:appearanceLabel')}
-            value={settings.theme}
-            onChange={(event) => update({ theme: event.target.value as Theme })}
+            value={appearance.theme}
+            onChange={(event) =>
+              execute(() => client.updateAppearance({ theme: event.target.value as Theme }))
+            }
           >
             <option value="system">{t('common:system')}</option>
             <option value="light">{t('common:light')}</option>
@@ -180,8 +185,8 @@ export function SettingsPage() {
         <SettingRow title={t('settings:reduceMotion')}>
           <Toggle
             label={t('settings:reduceMotion')}
-            checked={settings.reducedMotion}
-            onChange={(reducedMotion) => update({ reducedMotion })}
+            checked={appearance.reducedMotion}
+            onChange={(reducedMotion) => execute(() => client.updateAppearance({ reducedMotion }))}
           />
         </SettingRow>
       </section>

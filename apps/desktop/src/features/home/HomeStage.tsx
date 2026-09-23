@@ -2,7 +2,7 @@ import { useI18n } from '../../i18n/react';
 import { useState } from 'react';
 import { ArrowUpRight } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
-import { useSnapshot } from '../../api/NooboardProvider';
+import { useSnapshot } from '../../desktop/api';
 import { Mascot } from '../mascot/Mascot';
 import { posterTargets } from '../mascot/poster';
 import type { StageTarget, TargetLayout } from '../mascot/targets';
@@ -27,7 +27,7 @@ export function HomeStage({
   onTransfers: (key?: string) => void;
 }) {
   const { t } = useI18n();
-  const { localDevice, settings } = useSnapshot();
+  const { localDevice, appearance } = useSnapshot();
   const [targets, setTargets] = useState<TargetLayout>(fallback);
   const mailbox = useMailbox();
   const panels = useStagePanel((panel) => {
@@ -81,7 +81,10 @@ export function HomeStage({
               onClick={() => panels.activate(target)}
             >
               {target === 'mailbox' && (
-                <MailboxBadge count={mailbox.batch.length} reducedMotion={settings.reducedMotion} />
+                <MailboxBadge
+                  count={mailbox.batch.length}
+                  reducedMotion={appearance.reducedMotion}
+                />
               )}
               <span className="stage-target__label">
                 <strong>
@@ -111,7 +114,7 @@ export function HomeStage({
             mode={panels.open.mode}
             focusHeading={panels.open.focusHeading}
             onPin={panels.pin}
-            reducedMotion={settings.reducedMotion}
+            reducedMotion={appearance.reducedMotion}
           >
             {selected === 'board' && <ClipboardPanel />}
             {selected === 'bird' && <LocalPanel onSettings={onSettings} />}

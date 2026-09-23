@@ -1,6 +1,6 @@
 import { useI18n } from '../../i18n/react';
 import { Network } from 'lucide-react';
-import type { LocalDevice } from '../../api/contracts';
+import type { LocalDevice } from '../../desktop/api';
 
 /** Read-only connection candidates; values always come from the running backend. */
 export function LocalAddresses({ device }: { device: LocalDevice }) {

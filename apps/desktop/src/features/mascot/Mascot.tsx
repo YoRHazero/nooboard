@@ -1,6 +1,6 @@
 import { useI18n } from '../../i18n/react';
 import { useEffect, useRef, useState } from 'react';
-import { useClient, useSnapshot } from '../../api/NooboardProvider';
+import { useDesktop, useSnapshot } from '../../desktop/api';
 import { Playback, type PlaybackState } from './playback';
 import type { BirdScene } from './scene';
 import type { TargetLayout } from './targets';
@@ -14,8 +14,8 @@ export function Mascot({
   onPlayback: (state: PlaybackState) => void;
 }) {
   const { t } = useI18n();
-  const client = useClient();
-  const { settings } = useSnapshot();
+  const client = useDesktop();
+  const { appearance } = useSnapshot();
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<BirdScene | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -47,7 +47,7 @@ export function Mascot({
         fallback.disconnect();
         setLoaded(true);
         let sleeping = false;
-        const hidden = () => document.hidden || client.getSnapshot().desktop?.visible === false;
+        const hidden = () => document.hidden || client.getSnapshot().host.visible === false;
         const visibility = () => {
           const next = hidden();
           if (next === sleeping) return;
@@ -66,7 +66,7 @@ export function Mascot({
                 ? 'offline'
                 : 'idle',
           );
-          stage.setReduced(state.settings.reducedMotion || preference.matches);
+          stage.setReduced(state.appearance.reducedMotion || preference.matches);
           visibility();
         };
         subscriptions.push(
@@ -102,7 +102,7 @@ export function Mascot({
     repaint();
     media.addEventListener('change', repaint);
     return () => media.removeEventListener('change', repaint);
-  }, [settings.theme]);
+  }, [appearance.theme]);
   return (
     <div className="mascot">
       <span className="sr-only">{t('home:stageDescription')}</span>

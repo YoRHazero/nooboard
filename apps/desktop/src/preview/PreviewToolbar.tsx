@@ -1,11 +1,11 @@
 import { useI18n } from '../i18n/react';
 import { useState } from 'react';
 import { ArrowDownLeft, CopyPlus, FlaskConical, RotateCcw, Unplug } from 'lucide-react';
-import { useCommand, useSnapshot } from '../api/NooboardProvider';
-import { shortNoobId } from '../api/devices';
-import type { PreviewClient } from './PreviewClient';
+import { useCommand, useSnapshot } from '../desktop/api';
+import { shortNoobId } from '../features/devices/selectors';
+import type { PreviewControls } from './bridge';
 
-export function PreviewToolbar({ client }: { client: PreviewClient }) {
+export function PreviewToolbar({ client }: { client: PreviewControls }) {
   const { t } = useI18n();
   const { execute } = useCommand();
   const { peers, settings } = useSnapshot();

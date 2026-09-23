@@ -1,8 +1,8 @@
 import { useI18n } from '../../i18n/react';
 import { useState } from 'react';
 import { ArrowUpRight, ChevronDown, File, Image } from 'lucide-react';
-import { useClient, useCommand, useSnapshot } from '../../api/NooboardProvider';
-import { canSend, shortNoobId } from '../../api/devices';
+import { useDesktop, useCommand, useSnapshot } from '../../desktop/api';
+import { canSend, shortNoobId } from '../../features/devices/selectors';
 import { Button } from '../../ui/controls';
 import { characterCount, clockTime } from '../../ui/text';
 import { TargetPicker } from '../transfers/TargetPicker';
@@ -10,7 +10,7 @@ import { TargetPicker } from '../transfers/TargetPicker';
 export function ClipboardPanel() {
   const { t } = useI18n();
   const { current, peers, manualTargets, settings } = useSnapshot();
-  const client = useClient();
+  const client = useDesktop();
   const { execute } = useCommand();
   const [choosing, setChoosing] = useState(false);
   const selected = peers.filter((p) => manualTargets.includes(p.noobId));

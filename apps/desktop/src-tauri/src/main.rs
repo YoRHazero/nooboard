@@ -1,11 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-mod commands;
 mod desktop;
 #[cfg(all(debug_assertions, feature = "diagnostics", target_os = "macos"))]
 mod diagnostics;
-mod errors;
 mod host;
-mod wire;
+mod ipc;
 use tauri::Manager;
 
 fn main() {
@@ -31,25 +29,9 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            desktop::desktop_preferences,
-            desktop::desktop_navigation_ack,
-            commands::onboarding::desktop_discover,
-            commands::onboarding::desktop_begin_pairing,
-            commands::onboarding::desktop_accept_pairing,
-            commands::onboarding::desktop_pairing_code,
-            commands::onboarding::desktop_dismiss_pairing,
-            commands::desktop_connect,
-            commands::settings::desktop_settings,
-            commands::devices::desktop_peer_settings,
-            commands::devices::desktop_select_targets,
-            commands::desktop_send,
-            commands::transfers::desktop_select_files,
-            commands::transfers::desktop_receive_directory,
-            commands::transfers::desktop_transfer_action,
-            commands::devices::desktop_unpair,
-            commands::history::desktop_history,
-            commands::history::desktop_history_action,
-            commands::desktop_probe
+            ipc::connect,
+            ipc::disconnect,
+            ipc::request
         ])
         .build(tauri::generate_context!())
         .expect("could not create nooboard window")

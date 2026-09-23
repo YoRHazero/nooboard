@@ -1,5 +1,5 @@
 //! Desktop-only preferences; business settings continue to live in core.
-use crate::errors::{UiError, ui};
+use crate::ipc::errors::{UiError, ui};
 use serde::{Deserialize, Serialize};
 use std::{
     io::Write,
@@ -18,7 +18,9 @@ fn missing_file_is_valid(path: &Path) -> bool {
     true
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, Serialize, schemars::JsonSchema, PartialEq, Eq,
+)]
 pub enum Language {
     #[default]
     #[serde(rename = "system")]
@@ -44,7 +46,7 @@ impl Language {
         }
     }
 }
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Preferences {
     pub close_to_tray: bool,
@@ -59,7 +61,7 @@ impl Default for Preferences {
         }
     }
 }
-#[derive(Default, Deserialize)]
+#[derive(Default, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Patch {
     pub close_to_tray: Option<bool>,

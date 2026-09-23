@@ -2676,6 +2676,7 @@ version = "0.2.1"
 dependencies = [
  "nooboard-core",
  "rfd",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "tauri",

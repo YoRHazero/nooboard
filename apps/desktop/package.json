@@ -14,7 +14,10 @@
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
-    "i18n:check": "node scripts/check-i18n.mjs"
+    "i18n:check": "node scripts/check-i18n.mjs",
+    "ipc:generate": "node scripts/generate-ipc.mjs",
+    "ipc:check": "node scripts/generate-ipc.mjs --check",
+    "architecture:check": "node scripts/check-boundaries.mjs"
   },
   "engines": {
     "node": ">=22.12.0"

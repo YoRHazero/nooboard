@@ -14,31 +14,19 @@ import {
   ArrowLeftRight,
 } from 'lucide-react';
 import { TransfersPage } from '../features/transfers/TransfersPage';
-import { useClient, useCommand, useSnapshot } from '../api/NooboardProvider';
+import { useDesktop, useCommand, useSnapshot, useFeedback } from '../desktop/api';
 import { Button, IconButton } from '../ui/controls';
 import { HomePage } from '../features/home/HomePage';
 import { HistoryPage } from '../features/history/HistoryPage';
 import { DevicesPage } from '../features/devices/DevicesPage';
 import { SettingsPage } from '../features/settings/SettingsPage';
-import { PreviewToolbar } from '../preview/PreviewToolbar';
-import type { PreviewClient } from '../preview/PreviewClient';
 import { appVersion } from './version';
 
 import { PairingPrompt } from '../features/devices/PairingPrompt';
 
 type Page = 'home' | 'history' | 'transfers' | 'devices' | 'settings';
 
-export function App({
-  preview,
-  footer,
-  onReconnect,
-  onNavigateHandled,
-}: {
-  preview?: PreviewClient;
-  footer?: ReactNode;
-  onReconnect?: () => Promise<void>;
-  onNavigateHandled?: (id: number) => Promise<void>;
-}) {
+export function App({ footer }: { footer?: ReactNode }) {
   const { t } = useI18n();
   const pages = {
     home: { title: t('common:home'), icon: House },
@@ -50,25 +38,26 @@ export function App({
   const [page, setPage] = useState<Page>('home');
   const [transferKey, setTransferKey] = useState<string>();
   const main = useRef<HTMLElement>(null);
-  const { localDevice, settings, notice, connectionError, desktop } = useSnapshot();
+  const { localDevice, settings, notice, connectionError, host, appearance } = useSnapshot();
   const lastNavigation = useRef<number | null>(null);
   const [dismissed, setDismissed] = useState<string>();
-  const client = useClient();
-  const { error, clearError, execute } = useCommand();
+  const client = useDesktop();
+  const { execute } = useCommand();
+  const { error, clearError } = useFeedback();
   useEffect(() => {
-    const navigation = desktop?.navigation;
+    const navigation = host.navigation;
     if (!navigation || lastNavigation.current === navigation.id) return;
     lastNavigation.current = navigation.id;
     setTransferKey(undefined);
     setPage(navigation.page);
     main.current?.scrollTo({ top: 0 });
     clearError();
-    if (onNavigateHandled) execute(() => onNavigateHandled(navigation.id));
-  }, [desktop?.navigation, onNavigateHandled, clearError, execute]);
+    void execute(() => client.acknowledgeNavigation(navigation.id));
+  }, [host.navigation, client, clearError, execute]);
   useEffect(() => {
-    document.documentElement.dataset.theme = settings.theme;
-    document.documentElement.dataset.reducedMotion = String(settings.reducedMotion);
-  }, [settings.theme, settings.reducedMotion]);
+    document.documentElement.dataset.theme = appearance.theme;
+    document.documentElement.dataset.reducedMotion = String(appearance.reducedMotion);
+  }, [appearance.theme, appearance.reducedMotion]);
   useEffect(() => {
     document.title = `nooboard · ${pages[page].title}`;
   }, [page, t]);
@@ -78,7 +67,7 @@ export function App({
     clearError();
   };
   return (
-    <MotionConfig reducedMotion={settings.reducedMotion ? 'always' : 'user'}>
+    <MotionConfig reducedMotion={appearance.reducedMotion ? 'always' : 'user'}>
       <div className="app-shell">
         <aside className="sidebar">
           <a
@@ -126,7 +115,7 @@ export function App({
               <span>{t('common:thisDevice')}</span>
             </div>
           </div>
-          <span className="sidebar-version">nooboard / {desktop?.version ?? appVersion}</span>
+          <span className="sidebar-version">nooboard / {host.version ?? appVersion}</span>
         </aside>
         <main className={`app-main ${page === 'home' ? 'app-main--home' : ''}`} ref={main}>
           <div className="main-inner">
@@ -137,7 +126,9 @@ export function App({
                   variant="quiet"
                   disabled={!!connectionError}
                   className={settings.paused ? 'resume-button' : ''}
-                  onClick={() => execute(() => client.updateSettings({ paused: !settings.paused }))}
+                  onClick={() =>
+                    execute(() => client.updateSyncSettings({ paused: !settings.paused }))
+                  }
                 >
                   {settings.paused ? <Play size={15} /> : <Pause size={15} />}
                   {settings.paused ? t('common:resume') : t('common:pause')}
@@ -147,9 +138,11 @@ export function App({
             {connectionError && (
               <div className="error-banner" role="alert">
                 <span>{errorText(connectionError)}</span>
-                {onReconnect && (
-                  <Button onClick={() => execute(onReconnect)}>{t('common:reconnect')}</Button>
-                )}
+                {
+                  <Button onClick={() => execute(() => client.reconnect())}>
+                    {t('common:reconnect')}
+                  </Button>
+                }
               </div>
             )}
             {notice && dismissed !== notice.id && (
@@ -187,7 +180,7 @@ export function App({
           </div>
         </main>
         <PairingPrompt />
-        {preview ? <PreviewToolbar client={preview} /> : footer}
+        {footer}
       </div>
     </MotionConfig>
   );

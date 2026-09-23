@@ -6,7 +6,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [features]
-default = []
+default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 diagnostics = ["nooboard-core/diagnostics"]
 
@@ -22,6 +22,7 @@ rfd = { version = "0.16", features = ["common-controls-v6"] }
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+schemars = "0.8.22"
 thiserror.workspace = true
 tempfile.workspace = true
 

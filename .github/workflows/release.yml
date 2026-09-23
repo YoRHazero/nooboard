@@ -98,6 +98,9 @@ jobs:
         working-directory: apps/desktop
         run: npm run i18n:check
 
+      - name: Check desktop boundaries and IPC types
+        working-directory: apps/desktop
+        run: npm run architecture:check && npm run ipc:check
       - name: Test desktop adapters
         working-directory: apps/desktop
         run: npm test

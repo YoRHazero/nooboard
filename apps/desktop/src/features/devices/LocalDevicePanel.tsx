@@ -1,7 +1,7 @@
 import { useI18n } from '../../i18n/react';
 import { useState } from 'react';
 import { Pencil } from 'lucide-react';
-import { useSnapshot } from '../../api/NooboardProvider';
+import { useSnapshot } from '../../desktop/api';
 import { Button } from '../../ui/controls';
 import { DeviceName } from './DeviceName';
 import { LocalDeviceDialog } from './LocalDeviceDialog';

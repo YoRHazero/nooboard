@@ -1,8 +1,8 @@
 import { type Problem, problem, errorText, toProblem } from '../../i18n/errors';
 import { useI18n } from '../../i18n/react';
 import { useState } from 'react';
-import { useClient, useSnapshot } from '../../api/NooboardProvider';
-import { parsePort, validName } from '../../api/devices';
+import { useDesktop, useSnapshot } from '../../desktop/api';
+import { parsePort, validName } from '../../features/devices/selectors';
 import { Button } from '../../ui/controls';
 import { Dialog } from '../../ui/Dialog';
 import { IdentityFields } from './DeviceName';
@@ -11,7 +11,7 @@ import { LocalAddresses } from './LocalAddresses';
 export function LocalDeviceDialog({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
   const { localDevice } = useSnapshot();
-  const client = useClient();
+  const client = useDesktop();
   const [initial] = useState(localDevice);
   const [deviceName, setDeviceName] = useState(initial.deviceName);
   const [pairingPort, setPairingPort] = useState(String(initial.pairingPort));

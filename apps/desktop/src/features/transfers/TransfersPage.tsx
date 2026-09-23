@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, Copy, File, FolderOpen, Image, X } from 'lucide-react';
 import { useI18n } from '../../i18n/react';
-import { useClient, useCommand, useSnapshot } from '../../api/NooboardProvider';
-import { canSend, shortNoobId } from '../../api/devices';
+import { useDesktop, useCommand, useSnapshot } from '../../desktop/api';
+import { canSend, shortNoobId } from '../../features/devices/selectors';
 import {
   byteLabel,
   contentCancellable,
   contentErrorLabel,
   contentPending,
   contentStageLabel,
-} from '../../api/contentTransfers';
+} from '../../features/transfers/content';
 import { Button } from '../../ui/controls';
 import { fullTime } from '../../ui/text';
 import { TargetPicker } from './TargetPicker';
@@ -17,7 +17,7 @@ import { TargetPicker } from './TargetPicker';
 export function TransfersPage({ focusKey }: { focusKey?: string }) {
   const { t } = useI18n();
   const { contentTransfers = [], settings, peers, manualTargets } = useSnapshot();
-  const client = useClient();
+  const client = useDesktop();
   const { execute } = useCommand();
   const [choosing, setChoosing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'sending' | 'receiving'>('all');
@@ -81,7 +81,7 @@ export function TransfersPage({ focusKey }: { focusKey?: string }) {
       <ul className="content-transfers" ref={list} aria-label={t('common:transfers')}>
         {rows.map((task) => {
           const pending = contentPending(task.stage);
-          const done = task.stage === 'Preparing' ? task.preparedBytes : task.completedBytes;
+          const done = task.completedBytes;
           const Icon = task.kind === 'Image' ? Image : File;
           const Direction = task.incoming ? ArrowDownLeft : ArrowUpRight;
           const error = contentErrorLabel(task);

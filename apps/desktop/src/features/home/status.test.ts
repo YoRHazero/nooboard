@@ -17,7 +17,11 @@ it('does not attribute removed peers’ transfers to new devices', () => {
   expect(latestTransfer(state)).toBeUndefined();
 });
 it('reports partial delivery without claiming all recipients received it', () => {
-  const activity = createSeed().activities[1];
+  const activity = {
+    ...createSeed().activities[0],
+    kind: 'sent' as const,
+    targets: [{ noobId: 'peer', deviceName: '电脑', state: 'applied' as const }],
+  };
   expect(
     transferResult({
       ...activity,

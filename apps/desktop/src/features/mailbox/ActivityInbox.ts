@@ -1,4 +1,4 @@
-import type { Activity } from '../../api/contracts';
+import type { Activity } from '../../desktop/api';
 
 interface InboxSnapshot {
   latest: Activity | null;

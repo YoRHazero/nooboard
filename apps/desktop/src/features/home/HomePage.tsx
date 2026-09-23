@@ -1,6 +1,6 @@
 import { useI18n } from '../../i18n/react';
 import { ArrowUpRight } from 'lucide-react';
-import { useClient, useCommand, useSnapshot } from '../../api/NooboardProvider';
+import { useDesktop, useCommand, useSnapshot } from '../../desktop/api';
 import { HomeStage } from './HomeStage';
 import { homeStatus, latestTransfer, transferResult } from './status';
 
@@ -16,7 +16,7 @@ export function HomePage({
   const { t } = useI18n();
   const state = useSnapshot();
   const { settings, peers } = state;
-  const client = useClient();
+  const client = useDesktop();
   const { execute } = useCommand();
   const status = homeStatus(state);
   const latest = latestTransfer(state);
@@ -41,7 +41,7 @@ export function HomePage({
         ) : settings.paused ? (
           <button
             className="text-button"
-            onClick={() => execute(() => client.updateSettings({ paused: false }))}
+            onClick={() => execute(() => client.updateSyncSettings({ paused: false }))}
           >
             {t('common:resume')}
             <ArrowUpRight size={14} />

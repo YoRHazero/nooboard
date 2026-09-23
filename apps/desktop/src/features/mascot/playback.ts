@@ -1,10 +1,10 @@
-import type { DesktopEvent } from '../../api/contracts';
+import type { DesktopEvent } from '../../desktop/api';
 
 export type Clip = 'idle' | 'capture' | 'send' | 'receive_text' | 'error' | 'paused' | 'offline';
 export type RestMode = 'idle' | 'paused' | 'offline';
 export interface PlaybackState {
   active: Clip | null;
-  activityId: number | null;
+  activityId: string | null;
 }
 
 /** Serializes performances, never business operations. */

@@ -1,13 +1,13 @@
 import { useI18n } from '../../i18n/react';
 import { useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, Clipboard } from 'lucide-react';
-import type { Activity } from '../../api/contracts';
-import { useSnapshot } from '../../api/NooboardProvider';
-import { batchSummary } from '../../api/deliveries';
-import { shortNoobId } from '../../api/devices';
+import type { Activity } from '../../desktop/api';
+import { useSnapshot } from '../../desktop/api';
+import { batchSummary } from '../../features/transfers/deliveries';
+import { shortNoobId } from '../../features/devices/selectors';
 import { fullTime } from '../../ui/text';
 import { TransferDialog } from '../transfers/TransferDialog';
-import { contentStageLabel } from '../../api/contentTransfers';
+import { contentStageLabel } from '../../features/transfers/content';
 
 export function ActivityList({
   activities,

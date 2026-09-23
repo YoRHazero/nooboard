@@ -6,24 +6,8 @@
   "permissions": [
     "core:default",
     "os:allow-locale",
-    "allow-desktop-preferences",
-    "allow-desktop-navigation-ack",
-    "allow-desktop-connect",
-    "allow-desktop-settings",
-    "allow-desktop-peer-settings",
-    "allow-desktop-select-targets",
-    "allow-desktop-send",
-    "allow-desktop-unpair",
-    "allow-desktop-history",
-    "allow-desktop-history-action",
-    "allow-desktop-probe",
-    "allow-desktop-discover",
-    "allow-desktop-begin-pairing",
-    "allow-desktop-accept-pairing",
-    "allow-desktop-pairing-code",
-    "allow-desktop-dismiss-pairing",
-    "allow-desktop-select-files",
-    "allow-desktop-receive-directory",
-    "allow-desktop-transfer-action"
+    "allow-connect",
+    "allow-disconnect",
+    "allow-request"
   ]
 }

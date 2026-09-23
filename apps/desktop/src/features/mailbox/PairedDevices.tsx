@@ -1,7 +1,7 @@
 import { useI18n } from '../../i18n/react';
 import { ArrowUpRight } from 'lucide-react';
-import type { Peer } from '../../api/contracts';
-import { peerState } from '../../api/devices';
+import type { Peer } from '../../desktop/api';
+import { peerState } from '../../features/devices/selectors';
 import { DeviceIcon, DeviceName } from '../devices/DeviceName';
 export function PairedDevices({
   devices,

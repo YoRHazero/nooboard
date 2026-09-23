@@ -1,8 +1,8 @@
 import { type Problem, errorText, toProblem } from '../../i18n/errors';
 import { useI18n } from '../../i18n/react';
 import { useState } from 'react';
-import { useClient, useSnapshot } from '../../api/NooboardProvider';
-import { canSend, shortNoobId } from '../../api/devices';
+import { useDesktop, useSnapshot } from '../../desktop/api';
+import { canSend, shortNoobId } from '../../features/devices/selectors';
 import { DeviceIcon, DeviceName } from '../devices/DeviceName';
 import { Button } from '../../ui/controls';
 import { Dialog } from '../../ui/Dialog';
@@ -10,7 +10,7 @@ import { Dialog } from '../../ui/Dialog';
 export function TargetPicker({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
   const { peers, manualTargets } = useSnapshot();
-  const client = useClient();
+  const client = useDesktop();
   const [selected, setSelected] = useState([...manualTargets]);
   const [error, setError] = useState<Problem | null>(null);
   const save = async () => {

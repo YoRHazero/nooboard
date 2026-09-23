@@ -1,6 +1,6 @@
 import { useI18n } from '../../i18n/react';
-import type { Activity } from '../../api/contracts';
-import { batchSummary } from '../../api/deliveries';
+import type { Activity } from '../../desktop/api';
+import { batchSummary } from '../../features/transfers/deliveries';
 import { Dialog } from '../../ui/Dialog';
 import { DeliveryList } from './DeliveryList';
 export function TransferDialog({ activity, onClose }: { activity: Activity; onClose: () => void }) {

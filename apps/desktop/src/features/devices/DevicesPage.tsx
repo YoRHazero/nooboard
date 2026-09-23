@@ -1,7 +1,7 @@
 import { useI18n } from '../../i18n/react';
 import { useState } from 'react';
 import { Plus, Radio } from 'lucide-react';
-import { useClient, useCommand, useSnapshot } from '../../api/NooboardProvider';
+import { useDesktop, useCommand, useSnapshot } from '../../desktop/api';
 import { Button, EmptyState } from '../../ui/controls';
 import { DiscoverDialog } from './DiscoverDialog';
 import { LocalDevicePanel } from './LocalDevicePanel';
@@ -11,8 +11,8 @@ import { SendSelection } from './SendSelection';
 
 export function DevicesPage() {
   const { t } = useI18n();
-  const { peers, manualTargets, settings } = useSnapshot();
-  const client = useClient();
+  const { peers, manualTargets, settings, configuration } = useSnapshot();
+  const client = useDesktop();
   const { execute } = useCommand();
   const [pairing, setPairing] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -22,7 +22,7 @@ export function DevicesPage() {
   return (
     <section className="devices-page">
       <LocalDevicePanel />
-      {settings.restartRequired && <p role="status">{t('settings:restartRequired')}</p>}
+      {configuration.restartRequired && <p role="status">{t('settings:restartRequired')}</p>}
       <section className="device-directory" aria-label={t('devices:directory')}>
         <header className="device-directory__heading">
           <div>
