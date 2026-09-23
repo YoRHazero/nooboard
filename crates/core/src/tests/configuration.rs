@@ -5,15 +5,20 @@ async fn rejected_persistence_does_not_publish_unsaved_settings_and_restart_requ
     let clipboard = Clipboard::new();
     let (service, app) = start(&clipboard).await;
     let original = app.status().settings;
-    let mut invalid = original.clone();
-    invalid.receive_directory = Some(std::path::PathBuf::from(format!(
-        "/{}",
-        "a".repeat(1024 * 1024)
-    )));
-    assert!(matches!(
-        app.set_settings(invalid).await,
-        Err(Error::Storage(_))
-    ));
+    let directory = tempfile::tempdir().unwrap();
+    let mut oversized = original.clone();
+    // A rooted `/...` path is not absolute on Windows. Pass configuration
+    // validation on every platform, then exercise the storage value limit.
+    oversized.receive_directory = Some(directory.path().join("a".repeat(1024 * 1024)));
+    oversized.validate().unwrap();
+    let error = app.set_settings(oversized).await.unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            Error::Storage(error) if error.kind() == nooboard_storage::ErrorKind::InvalidInput
+        ),
+        "expected storage to reject the oversized setting: {error:?}"
+    );
     assert_eq!(app.status().settings, original);
     app.set_settings(Settings {
         device_name: "new name".into(),
