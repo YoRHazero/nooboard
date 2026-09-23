@@ -17,11 +17,7 @@ pub async fn desktop_peer_settings(
     patch: PeerPatch,
 ) -> Result<(), crate::errors::UiError> {
     let _mutation = host.mutations.lock().await;
-    let guard = host.running.read().await;
-    let app = guard
-        .as_ref()
-        .ok_or(crate::errors::ui("backendNotConnected"))?
-        .app();
+    let app = host.app().await?;
     let peer = app
         .status()
         .peers
@@ -45,11 +41,8 @@ pub async fn desktop_select_targets(
     host: State<'_, Host>,
     targets: Vec<String>,
 ) -> Result<(), crate::errors::UiError> {
-    let guard = host.running.read().await;
-    guard
-        .as_ref()
-        .ok_or(crate::errors::ui("backendNotConnected"))?
-        .app()
+    host.app()
+        .await?
         .select_targets(targets)
         .await
         .map_err(errors::core)
@@ -59,11 +52,8 @@ pub async fn desktop_unpair(
     host: State<'_, Host>,
     noob_id: String,
 ) -> Result<(), crate::errors::UiError> {
-    let guard = host.running.read().await;
-    guard
-        .as_ref()
-        .ok_or(crate::errors::ui("backendNotConnected"))?
-        .app()
+    host.app()
+        .await?
         .unpair(noob_id)
         .await
         .map_err(errors::core)

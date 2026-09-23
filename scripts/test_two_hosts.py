@@ -86,19 +86,17 @@ def main():
            "DISPLAY=" + args.display,
            "XDG_RUNTIME_DIR=" + args.remote_dir + "/runtime",
            "WAYLAND_DISPLAY=" + args.wayland_display]
-    remote_command = shlex.join(env + [args.remote_dir + "/source/target/debug/examples/link_probe"])
+    remote_command = shlex.join(env + [args.remote_dir + "/source/target/debug/examples/link_probe"] + ([args.address] if args.listener == "remote" else []))
     peers = []
     try:
-        local = Probe([os.path.abspath("target/debug/examples/link_probe")])
+        local = Probe([os.path.abspath("target/debug/examples/link_probe")] + ([args.address] if args.listener == "local" else []))
         peers.append(local)
         remote = Probe(["ssh", "-x", "-T", args.host, remote_command])
         peers.append(remote)
 
-        listener = remote if args.listener == "remote" else local
-        listener.call("listen", address=args.address)
 
         def pair_one(owner, other, address):
-            owner.call("trust_peer", certificate=other.identity["certificate"],
+            owner.call("trust_peer", noob_id=other.identity["noob_id"], certificate=other.identity["certificate"],
                        fingerprint=other.identity["fingerprint"],
                        device_name=other.identity["device_name"], address=address)
             owner.call("targets", targets=[other.identity["noob_id"]])

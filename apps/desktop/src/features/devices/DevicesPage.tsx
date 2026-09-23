@@ -22,6 +22,7 @@ export function DevicesPage() {
   return (
     <section className="devices-page">
       <LocalDevicePanel />
+      {settings.restartRequired && <p role="status">{t('settings:restartRequired')}</p>}
       <section className="device-directory" aria-label={t('devices:directory')}>
         <header className="device-directory__heading">
           <div>

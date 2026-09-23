@@ -15,5 +15,6 @@
   "interface": "Interface",
   "appearance": "Appearance",
   "appearanceLabel": "Interface appearance",
-  "reduceMotion": "Reduce motion"
+  "reduceMotion": "Reduce motion",
+  "restartRequired": "Changes to the device name or listening port are saved. Quit and reopen Nooboard to apply them."
 }

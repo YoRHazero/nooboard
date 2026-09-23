@@ -63,11 +63,7 @@ pub async fn desktop_settings(
     patch: SettingsPatch,
 ) -> Result<(), crate::errors::UiError> {
     let _mutation = host.mutations.lock().await;
-    let guard = host.running.read().await;
-    let app = guard
-        .as_ref()
-        .ok_or(crate::errors::ui("backendNotConnected"))?
-        .app();
+    let app = host.app().await?;
     app.set_settings(patch.apply(app.status().settings)?)
         .await
         .map_err(errors::core)

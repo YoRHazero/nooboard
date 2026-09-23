@@ -1,248 +1,180 @@
-mod content;
-mod history;
-mod multi_device;
-mod onboarding;
-mod persistence;
-mod receiving;
-mod snapshots;
-use crate::{
-    App, DeliveryState, Error, Mode, PeerSettings, Settings, VerifiedPeer, bootstrap,
-    ports::{ClipboardFuture, ClipboardPort},
+mod configuration;
+mod lifecycle;
+mod workflows;
+use crate::ports::{ClipboardFuture, ClipboardPort};
+use crate::*;
+use nooboard_clipboard::{Origin, Payload, ReadState, Snapshot};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
 };
-use nooboard_clipboard::{Origin, Payload, ReadState, SkipReason, Snapshot};
-use nooboard_network::{Connection, Identity, Message, MessageId, TlsConfig};
-use nooboard_storage::Database;
-use std::{sync::Arc, time::Duration};
-use tokio::sync::watch;
-
+use tokio::sync::{Notify, watch};
 #[derive(Clone)]
-struct FakeClipboard(Arc<watch::Sender<Option<Snapshot>>>);
-impl FakeClipboard {
-    fn new() -> Self {
-        let (sender, _) = watch::channel(Some(Snapshot {
+pub(crate) struct Clipboard {
+    state: Arc<watch::Sender<Option<Snapshot>>>,
+    fail: Arc<AtomicBool>,
+    block: Arc<AtomicBool>,
+    entered: Arc<Notify>,
+    release: Arc<Notify>,
+}
+impl Clipboard {
+    pub(crate) fn new() -> Self {
+        let (state, _) = watch::channel(Some(Snapshot {
             revision: 0,
             content: ReadState::Empty,
             origin: Origin::External,
         }));
-        Self(Arc::new(sender))
+        Self {
+            state: Arc::new(state),
+            fail: Default::default(),
+            block: Default::default(),
+            entered: Default::default(),
+            release: Default::default(),
+        }
     }
-    fn copy(&self, content: ReadState, origin: Origin) {
-        let revision = self.0.borrow().as_ref().unwrap().revision + 1;
-        let _ = self.0.send_replace(Some(Snapshot {
+    pub(crate) fn copy(&self, payload: Payload) {
+        self.publish(payload, Origin::External);
+    }
+    fn publish(&self, payload: Payload, origin: Origin) -> Snapshot {
+        let revision = self.state.borrow().as_ref().unwrap().revision + 1;
+        let snapshot = Snapshot {
             revision,
-            content,
+            content: ReadState::Ready(payload),
             origin,
-        }));
+        };
+        self.state.send_replace(Some(snapshot.clone()));
+        snapshot
     }
-    fn text(&self, text: &str) {
-        self.copy(
-            ReadState::Ready(Payload::Text(text.into())),
-            Origin::External,
-        );
-    }
-    fn current(&self) -> ReadState {
-        self.0.borrow().as_ref().unwrap().content.clone()
-    }
-    fn revision(&self) -> u64 {
-        self.0.borrow().as_ref().unwrap().revision
+    pub(crate) fn text(&self) -> Option<String> {
+        match &self.state.borrow().as_ref().unwrap().content {
+            ReadState::Ready(Payload::Text(text)) => Some(text.clone()),
+            _ => None,
+        }
     }
 }
-impl ClipboardPort for FakeClipboard {
+impl ClipboardPort for Clipboard {
     fn subscribe(&self) -> watch::Receiver<Option<Snapshot>> {
-        self.0.subscribe()
+        self.state.subscribe()
     }
     fn read(&self) -> ClipboardFuture<'_> {
-        Box::pin(async {
-            self.0
-                .borrow()
-                .clone()
-                .ok_or(nooboard_clipboard::Error::Stopped)
-        })
+        Box::pin(async { Ok(self.state.borrow().clone().unwrap()) })
     }
-    fn write(&self, text: String) -> ClipboardFuture<'_> {
+    fn write_content(&self, payload: Payload) -> ClipboardFuture<'_> {
         Box::pin(async move {
-            self.copy(ReadState::Ready(Payload::Text(text)), Origin::Application);
-            self.0
-                .borrow()
-                .clone()
-                .ok_or(nooboard_clipboard::Error::Stopped)
-        })
-    }
-    fn write_content(&self, content: Payload) -> ClipboardFuture<'_> {
-        Box::pin(async move {
-            self.copy(ReadState::Ready(content), Origin::Application);
-            self.0
-                .borrow()
-                .clone()
-                .ok_or(nooboard_clipboard::Error::Stopped)
+            if self.block.load(Ordering::SeqCst) {
+                self.entered.notify_one();
+                self.release.notified().await;
+            }
+            if self.fail.load(Ordering::SeqCst) {
+                return Err(nooboard_clipboard::Error::InvalidData);
+            }
+            Ok(self.publish(payload, Origin::Application))
         })
     }
 }
-fn test_database() -> Database {
-    let mut db = Database::in_memory().unwrap();
-    db.set_setting(
-        "settings",
-        &serde_json::to_vec(&Settings {
-            listen_address: "127.0.0.1:0".into(),
-            pairing_listen_address: "127.0.0.1:0".into(),
-            discoverable: false,
-            device_name: "同名设备".into(),
-            ..Settings::default()
-        })
-        .unwrap(),
-    )
-    .unwrap();
-    db
+fn settings() -> Settings {
+    Settings {
+        listen_address: "127.0.0.1:0".into(),
+        pairing_listen_address: "127.0.0.1:0".into(),
+        discoverable: false,
+        ..Settings::default()
+    }
 }
-async fn app(clipboard: &FakeClipboard) -> App {
-    bootstrap::start_parts(
-        test_database(),
-        Identity::generate().unwrap(),
-        Box::new(clipboard.clone()),
-        None,
+async fn start(clipboard: &Clipboard) -> (AppService, App) {
+    start_with(
+        clipboard,
+        BackendConfig::Sqlite(SqliteOptions::in_memory()),
+        settings(),
     )
     .await
     .unwrap()
 }
+async fn start_with(
+    clipboard: &Clipboard,
+    storage: BackendConfig,
+    defaults: Settings,
+) -> Result<(AppService, App)> {
+    crate::runtime::startup::launch(crate::runtime::startup::Launch {
+        options: Options {
+            storage,
+            profile: "tests".into(),
+            default_receive_directory: None,
+        },
+        defaults,
+        identity: nooboard_network::IdentityOptions::Ephemeral,
+        clipboard_options: Default::default(),
+        clipboard: Some(Arc::new(clipboard.clone())),
+        clipboard_service: None,
+    })
+    .await
+}
+async fn bounded<T>(future: impl std::future::Future<Output = T>) -> T {
+    tokio::time::timeout(Duration::from_secs(15), future)
+        .await
+        .expect("operation timed out")
+}
+async fn wait(app: &App, condition: impl Fn(&AppSnapshot) -> bool) {
+    let mut status = app.subscribe();
+    tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            if condition(&status.borrow_and_update()) {
+                return;
+            }
+            status.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("snapshot timeout: {:?}", app.status()));
+}
+fn fixture(app: &App) -> PeerFixture {
+    PeerFixture {
+        noob_id: app.status().noob_id,
+        certificate: app.certificate().to_vec(),
+        confirmed_fingerprint: app.status().fingerprint,
+        device_name: app.status().settings.device_name,
+        address: Some(app.status().listen_address),
+    }
+}
+pub(crate) async fn pair(a: &App, b: &App) {
+    let (aid, bid) = (a.status().noob_id, b.status().noob_id);
+    a.trust_peer(fixture(b)).await.unwrap();
+    b.trust_peer(fixture(a)).await.unwrap();
+    a.select_targets(vec![bid.clone()]).await.unwrap();
+    b.select_targets(vec![aid.clone()]).await.unwrap();
+    wait(a, |s| {
+        s.status
+            .peers
+            .iter()
+            .any(|p| p.noob_id == bid && p.accepting)
+    })
+    .await;
+    wait(b, |s| {
+        s.status
+            .peers
+            .iter()
+            .any(|p| p.noob_id == aid && p.accepting)
+    })
+    .await;
+}
+async fn delivered(app: &App, id: &MessageId, state: DeliveryState) {
+    wait(app, |s| {
+        s.status
+            .transfers
+            .iter()
+            .any(|t| &t.id == id && t.targets.iter().all(|d| d.state == state))
+    })
+    .await;
+}
+
+#[cfg(all(feature = "diagnostics", target_os = "macos"))]
 pub(crate) async fn wait_for(mut condition: impl FnMut() -> bool) {
-    tokio::time::timeout(Duration::from_secs(8), async {
+    bounded(async {
         while !condition() {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
-    .await
-    .expect("condition should become true");
-}
-async fn settle() {
-    tokio::time::sleep(Duration::from_millis(100)).await;
-}
-fn request(peer: &App) -> VerifiedPeer {
-    VerifiedPeer {
-        certificate: peer.certificate().to_vec(),
-        confirmed_fingerprint: peer.status().fingerprint,
-        device_name: peer.status().settings.device_name,
-        address: Some(peer.status().listen_address),
-    }
-}
-fn ready(app: &App, peer: &App) -> bool {
-    app.status()
-        .peers
-        .iter()
-        .any(|p| p.noob_id == peer.status().noob_id && p.online && p.accepting)
-}
-pub(crate) async fn pair(a: &App, b: &App) {
-    let (ar, br) = tokio::join!(a.trust_peer(request(b)), b.trust_peer(request(a)));
-    ar.unwrap();
-    br.unwrap();
-    a.select_targets(vec![b.status().noob_id]).await.unwrap();
-    b.select_targets(vec![a.status().noob_id]).await.unwrap();
-    wait_for(|| ready(a, b) && ready(b, a)).await;
-    settle().await;
-}
-async fn automatic(app: &App) {
-    for p in app.status().peers {
-        app.configure_peer(
-            p.noob_id,
-            PeerSettings {
-                auto_send: true,
-                ..p.settings
-            },
-        )
-        .await
-        .unwrap();
-    }
-    app.set_settings(Settings {
-        mode: Mode::Automatic,
-        ..app.status().settings
-    })
-    .await
-    .unwrap();
-}
-fn outcome(app: &App, id: &MessageId, peer: &str) -> Option<DeliveryState> {
-    app.status()
-        .transfers
-        .iter()
-        .find(|t| t.id == *id)
-        .and_then(|t| t.targets.iter().find(|d| d.noob_id == peer))
-        .map(|d| d.state)
-}
-async fn next_business(connection: &mut Connection) -> Message {
-    tokio::time::timeout(Duration::from_secs(8), async {
-        loop {
-            match connection.receive().await.unwrap() {
-                Message::Ping => connection.send(&Message::Pong).await.unwrap(),
-                Message::Pong | Message::Device { .. } => {}
-                message => return message,
-            }
-        }
-    })
-    .await
-    .unwrap()
-}
-struct RawPeer {
-    identity: Identity,
-    connection: Connection,
-    epoch: u64,
-}
-impl RawPeer {
-    async fn connect(app: &App) -> Self {
-        let identity = Identity::generate().unwrap();
-        app.trust_peer(VerifiedPeer {
-            certificate: identity.certificate().to_vec(),
-            confirmed_fingerprint: identity.fingerprint(),
-            device_name: "raw".into(),
-            address: None,
-        })
-        .await
-        .unwrap();
-        let mut connection = TlsConfig::new(&identity, app.certificate())
-            .unwrap()
-            .connect(&app.status().listen_address)
-            .await
-            .unwrap();
-        let Message::State { epoch, .. } = next_business(&mut connection).await else {
-            panic!("state expected")
-        };
-        connection
-            .send(&Message::State {
-                epoch: 1,
-                accepting: true,
-            })
-            .await
-            .unwrap();
-        wait_for(|| {
-            app.status()
-                .peers
-                .iter()
-                .any(|p| p.noob_id == identity.noob_id().unwrap() && p.accepting)
-        })
-        .await;
-        Self {
-            identity,
-            connection,
-            epoch,
-        }
-    }
-    fn id(&self) -> String {
-        self.identity.noob_id().unwrap()
-    }
-    async fn text(&mut self, sequence: u64, text: &str) -> MessageId {
-        let id = MessageId {
-            session: self.id()[..32].into(),
-            sequence,
-        };
-        self.connection
-            .send(&Message::Text {
-                id: id.clone(),
-                target_epoch: self.epoch,
-                text: text.into(),
-            })
-            .await
-            .unwrap();
-        assert_eq!(
-            next_business(&mut self.connection).await,
-            Message::Applied { id: id.clone() }
-        );
-        id
-    }
+    .await;
 }

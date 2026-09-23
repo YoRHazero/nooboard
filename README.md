@@ -16,16 +16,16 @@ core → clipboard
      → storage
 ```
 
-- `core`：组装底层模块，协调设备、同步与历史业务。
+- `core`：通过独立的 `AppService` 和可克隆的 `App` 协调设备、同步、配置与历史业务。接口和工作流程见 [core 文档](crates/core/README.md)。
 - `clipboard`：封装 macOS、Windows、Linux 原生剪贴板；通过独立服务所有者和可共享句柄管理读写、观察与关闭，不依赖 arboard。接口及架构见 [clipboard 文档](crates/clipboard/README.md)。
-- `network`：连接、协议与经过身份验证的加密传输。
+- `network`：通过可克隆的 `Network` 句柄和独占事件接收端管理身份、发现、配对、可信连接与文本/图片/文件传输；`NetworkService` 独立管理生命周期。接口、文件结构和工作流程见 [network 文档](crates/network/README.md)。
 - `storage`：通过独立服务和请求句柄持久化文字历史与文本配置；数据库驱动隔离在后端适配器中。接口、文件结构和工作流程见 [storage 文档](crates/storage/README.md)。
 
-底层库之间不直接互相依赖。React + TypeScript 交互设计稿位于 `apps/desktop`，首页通过肥啾舞台上的木板、肥啾与信箱展开操作。Tauri 桌面入口只依赖 core，图片和文件手动传输留到后续轮次。
+底层库之间不直接互相依赖。React + TypeScript 交互设计稿位于 `apps/desktop`，首页通过肥啾舞台上的木板、肥啾与信箱展开操作。Tauri 桌面入口只依赖 core，支持图片和文件手动传输。
 
 ## 验证计划
 
-当前处于 `clipboard → storage → network → core` 的分阶段重构。storage 已删除旧 `Database`、files 和 secrets 接口，core 尚未适配，因此全工作区构建、桌面入口和下方 core 示例暂不可用。此阶段按 [storage 验证命令](crates/storage/README.md#验证) 独立验收；全库验证命令保留，供后续整合使用。
+`clipboard → storage → network → core` 的接口重构已接通，桌面入口和示例使用新的服务所有者与请求句柄。底层库之间仍不互相依赖；完整验证从以下工作区命令开始。旧 `configuration_v2` 配置和公开设备记录由 core 原子迁移，详见 [持久化与兼容范围](crates/core/README.md#持久化与兼容范围)。
 
 工具链固定为 Rust 1.93.0。仅构建四个库无需 Node.js；完整桌面工程需要 Node.js 22.12+，先在 `apps/desktop` 执行 `npm ci` 和 `npm run build`。Windows 构建需要 MSVC C++ Build Tools 与 Windows SDK，macOS 需要 Xcode Command Line Tools。
 
@@ -62,7 +62,7 @@ cargo run -p nooboard-core --example backend -- --help
 cargo run -p nooboard-core --example backend -- /path/to/private/nooboard.db my-device
 ```
 
-以下说明描述重构前的 core 工作流程，待 network/core 接入后更新。第二个参数是稳定的身份配置名；原有系统凭据实现已从 storage 删除，后续由 network 重建。历史和设置保存在指定 SQLite 文件中，**历史目前为明文**，请使用当前用户的私有目录。默认仅手动发送、允许接收并记录文字历史，最多 1000 条、保留 30 天。
+第二个参数是稳定的身份配置名，系统凭据由 network 管理。历史和设置保存在指定 SQLite 文件中，历史为明文。默认仅手动发送、允许接收并记录文字历史，最多 1000 条、保留 30 天。名称和端口修改保存后需要退出并重新启动。
 
 命令行示例与桌面应用使用同一套配对码流程。默认同步监听 `0.0.0.0:24816`，配对监听 `0.0.0.0:24817`，分别用 `listen` 和 `pair-listen` 修改。
 
@@ -91,7 +91,7 @@ cancel <本端会话ID>
 
 一次发送固定同一份正文，分别记录各目标结果；提交成功不代表对端已应用，目标状态 `Applied` 才表示曾成功写入远端剪切板。不同来源的消息按本机接收队列串行写入，最后成功写入的内容保留。收到的文字不会再次自动转发。
 
-每条文字最多 1 MiB，保留 Unicode、空白和换行，拒绝嵌入 NUL；图片、文件及已识别的敏感格式跳过。各目标只合并连续、尚未开始发送的自动任务；手动任务保留。离线和暂停期间不补发旧内容，重连从新的复制继续。未收到回执标记结果未确认，不自动重发。旧单设备配置自动迁移，v1 网络协议需要所有对端一起升级至 v2。
+每条文字最多 1 MiB，保留 Unicode、空白和换行，拒绝嵌入 NUL；自动同步跳过图片、文件及已识别的敏感格式；图片和文件可以手动发送。各目标只合并连续、尚未开始发送的自动任务；手动任务保留。离线和暂停期间不补发旧内容，重连从新的复制继续。未收到回执标记结果未确认，不自动重发。所有设备需使用当前 v3 传输协议。
 
 真实桌面复制粘贴、系统凭据持久化、LAN/VPN 延迟和睡眠唤醒仍需实机验证。Windows 远程访问配置不作为开工条件。
 

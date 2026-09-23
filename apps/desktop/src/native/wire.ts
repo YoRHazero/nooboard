@@ -89,6 +89,7 @@ export interface NativeSnapshot {
   revision: string;
   history_revision: string;
   status: {
+    restart_required?: boolean;
     noob_id: string;
     fingerprint: string;
     listen_address: string;

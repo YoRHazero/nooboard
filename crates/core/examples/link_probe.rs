@@ -16,6 +16,7 @@ struct Request {
 #[serde(tag = "command", rename_all = "snake_case")]
 enum Command {
     TrustPeer {
+        noob_id: String,
         certificate: Vec<u8>,
         fingerprint: String,
         device_name: String,
@@ -49,8 +50,12 @@ enum Command {
     },
     Quit,
 }
+fn digest_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(bytes))
+}
 fn digest(text: &str) -> Value {
-    json!({"bytes": text.len(), "sha256": nooboard_network::fingerprint(text.as_bytes())})
+    json!({"bytes": text.len(), "sha256": digest_hex(text.as_bytes())})
 }
 async fn execute(
     session: &Session,
@@ -60,6 +65,7 @@ async fn execute(
     let app = &session.app;
     Ok(match command {
         Command::TrustPeer {
+            noob_id,
             certificate,
             fingerprint,
             device_name,
@@ -68,6 +74,7 @@ async fn execute(
             trust_peer(
                 app,
                 PeerFixture {
+                    noob_id,
                     certificate,
                     confirmed_fingerprint: fingerprint,
                     device_name,
@@ -77,12 +84,8 @@ async fn execute(
             .await?
         ),
         Command::Listen { address } => {
-            app.set_settings(Settings {
-                listen_address: address,
-                ..app.status().settings
-            })
-            .await?;
-            Value::Null
+            let _ = address;
+            return Err("pass the listen address when starting link_probe".into());
         }
         Command::ConfigurePeer { noob_id, settings } => {
             app.configure_peer(noob_id, settings).await?;
@@ -138,8 +141,16 @@ async fn execute(
 }
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let session = Session::start().await?;
-    let mut events = session.app.subscribe();
+    let session = Session::with_settings(Settings {
+        listen_address: std::env::args()
+            .nth(1)
+            .unwrap_or_else(|| "127.0.0.1:0".into()),
+        pairing_listen_address: "127.0.0.1:0".into(),
+        discoverable: false,
+        ..Settings::default()
+    })
+    .await?;
+    let mut events = session.app.subscribe_events();
     println!(
         "{}",
         json!({"ready":true, "certificate":session.app.certificate(), "fingerprint":session.app.status().fingerprint, "noob_id":session.app.status().noob_id, "device_name":session.app.status().settings.device_name, "listen_address":session.app.status().listen_address})

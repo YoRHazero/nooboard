@@ -32,6 +32,9 @@ pub fn snapshot(snapshot: AppSnapshot) -> Value {
         decimal(&mut value[key]);
     }
     decimal(&mut value["current"]["revision"]);
+    for key in ["configuration_revision", "effective_revision"] {
+        decimal(&mut value["status"][key]);
+    }
     if let Some(fault) = value.get_mut("fault").filter(|v| !v.is_null()) {
         decimal(&mut fault["sequence"]);
     }

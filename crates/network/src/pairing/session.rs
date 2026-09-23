@@ -218,7 +218,7 @@ impl Session {
 fn hello(contact: Contact) -> Result<Hello> {
     Ok(Hello {
         version: 1,
-        nonce: crate::new_session_id().map_err(|_| Error::Protocol)?,
+        nonce: crate::identity::material::new_session_id().map_err(|_| Error::Protocol)?,
         contact,
     })
 }

@@ -23,7 +23,7 @@ def main():
             for other in peers:
                 if other is owner:
                     continue
-                owner.call("trust_peer", certificate=other.identity["certificate"],
+                owner.call("trust_peer", noob_id=other.identity["noob_id"], certificate=other.identity["certificate"],
                            fingerprint=other.identity["fingerprint"], device_name="同名电脑",
                            address=other.identity["listen_address"])
 

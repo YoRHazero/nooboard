@@ -3,6 +3,7 @@ export type SendMode = 'manual' | 'automatic';
 export type Theme = 'system' | 'light' | 'dark';
 export type Platform = 'Windows' | 'Ubuntu' | 'macOS';
 export interface Settings {
+  restartRequired?: boolean;
   closeToTray?: boolean;
   receiveDirectory?: string | null;
   discoverable?: boolean;

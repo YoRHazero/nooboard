@@ -10,6 +10,7 @@ pub struct Diagnostics {
 }
 fn request(app: &App) -> PeerFixture {
     PeerFixture {
+        noob_id: app.status().noob_id,
         certificate: app.certificate().to_vec(),
         confirmed_fingerprint: app.status().fingerprint,
         device_name: app.status().settings.device_name,
@@ -18,23 +19,24 @@ fn request(app: &App) -> PeerFixture {
 }
 impl Diagnostics {
     pub async fn start() -> nooboard_core::Result<Self> {
-        let local = Session::start().await?;
-        local
-            .app
-            .set_settings(nooboard_core::Settings {
-                device_name: "本机原生验证".into(),
-                ..local.app.status().settings
-            })
-            .await?;
+        let defaults = nooboard_core::Settings {
+            listen_address: "127.0.0.1:0".into(),
+            pairing_listen_address: "127.0.0.1:0".into(),
+            discoverable: false,
+            ..Default::default()
+        };
+        let local = Session::with_settings(nooboard_core::Settings {
+            device_name: "本机原生验证".into(),
+            ..defaults.clone()
+        })
+        .await?;
         let mut peers = Vec::new();
         for name in ["验证设备 A", "验证设备 B"] {
-            let peer = Session::start().await?;
-            peer.app
-                .set_settings(nooboard_core::Settings {
-                    device_name: name.into(),
-                    ..peer.app.status().settings
-                })
-                .await?;
+            let peer = Session::with_settings(nooboard_core::Settings {
+                device_name: name.into(),
+                ..defaults.clone()
+            })
+            .await?;
             trust_peer(&local.app, request(&peer.app)).await?;
             trust_peer(&peer.app, request(&local.app)).await?;
             peers.push(peer);

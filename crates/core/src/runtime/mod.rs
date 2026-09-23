@@ -1,303 +1,196 @@
-mod commands;
-mod connections;
-mod content;
-mod local_network;
-mod onboarding;
-mod replication;
+//! Composition and supervision only; feature runtimes own their business state.
+pub(crate) mod message;
+pub(crate) mod routing;
+pub(crate) mod shutdown;
+pub(crate) mod startup;
 use crate::{
-    Event, Result, Status,
-    app::{Command, Reply, Request},
-    devices::Configuration,
-    history,
-    link::{Dial, LinkEvent, Listener, Session},
-    ports::{ClipboardPort, Store},
-    sync::Received,
-    transfers::Transfers,
+    configuration::runtime as configuration,
+    devices::runtime as devices,
+    history::runtime as history,
+    snapshot::assemble::{Inputs, assemble},
+    sync::runtime as sync,
+    *,
 };
-use nooboard_network::Identity;
-use std::{
-    collections::BTreeMap,
-    time::{Duration, Instant},
+use nooboard_network::{Network, NetworkEvents};
+use nooboard_storage::Storage;
+use tokio::{
+    sync::{broadcast, watch},
+    task::JoinSet,
 };
-use tokio::sync::{broadcast, mpsc, watch};
-
-struct PeerSession {
-    session: Option<Session>,
-    dial: Option<Dial>,
-    online: watch::Sender<bool>,
-    generation: u64,
-    dial_generation: u64,
-    preferred: bool,
-    local_epoch: u64,
-    peer_epoch: Option<u64>,
-    accepting: bool,
-}
-impl Drop for Runtime {
-    fn drop(&mut self) {
-        if let Some(task) = &self.preview_task {
-            task.abort();
-        }
-    }
-}
-impl PeerSession {
-    fn new() -> Self {
-        let (online, _) = watch::channel(false);
-        Self {
-            session: None,
-            dial: None,
-            online,
-            generation: 0,
-            dial_generation: 0,
-            preferred: false,
-            local_epoch: 0,
-            peer_epoch: None,
-            accepting: false,
-        }
-    }
-}
-pub(crate) struct Runtime {
-    onboarding: crate::onboarding::Onboarding,
-    store: Store,
-    identity: Identity,
-    clipboard: std::sync::Arc<dyn ClipboardPort>,
-    content: crate::content_transfer::ContentTransfers,
-    preview_task: Option<tokio::task::JoinHandle<()>>,
-    config: Configuration,
-    peers: BTreeMap<String, PeerSession>,
-    listener: Listener,
-    state: Status,
-    status: watch::Sender<Status>,
+pub(crate) struct Running {
+    services: shutdown::Services,
+    stop: watch::Sender<bool>,
+    stopped: watch::Receiver<bool>,
+    persist_stop: watch::Sender<bool>,
+    persist_stopped: watch::Receiver<bool>,
+    config: configuration::Handle,
+    config_runtime: configuration::Runtime,
+    history: history::Handle,
+    history_runtime: history::Runtime,
+    device: devices::Channels,
+    device_runtime: devices::Runtime,
+    sync: sync::Channels,
+    sync_runtime: sync::Runtime,
+    storage: Storage,
+    network: Network,
+    network_events: NetworkEvents,
+    snapshots: watch::Sender<AppSnapshot>,
     events: broadcast::Sender<Event>,
-    link_events: mpsc::Sender<LinkEvent>,
-    incoming: mpsc::Receiver<LinkEvent>,
-    received: Received,
-    transfers: Transfers,
-    namespace: String,
-    sequence: u64,
-    generation: u64,
-    observed_revision: u64,
-    view: crate::view::ViewState,
-    pub(crate) snapshots: watch::Sender<crate::AppSnapshot>,
+    session: String,
+    startup: Settings,
 }
-impl Runtime {
-    pub async fn new(
-        store: Store,
-        identity: Identity,
-        clipboard: Box<dyn ClipboardPort>,
-        config: Configuration,
-        status: watch::Sender<Status>,
-        events: broadcast::Sender<Event>,
-    ) -> Result<Self> {
-        let initial = clipboard.read().await?;
-        let observed_revision = initial.revision;
-        let (link_events, incoming) = mpsc::channel(512);
-        let listener = Listener::bind(
-            &config.settings.listen_address,
-            config.tls(&identity)?,
-            link_events.clone(),
-        )
-        .await?;
-        let state = status.borrow().clone();
-        let namespace = nooboard_network::new_session_id()?;
-        let view = crate::view::ViewState::new(namespace.clone(), state.clone(), initial.clone());
-        let (snapshots, _) = watch::channel(view.snapshot.clone());
-        let (sender, events_pairing) = mpsc::channel(32);
-        let endpoint = nooboard_network::pairing::Endpoint::bind(
-            &config.settings.pairing_listen_address,
-            nooboard_network::pairing::Contact {
-                device_name: config.settings.device_name.clone(),
-                certificate: identity.certificate().to_vec(),
-                sync_port: listener
-                    .address
-                    .parse::<std::net::SocketAddr>()
-                    .expect("bound address")
-                    .port(),
-            },
-            sender.clone(),
-        )
-        .await?;
-        let (_, nearby) = watch::channel(Vec::new());
-        let onboarding = crate::onboarding::Onboarding {
-            snapshot: crate::OnboardingSnapshot {
-                pairing_address: endpoint.address.clone(),
-                ..Default::default()
-            },
-            endpoint,
-            discovery: None,
-            discovery_refreshed: None,
-            nearby,
-            events: events_pairing,
-            sender,
-            control: None,
-            expected: None,
-        };
-        let mut runtime = Self {
-            onboarding,
-            store,
-            identity,
-            clipboard: std::sync::Arc::from(clipboard),
-            content: crate::content_transfer::ContentTransfers::default(),
-            preview_task: None,
+impl Running {
+    pub async fn run(self) -> Result<()> {
+        let Self {
+            mut services,
+            stop,
+            mut stopped,
+            persist_stop,
+            persist_stopped,
             config,
-            peers: BTreeMap::new(),
-            listener,
-            state,
-            status,
-            events,
-            link_events,
-            incoming,
-            received: Received::default(),
-            transfers: Transfers::default(),
-            namespace,
-            view,
+            config_runtime,
+            history,
+            history_runtime,
+            device,
+            device_runtime,
+            sync,
+            sync_runtime,
+            storage,
+            network,
+            network_events,
             snapshots,
-            sequence: 0,
-            generation: 0,
-            observed_revision,
-        };
-        for peer in runtime.config.peers.keys().cloned().collect::<Vec<_>>() {
-            runtime.start_dial(&peer)?;
-        }
-        runtime.refresh_local_network();
-        runtime.preview_content(&initial);
-        runtime.publish();
-        Ok(runtime)
-    }
-    pub async fn run(mut self, mut requests: mpsc::Receiver<Request>) -> Result<()> {
-        let mut clipboard = self.clipboard.subscribe();
-        clipboard.mark_changed();
-        let mut clipboard_status = self.clipboard.subscribe_status();
-        let mut maintenance = tokio::time::interval(Duration::from_secs(30));
-        let mut receipts = tokio::time::interval(Duration::from_secs(1));
-        let mut interfaces = tokio::time::interval(Duration::from_secs(5));
-        interfaces.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        loop {
-            let outcome = tokio::select! {
-                request = requests.recv() => {
-                    let Some(request) = request else { break };
-                    if matches!(request.command, Command::Stop) {
-                        for peer in self.peers.keys().cloned().collect::<Vec<_>>() { self.disconnect(&peer); }
-                        self.peers.clear();
-                        let _ = request.response.send(Ok(Reply::Done));
-                        break;
-                    }
-                    let result = self.command(request.command).await;
-                    let _ = request.response.send(result);
-                    Ok(())
-                }
-                changed = clipboard.changed() => {
-                    if changed.is_err() { return Err(crate::Error::Stopped); }
-                    let snapshot = clipboard.borrow_and_update().clone();
-                    match snapshot { Some(snapshot) => self.observe(snapshot, true).await, None => Ok(()) }
-                }
-                changed = async { clipboard_status.as_mut().expect("enabled status subscription").changed().await }, if clipboard_status.is_some() => {
-                    let status = clipboard_status.as_mut().expect("status subscription").borrow_and_update().clone();
-                    if changed.is_err() { clipboard_status = None; }
-                    match status {
-                        nooboard_clipboard::ServiceStatus::Unavailable(error) => Err(error.into()),
-                        nooboard_clipboard::ServiceStatus::Stopped { error } => return Err(error.unwrap_or(nooboard_clipboard::Error::Stopped).into()),
-                        _ => Ok(()),
-                    }
-                },
-                Some(event) = self.incoming.recv() => self.link_event(event).await,
-                Some(event) = self.content.incoming.recv() => { self.content_event(event).await; Ok(()) },
-                Some(event) = self.onboarding.events.recv() => self.pairing_event(event).await,
-                _ = interfaces.tick() => {
-                    if self.refresh_local_network() { self.publish_snapshot(); }
-                    Ok(())
-                },
-                Ok(()) = self.onboarding.nearby.changed(), if self.onboarding.discovery.is_some() => {
-                    self.onboarding.snapshot.nearby=self.onboarding.nearby.borrow_and_update().clone();
-                    for id in self.config.peers.keys().cloned().collect::<Vec<_>>() { self.start_dial(&id)?; }
-                    self.publish_snapshot(); Ok(())
-                },
-                _ = maintenance.tick() => {
-                    let result = history::prune(&self.store, &self.config.settings).await;
-                    if matches!(result, Ok(true)) { self.emit(Event::HistoryChanged); }
-                    result.map(|_| ())
-                },
-                _ = receipts.tick() => {
-                    let expired = self.transfers.expire(Instant::now());
-                    if !expired.is_empty() {
-                        for transfer in expired { self.emit(Event::Transfer(transfer)); }
-                        self.publish();
-                    }
-                    Ok(())
-                }
-            };
-            if let Err(error) = outcome {
-                self.fault(None, error.to_string());
+            events,
+            session,
+            startup,
+        } = self;
+        struct Stop(watch::Sender<bool>);
+        impl Drop for Stop {
+            fn drop(&mut self) {
+                self.0.send_replace(true);
             }
         }
-        Ok(())
-    }
-    fn emit(&mut self, event: Event) {
-        match &event {
-            Event::HistoryChanged => self.view.snapshot.history_revision += 1,
-            Event::Fault { peer, message } => {
-                self.view.snapshot.fault = Some(crate::Fault {
-                    sequence: self.view.snapshot.revision + 1,
-                    peer: peer.clone(),
-                    message: message.clone(),
-                })
-            }
-            _ => {}
-        }
-        self.publish_snapshot();
-        let _ = self.events.send(event);
-    }
-    fn publish_snapshot(&mut self) {
-        self.content.prune();
-        self.view.snapshot.content_transfers = self.content.snapshot();
-        self.view.snapshot.onboarding = self.onboarding.snapshot.clone();
-        self.snapshots.send_replace(
-            self.view
-                .publish(self.state.clone(), self.transfers.snapshot()),
+        let _guard = Stop(stop.clone());
+        let _persistence_guard = Stop(persist_stop.clone());
+        // Keep request channels alive independently of all public App clones.
+        let _requests = (
+            device.requests,
+            sync.requests,
+            config.requests.clone(),
+            history.requests.clone(),
         );
-    }
-    fn fault(&mut self, peer: Option<String>, message: String) {
-        self.emit(Event::Fault { peer, message });
-    }
-    fn fresh_generation(&mut self) -> Result<u64> {
-        self.generation = self
-            .generation
-            .checked_add(1)
-            .ok_or(crate::Error::Configuration)?;
-        Ok(self.generation)
-    }
-    fn publish(&mut self) {
-        self.state.settings = self.config.settings.clone();
-        self.state.listen_address = self.listener.address.clone();
-        self.state.manual_targets = self.config.manual_targets.clone();
-        self.state.peers = self
-            .config
-            .peers
-            .values()
-            .map(|p| {
-                let session = self.peers.get(&p.noob_id);
-                crate::PeerStatus {
-                    noob_id: p.noob_id.clone(),
-                    device_name: p.device_name.clone(),
-                    fingerprint: nooboard_network::fingerprint(&p.certificate),
-                    settings: p.settings.clone(),
-                    online: session.is_some_and(|s| s.session.is_some()),
-                    accepting: session.is_some_and(|s| s.accepting),
+        let mut work = JoinSet::new();
+        let mut persistence = JoinSet::new();
+        persistence.spawn(config_runtime.run(storage.clone(), persist_stopped.clone()));
+        persistence.spawn(history_runtime.run(storage, config.clone(), persist_stopped));
+        work.spawn(device_runtime.run(stopped.clone()));
+        work.spawn(sync_runtime.run(stopped.clone()));
+        work.spawn(routing::run(
+            network.clone(),
+            network_events,
+            device.events,
+            sync.events,
+            stopped.clone(),
+        ));
+        let mut c = config.state;
+        let mut h = history.state;
+        let mut d = device.state;
+        let mut s = sync.state;
+        let mut n = network.subscribe();
+        let mut revision = 0;
+        let mut failure = None;
+        loop {
+            if *stopped.borrow() {
+                break;
+            }
+            tokio::select! {
+             _=stopped.changed()=>break,
+                result=work.join_next()=>{if !*stopped.borrow(){failure=Some(task_error(result));}break;},
+             result=persistence.join_next()=>{failure=Some(task_error(result));break;},
+             _=c.changed()=>{},_=h.changed()=>{},_=d.changed()=>{},_=s.changed()=>{},_=n.changed()=>{},
+            }
+            revision += 1;
+            let mut next = assemble(
+                Inputs {
+                    configuration: &c.borrow_and_update(),
+                    devices: &d.borrow_and_update(),
+                    sync: &s.borrow_and_update(),
+                    history: &h.borrow_and_update(),
+                    network: &n.borrow_and_update(),
+                    startup: &startup,
+                },
+                &session,
+                revision,
+                AppState::Running,
+            );
+            // These notifications are advisory; the snapshot is the recoverable source of truth.
+            let old = snapshots.borrow().clone();
+            if next.fault.as_ref().map(|f| &f.message) == old.fault.as_ref().map(|f| &f.message) {
+                next.fault = old.fault.clone();
+            }
+            for transfer in &next.status.transfers {
+                if !old.status.transfers.contains(transfer) {
+                    let _ = events.send(Event::Transfer(transfer.clone()));
                 }
-            })
-            .collect();
-        self.state.transfers = self.transfers.snapshot();
-        self.status.send_replace(self.state.clone());
-        self.emit(Event::Status(self.state.clone()));
-    }
-    fn delivery(
-        &mut self,
-        id: &nooboard_network::MessageId,
-        peer: &str,
-        state: crate::DeliveryState,
-    ) {
-        if let Some(transfer) = self.transfers.update(id, peer, state) {
-            self.emit(Event::Transfer(transfer));
-            self.publish();
+            }
+            if old.history_revision != next.history_revision {
+                let _ = events.send(Event::HistoryChanged);
+            }
+            snapshots.send_replace(next);
+            if !matches!(
+                network.status().state,
+                nooboard_network::ServiceState::Running
+            ) {
+                failure = Some(Error::Stopped);
+                break;
+            }
         }
+        stop.send_replace(true);
+        snapshots.send_modify(|s| s.status.state = AppState::Stopping);
+        // First finish business tasks while all three services can still answer.
+        while let Some(result) = work.join_next().await {
+            if let Err(e) = join_result(result) {
+                failure.get_or_insert(e);
+            }
+        }
+        if let Err(e) = services.network().await {
+            failure.get_or_insert(e);
+        }
+        // No business producer remains. Drain already accepted persistence operations.
+        persist_stop.send_replace(true);
+        while let Some(result) = persistence.join_next().await {
+            if let Err(e) = join_result(result) {
+                failure.get_or_insert(e);
+            }
+        }
+        if let Err(e) = services.remaining().await {
+            failure.get_or_insert(e);
+        }
+        revision += 1;
+        snapshots.send_replace(assemble(
+            Inputs {
+                configuration: &c.borrow(),
+                devices: &d.borrow(),
+                sync: &s.borrow(),
+                history: &h.borrow(),
+                network: &network.status(),
+                startup: &startup,
+            },
+            &session,
+            revision,
+            if failure.is_some() {
+                AppState::Failed
+            } else {
+                AppState::Stopped
+            },
+        ));
+        failure.map_or(Ok(()), Err)
     }
+}
+fn join_result(result: std::result::Result<Result<()>, tokio::task::JoinError>) -> Result<()> {
+    result.map_err(|_| Error::Internal)?
+}
+fn task_error(result: Option<std::result::Result<Result<()>, tokio::task::JoinError>>) -> Error {
+    result
+        .and_then(|r| join_result(r).err())
+        .unwrap_or(Error::Stopped)
 }

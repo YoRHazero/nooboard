@@ -1,39 +1,38 @@
-//! Opt-in native integration harness. Identities and SQLite live only in memory.
-//! macOS uses a private pasteboard; Linux/Windows require an isolated test desktop.
-use crate::{App, Result, Settings};
+//! Explicit native harness. System credentials are never used here.
+use crate::{App, AppService, BackendConfig, Options, Result, Settings, SqliteOptions};
 use nooboard_clipboard::{
     Clipboard, ClipboardService, Options as ClipboardOptions, Payload, ReadState,
 };
-use nooboard_network::{Identity, MAX_TEXT_BYTES};
-use nooboard_storage::Database;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-/// Explicit fixture injection for transport tests; not part of normal application pairing.
-pub use crate::model::VerifiedPeer as PeerFixture;
-pub async fn trust_peer(app: &App, fixture: PeerFixture) -> Result<String> {
+use std::{sync::Arc, time::Duration};
+pub async fn trust_peer(app: &App, fixture: crate::PeerFixture) -> Result<String> {
     app.trust_peer(fixture).await
 }
-
 pub struct Session {
     pub app: App,
+    service: AppService,
     input: Clipboard,
     input_service: ClipboardService,
 }
 impl Session {
     pub async fn start() -> Result<Self> {
+        Self::with_settings(Settings {
+            listen_address: "127.0.0.1:0".into(),
+            pairing_listen_address: "127.0.0.1:0".into(),
+            discoverable: false,
+            ..Settings::default()
+        })
+        .await
+    }
+    pub async fn with_settings(settings: Settings) -> Result<Self> {
         let name = format!(
             "nooboard.diagnostic.{}.{}",
             std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_nanos()
         );
         let options = ClipboardOptions {
-            limits: nooboard_clipboard::Limits {
-                text_bytes: MAX_TEXT_BYTES,
-                ..Default::default()
-            },
             poll_interval: Duration::from_millis(30),
             #[cfg(target_os = "macos")]
             diagnostic_name: Some(name),
@@ -41,34 +40,40 @@ impl Session {
         };
         #[cfg(not(target_os = "macos"))]
         let _ = name;
-        let (service, clipboard) = ClipboardService::start(options.clone()).await?;
-        let (input_service, input) = ClipboardService::start(options).await?;
-        let mut database = Database::in_memory()?;
-        database.set_setting(
-            "settings",
-            &serde_json::to_vec(&Settings {
-                listen_address: "127.0.0.1:0".into(),
-                pairing_listen_address: "127.0.0.1:0".into(),
-                discoverable: false,
-                ..Settings::default()
-            })
-            .map_err(|_| crate::Error::Configuration)?,
-        )?;
-        let mut app = crate::bootstrap::start_parts(
-            database,
-            Identity::generate()?,
-            Box::new(clipboard),
-            None,
-        )
-        .await?;
-        app.clipboard_service = Some(service);
-        Ok(Self {
-            app,
-            input,
-            input_service,
+        let (clipboard_service, clipboard) = ClipboardService::start(options.clone()).await?;
+        let (input_service, input) = match ClipboardService::start(options.clone()).await {
+            Ok(value) => value,
+            Err(e) => {
+                let _ = clipboard_service.shutdown().await;
+                return Err(e.into());
+            }
+        };
+        let result = crate::runtime::startup::launch(crate::runtime::startup::Launch {
+            options: Options {
+                storage: BackendConfig::Sqlite(SqliteOptions::in_memory()),
+                profile: "diagnostics".into(),
+                default_receive_directory: None,
+            },
+            defaults: settings,
+            identity: nooboard_network::IdentityOptions::Ephemeral,
+            clipboard_options: options,
+            clipboard: Some(Arc::new(clipboard)),
+            clipboard_service: Some(clipboard_service),
         })
+        .await;
+        match result {
+            Ok((service, app)) => Ok(Self {
+                app,
+                service,
+                input,
+                input_service,
+            }),
+            Err(e) => {
+                let _ = input_service.shutdown().await;
+                Err(e)
+            }
+        }
     }
-    /// A second native client simulates an external application copying text.
     pub async fn copy(&self, text: String) -> Result<()> {
         self.input.write(Payload::Text(text)).await?;
         Ok(())
@@ -80,7 +85,7 @@ impl Session {
         })
     }
     pub async fn shutdown(self) -> Result<()> {
-        let app = self.app.shutdown().await;
+        let app = self.service.shutdown().await;
         let input = self.input_service.shutdown().await;
         app?;
         input?;

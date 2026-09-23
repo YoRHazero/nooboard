@@ -3,7 +3,7 @@ use crate::{
     desktop::{Desktop, tray},
     errors, wire,
 };
-use nooboard_core::{App, Options};
+use nooboard_core::{App, AppService, BackendConfig, Options, SqliteOptions};
 use std::sync::{
     Mutex,
     atomic::{AtomicBool, Ordering},
@@ -12,25 +12,28 @@ use tauri::{AppHandle, Manager, ipc::Channel};
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
 pub enum Running {
-    Native(App),
+    Native {
+        service: AppService,
+        app: App,
+    },
     #[cfg(all(debug_assertions, feature = "diagnostics", target_os = "macos"))]
     Diagnostic(crate::diagnostics::Diagnostics),
 }
 impl Running {
     pub fn app(&self) -> &App {
         match self {
-            Self::Native(app) => app,
+            Self::Native { app, .. } => app,
             #[cfg(all(debug_assertions, feature = "diagnostics", target_os = "macos"))]
             Self::Diagnostic(diagnostic) => &diagnostic.local.app,
         }
     }
     pub fn diagnostic(&self) -> bool {
-        !matches!(self, Self::Native(_))
+        !matches!(self, Self::Native { .. })
     }
     async fn shutdown(self) {
         match self {
-            Self::Native(app) => {
-                let _ = app.shutdown().await;
+            Self::Native { service, .. } => {
+                let _ = service.shutdown().await;
             }
             #[cfg(all(debug_assertions, feature = "diagnostics", target_os = "macos"))]
             Self::Diagnostic(diagnostic) => diagnostic.shutdown().await,
@@ -46,6 +49,15 @@ pub struct Host {
     pub closing: AtomicBool,
 }
 impl Host {
+    pub async fn app(&self) -> Result<App, errors::UiError> {
+        self.running
+            .read()
+            .await
+            .as_ref()
+            .map(|running| running.app().clone())
+            .ok_or(errors::ui("backendNotConnected"))
+    }
+
     /// Also used by explicit frontend retries; the write lock guarantees one backend.
     pub async fn ensure_started(&self, handle: &AppHandle) -> Result<(), errors::UiError> {
         let mut running = self.running.write().await;
@@ -151,8 +163,8 @@ impl Host {
             .app_data_dir()
             .map_err(|_| crate::errors::ui("appDirectory"))?;
         std::fs::create_dir_all(&directory).map_err(|_| crate::errors::ui("appDirectory"))?;
-        App::start(Options {
-            database: directory.join("nooboard.sqlite3"),
+        AppService::start(Options {
+            storage: BackendConfig::Sqlite(SqliteOptions::file(directory.join("nooboard.sqlite3"))),
             profile: "nooboard.desktop.v1".into(),
             default_receive_directory: handle
                 .path()
@@ -161,7 +173,7 @@ impl Host {
                 .map(|p| p.join("Nooboard")),
         })
         .await
-        .map(Running::Native)
+        .map(|(service, app)| Running::Native { service, app })
         .map_err(errors::core)
     }
     pub async fn shutdown(&self) {

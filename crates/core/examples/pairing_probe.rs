@@ -5,15 +5,14 @@
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use nooboard_core::{PairingStage, Settings, diagnostics::Session};
     use std::time::Duration;
-    let session = Session::start().await?;
-    session
-        .app
-        .set_settings(Settings {
-            device_name: "配对验证肥啾".into(),
-            discoverable: true,
-            ..session.app.status().settings
-        })
-        .await?;
+    let session = Session::with_settings(Settings {
+        device_name: "配对验证肥啾".into(),
+        discoverable: true,
+        listen_address: "0.0.0.0:0".into(),
+        pairing_listen_address: "0.0.0.0:0".into(),
+        ..Settings::default()
+    })
+    .await?;
     session.app.refresh_discovery().await?;
     println!(
         "配对地址 {}",

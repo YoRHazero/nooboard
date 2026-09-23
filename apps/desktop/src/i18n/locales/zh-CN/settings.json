@@ -15,5 +15,6 @@
   "interface": "界面",
   "appearance": "外观",
   "appearanceLabel": "界面外观",
-  "reduceMotion": "减少动态效果"
+  "reduceMotion": "减少动态效果",
+  "restartRequired": "设备名称或监听端口的修改已保存，退出并重新打开 Nooboard 后生效。"
 }

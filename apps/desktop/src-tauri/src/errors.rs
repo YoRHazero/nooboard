@@ -18,7 +18,6 @@ pub fn ui(code: &'static str) -> UiError {
 pub fn core(error: nooboard_core::Error) -> UiError {
     use nooboard_core::Error;
     ui(match error {
-        Error::Secret(_) => "secret",
         Error::Network(_) => "network",
         Error::Storage(_) => "storage",
         Error::Clipboard(_) => "clipboard",
@@ -32,6 +31,7 @@ pub fn core(error: nooboard_core::Error) -> UiError {
         Error::AlreadyPaired => "identityChanged",
         Error::Fingerprint => "fingerprint",
         Error::NotFound => "historyMissing",
+        Error::Internal => "serviceFault",
     })
 }
 pub fn pairing(error: &PairingFailure) -> UiError {

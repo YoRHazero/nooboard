@@ -1,5 +1,5 @@
 //! Minimal API harness. Pairing and synchronization rules remain in nooboard-core.
-use nooboard_core::{App, Mode, Options};
+use nooboard_core::{App, AppService, BackendConfig, Mode, Options, SqliteOptions};
 use std::{
     error::Error,
     io::{self, BufRead},
@@ -19,8 +19,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         );
         return Ok(());
     }
-    let app = App::start(Options {
-        database: PathBuf::from(&args[0]),
+    let (service, app) = AppService::start(Options {
+        storage: BackendConfig::Sqlite(SqliteOptions::file(PathBuf::from(&args[0]))),
         profile: args[1].clone(),
         default_receive_directory: None,
     })
@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!(
         "Ready. Type status or quit. Clipboard bodies are not logged; list explicitly displays history."
     );
-    let mut events = app.subscribe();
+    let mut events = app.subscribe_events();
     let (input, mut lines) = tokio::sync::mpsc::channel(16);
     std::thread::spawn(move || {
         for line in io::stdin().lock().lines() {
@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     }
-    app.shutdown().await?;
+    service.shutdown().await?;
     Ok(())
 }
 async fn execute(app: &App, line: &str) -> Result<(), Box<dyn Error>> {

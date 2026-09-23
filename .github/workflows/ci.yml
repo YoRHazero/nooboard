@@ -58,6 +58,14 @@ jobs:
         run: cargo test -p nooboard-storage --all-features --locked
       - name: Storage without a database driver
         run: cargo test -p nooboard-storage --no-default-features --locked
+      - name: Network facade and transport tests
+        run: cargo test -p nooboard-network --all-features --locked
+      - name: Network without system credentials
+        run: cargo test -p nooboard-network --no-default-features --locked
+      - name: Network clippy
+        run: cargo clippy -p nooboard-network --all-targets --all-features --locked -- -D warnings
+      - name: Network clippy without system credentials
+        run: cargo clippy -p nooboard-network --all-targets --no-default-features --locked -- -D warnings
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Test
@@ -67,7 +75,7 @@ jobs:
         run: cargo test -p nooboard-clipboard --all-features --locked -- --ignored --test-threads=1
       - name: mDNS discovery, rename and withdrawal (multicast loopback)
         if: runner.os == 'macOS'
-        run: cargo test -p nooboard-network --locked -- --ignored
+        run: cargo test -p nooboard-network --locked mdns_discovers_updates_and_withdraws_a_peer_without_trusting_it -- --ignored
       - name: X11 and Wayland smoke tests
         if: runner.os == 'Linux'
         run: bash scripts/test_linux_native.sh

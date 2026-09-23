@@ -18,11 +18,9 @@ pub async fn desktop_history(
         "remote" => Some(false),
         _ => return Err(crate::errors::ui("invalidHistoryQuery")),
     };
-    let guard = host.running.read().await;
-    let mut rows = guard
-        .as_ref()
-        .ok_or(crate::errors::ui("backendNotConnected"))?
+    let mut rows = host
         .app()
+        .await?
         .history_filtered(contains, local, 33, offset)
         .await
         .map_err(errors::core)?;
@@ -39,11 +37,7 @@ pub async fn desktop_history_action(
     action: String,
     id: Option<String>,
 ) -> Result<(), crate::errors::UiError> {
-    let guard = host.running.read().await;
-    let app = guard
-        .as_ref()
-        .ok_or(crate::errors::ui("backendNotConnected"))?
-        .app();
+    let app = host.app().await?;
     if action == "clear" {
         return app.clear_history().await.map_err(errors::core);
     }

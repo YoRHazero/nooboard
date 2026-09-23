@@ -39,6 +39,7 @@ export function SettingsPage() {
     execute(() => client.updateSettings(patch));
   return (
     <div className="settings-page">
+      {settings.restartRequired && <p role="status">{t('settings:restartRequired')}</p>}
       {desktop?.traySupported && (
         <section className="settings-group">
           <div className="settings-group__heading">

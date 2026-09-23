@@ -2,7 +2,7 @@
 
 文字历史与文本配置的持久化服务。上游持有可克隆的 `Storage` 句柄，通过有界请求队列与内部 runtime 通信；连接、SQL、事务和数据库迁移由后端私有实现。
 
-本轮是破坏性重构：旧 `Database` 接口已删除，现有 core 尚未接入新接口。`files`、`secrets` 及其依赖已删除，未迁入 network；跨端文件传输和凭据管理留到 network 重构。
+本轮是破坏性重构：旧 `Database` 接口已删除，core 已通过服务所有者和请求句柄接入新接口。`files`、`secrets` 及其依赖已从 storage 删除；跨端文件传输和身份凭据管理由 [network](../network/README.md) 承担。
 
 ## 职责
 

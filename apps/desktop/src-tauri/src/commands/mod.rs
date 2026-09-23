@@ -18,11 +18,8 @@ pub async fn desktop_connect(
 }
 #[tauri::command]
 pub async fn desktop_send(host: State<'_, Host>) -> Result<(), crate::errors::UiError> {
-    let guard = host.running.read().await;
-    guard
-        .as_ref()
-        .ok_or(crate::errors::ui("backendNotConnected"))?
-        .app()
+    host.app()
+        .await?
         .send_current()
         .await
         .map(|_| ())

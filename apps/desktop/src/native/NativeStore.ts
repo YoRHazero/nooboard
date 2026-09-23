@@ -221,6 +221,7 @@ export class NativeStore {
       historyRevision: `${frame.session}:${frame.history_revision}`,
       activities,
       settings: {
+        restartRequired: status.restart_required ?? false,
         closeToTray: this.desktop?.closeToTray,
         receiveDirectory: status.settings.receive_directory,
         discoverable: status.settings.discoverable,

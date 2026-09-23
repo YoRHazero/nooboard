@@ -1,9 +1,12 @@
 //! One-time-code pairing is separate from the pinned mutual-TLS clipboard transport.
+mod model;
+pub(crate) mod runtime;
+pub use model::{PairingId, PairingStatus, Stage};
 mod crypto;
 mod endpoint;
 mod session;
 mod wire;
-pub use endpoint::Endpoint;
+use endpoint::Endpoint;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot, watch};
 use zeroize::Zeroizing;
@@ -17,25 +20,14 @@ pub struct Contact {
 }
 impl Contact {
     pub fn validate(&self) -> Result<String> {
-        if !crate::valid_device_name(&self.device_name)
+        if !crate::identity::valid_device_name(&self.device_name)
             || self.certificate.len() > 8192
             || self.sync_port == 0
         {
             return Err(Error::Protocol);
         }
-        crate::noob_id(&self.certificate).map_err(|_| Error::Protocol)
+        crate::identity::material::noob_id(&self.certificate).map_err(|_| Error::Protocol)
     }
-}
-#[derive(Clone, Copy, Serialize, PartialEq, Eq)]
-pub enum Stage {
-    Requesting,
-    AwaitingApproval,
-    ShowingCode,
-    EnteringCode,
-    Verifying,
-    Saving,
-    Completed,
-    Failed,
 }
 #[derive(Clone)]
 pub struct Control {
@@ -123,7 +115,7 @@ fn control() -> (Control, mpsc::Receiver<Action>, watch::Receiver<bool>) {
 fn random_code() -> Result<Zeroizing<String>> {
     // Rejection sampling avoids modulo bias; the code never appears on the wire.
     loop {
-        let nonce = crate::new_session_id().map_err(|_| Error::Protocol)?;
+        let nonce = crate::identity::material::new_session_id().map_err(|_| Error::Protocol)?;
         let value = u32::from_str_radix(&nonce[..8], 16).map_err(|_| Error::Protocol)?;
         if value < 4_200_000_000 {
             return Ok(Zeroizing::new(format!("{:08}", value % 100_000_000)));

@@ -3,11 +3,8 @@ use crate::{errors, host::Host};
 use tauri::State;
 #[tauri::command]
 pub async fn desktop_discover(host: State<'_, Host>) -> Result<(), crate::errors::UiError> {
-    let guard = host.running.read().await;
-    guard
-        .as_ref()
-        .ok_or(crate::errors::ui("backendNotConnected"))?
-        .app()
+    host.app()
+        .await?
         .refresh_discovery()
         .await
         .map_err(errors::core)
@@ -18,11 +15,8 @@ pub async fn desktop_begin_pairing(
     address: String,
     expected: Option<String>,
 ) -> Result<(), crate::errors::UiError> {
-    let guard = host.running.read().await;
-    guard
-        .as_ref()
-        .ok_or(crate::errors::ui("backendNotConnected"))?
-        .app()
+    host.app()
+        .await?
         .begin_pairing(address, expected)
         .await
         .map_err(errors::core)
@@ -32,11 +26,8 @@ pub async fn desktop_accept_pairing(
     host: State<'_, Host>,
     id: String,
 ) -> Result<(), crate::errors::UiError> {
-    let guard = host.running.read().await;
-    guard
-        .as_ref()
-        .ok_or(crate::errors::ui("backendNotConnected"))?
-        .app()
+    host.app()
+        .await?
         .accept_pairing(id)
         .await
         .map_err(errors::core)
@@ -47,11 +38,8 @@ pub async fn desktop_pairing_code(
     id: String,
     code: String,
 ) -> Result<(), crate::errors::UiError> {
-    let guard = host.running.read().await;
-    guard
-        .as_ref()
-        .ok_or(crate::errors::ui("backendNotConnected"))?
-        .app()
+    host.app()
+        .await?
         .submit_pairing_code(id, code)
         .await
         .map_err(errors::core)
@@ -61,11 +49,8 @@ pub async fn desktop_dismiss_pairing(
     host: State<'_, Host>,
     id: String,
 ) -> Result<(), crate::errors::UiError> {
-    let guard = host.running.read().await;
-    guard
-        .as_ref()
-        .ok_or(crate::errors::ui("backendNotConnected"))?
-        .app()
+    host.app()
+        .await?
         .dismiss_pairing(id)
         .await
         .map_err(errors::core)
