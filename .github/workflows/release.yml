@@ -122,6 +122,10 @@ jobs:
       - name: Test backend
         run: cargo test --workspace --all-features --locked
 
+      - name: Native clipboard smoke test (runner session)
+        if: runner.os != 'Linux'
+        run: cargo test -p nooboard-clipboard --all-features --locked --test native -- --ignored --test-threads=1
+
       # No release inputs: this step builds only. The publish job owns the Release.
       - name: Build installers
         uses: tauri-apps/tauri-action@v1

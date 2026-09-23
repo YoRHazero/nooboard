@@ -130,7 +130,7 @@ impl ImmediateNative for Native {
         for (format, bytes) in formats {
             handles.push((format, GlobalBytes::new(&bytes)?));
         }
-        let _guard = self.lock()?;
+        let guard = self.lock()?;
         // SAFETY: the clipboard is open on this thread. Each HGLOBAL remains owned
         // by its guard until successful transfer to the operating system.
         unsafe {
@@ -144,8 +144,18 @@ impl ImmediateNative for Native {
                 handle.0 = null_mut();
             }
         }
+        let mut revision = self.revision();
+        // Closing the clipboard can synthesize formats and advance its sequence.
+        // Record the committed sequence, but never attribute a concurrent writer's
+        // revision to this write after releasing the native lock.
+        drop(guard);
+        let committed = self.revision();
+        // SAFETY: owner lookup has no pointer or ownership preconditions.
+        if unsafe { GetClipboardOwner() } == self.window && self.revision() == committed {
+            revision = committed;
+        }
         Ok(Observation {
-            revision: self.revision(),
+            revision,
             content: ReadState::Ready(prepared.payload),
             origin: Origin::Application,
         })

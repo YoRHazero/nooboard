@@ -61,7 +61,17 @@ async fn native_text_events_ownership_and_large_transfer() {
         observed(&b, payload.clone()).await;
         assert_eq!(b.read().await.unwrap().origin, Origin::External);
         assert_eq!(a.read().await.unwrap(), written);
-        assert_eq!(b.read().await.unwrap().content, ReadState::Ready(payload));
+        assert_eq!(
+            b.read().await.unwrap().content,
+            ReadState::Ready(payload.clone())
+        );
+        // Equal content from another owner must still be a new external copy.
+        let rewritten = b.write(payload).await.unwrap();
+        let external = a.read().await.unwrap();
+        assert_eq!(external.origin, Origin::External);
+        assert!(external.revision > written.revision);
+        assert_eq!(external.content, rewritten.content);
+        assert_eq!(b.read().await.unwrap(), rewritten);
     }
     a.write(Payload::Text("界".repeat(100000))).await.unwrap();
     let mut small_options = options;
@@ -88,20 +98,22 @@ async fn native_images_and_file_references_roundtrip() {
         include_bytes!("fixtures/alpha.png").to_vec(),
     )
     .unwrap();
-    a.write(Payload::Image(image.clone())).await.unwrap();
+    let written = a.write(Payload::Image(image.clone())).await.unwrap();
     let ReadState::Ready(Payload::Image(read)) = b.read().await.unwrap().content else {
         panic!("image expected");
     };
     assert_eq!(read.rgba().unwrap(), image.rgba().unwrap());
+    assert_eq!(a.read().await.unwrap(), written);
     let paths = vec![
         std::env::temp_dir().join("picture # 中文.png"),
         std::env::temp_dir().join("second file.txt"),
     ];
-    b.write(Payload::Files(paths.clone())).await.unwrap();
+    let written = b.write(Payload::Files(paths.clone())).await.unwrap();
     assert_eq!(
         a.read().await.unwrap().content,
         ReadState::Ready(Payload::Files(paths))
     );
+    assert_eq!(b.read().await.unwrap(), written);
     a.write(Payload::Text("after files".into())).await.unwrap();
     assert_eq!(
         b.read().await.unwrap().content,
