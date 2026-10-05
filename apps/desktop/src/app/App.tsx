@@ -55,10 +55,6 @@ export function App({ footer, motionPreview }: { footer?: ReactNode; motionPrevi
     void execute(() => client.acknowledgeNavigation(navigation.id));
   }, [host.navigation, client, clearError, execute]);
   useEffect(() => {
-    document.documentElement.dataset.theme = appearance.theme;
-    document.documentElement.dataset.reducedMotion = String(appearance.reducedMotion);
-  }, [appearance.theme, appearance.reducedMotion]);
-  useEffect(() => {
     document.title = `nooboard · ${pages[page].title}`;
   }, [page, t]);
   const navigate = (next: Page) => {

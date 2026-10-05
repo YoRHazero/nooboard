@@ -1,0 +1,14 @@
+Generated with: built-in image_gen tool
+Character reference: apps/desktop/public/mascot/poster.jpg (Blender business-19)
+Approved master: assets/brand/q-bird.png (unchanged from q-bird-icon-v1.png)
+Status: approved and integrated; run npm run icons:generate to rebuild derived icons
+
+Use case: logo-brand
+Asset type: A single high-quality Q-version (chibi) mascot icon concept for the nooboard desktop app, on a genuinely transparent background.
+Primary request: Turn the NEW cream-white 3D bird shown in the reference into an exceptionally cute, polished 2D/2.5D illustrated app mascot icon. Preserve this particular character's identity and body proportions.
+Input image 1: Character identity reference only. The cream bird on the LEFT is the subject. Ignore and remove its wooden clipboard/easel, mailbox, floor, cast shadow, and entire scene. Do not copy any props.
+Subject: A plump little sparrow-like bird with a modest round head flowing naturally into a MUCH fuller pear-shaped chest and belly, a single short gently curved cream tuft, two attentive glossy near-black oval eyes fairly close to a tiny buttery-gold beak, restrained pale peach cheek ovals, small tucked ivory wings, and two tiny warm-gold feet visibly connected beneath the belly. Body is broad and bottom-heavy; preserve the soft shoulder/back transition of the 3D reference. Use a barely three-quarter near-frontal view so both eyes are clearly visible, the posture calm, friendly, and curious.
+Style/medium: Refined chibi brand illustration with clean rounded shapes and very restrained soft cel-like shading, smooth even color fields, a crisp warm-gray contour sufficient for light and dark UI backgrounds, minimal detail, no fur or feather texture. Charming and expressive through proportion and eye placement. Visually simpler and more graphic than the original render, not a generic yellow chick.
+Composition/framing: Square 1:1 image, one bird only, whole character including tuft and tiny feet centered, character fills about 82 percent of the canvas with generous clear edges. Single finished icon artwork, not a contact sheet, no mockups, no decorative tile or frame. Large legible silhouette at 32px.
+Color palette: Warm ivory and creamy white body, slightly darker warm ivory wings and tuft, near-black eyes with one tiny clean highlight in each, muted peach cheeks, soft honey-gold beak and feet. Keep all bird plumage light and harmonious.
+Constraints: Real transparent alpha outside the bird. No background, no floor shadow. No text, letters, logo words, labels, watermark, accessories, clipboard, mailbox, envelope, border frame or rounded-square tile. Avoid the OLD gray-headed bird: no dark gray head cap, no gray wings, no heart-shaped face mask. Avoid oversized separate head, a neck seam, huge eye spacing, long beak, duckbill, penguin form, floating feet, tiny body with gigantic head, thick black outlines, photorealistic feathers, plastic 3D-render gloss.

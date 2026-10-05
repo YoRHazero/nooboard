@@ -1,5 +1,11 @@
-import type { ReactNode } from 'react';
-import { DesktopProvider, useConnection, useDesktop, type Desktop } from '../desktop/api';
+import { useEffect, type ReactNode } from 'react';
+import {
+  DesktopProvider,
+  useConnection,
+  useDesktop,
+  usePreferences,
+  type Desktop,
+} from '../desktop/api';
 import { MailboxProvider } from '../features/mailbox/MailboxProvider';
 import { useI18n } from '../i18n/react';
 import { errorText } from '../i18n/errors';
@@ -17,9 +23,14 @@ function ConnectionGate({ children }: { children: ReactNode }) {
   const state = useConnection();
   const desktop = useDesktop();
   const { t } = useI18n();
+  const { appearance } = usePreferences();
+  useEffect(() => {
+    document.documentElement.dataset.theme = appearance.theme;
+    document.documentElement.dataset.reducedMotion = String(appearance.reducedMotion);
+  }, [appearance.theme, appearance.reducedMotion]);
   if (state.hasSnapshot) return children;
   return (
-    <main className="startup-screen">
+    <main className="startup-screen" data-state={state.error ? 'failed' : 'starting'}>
       <img src="/mascot/icon.png" alt={t('common:bird')} />
       <h1>{state.error ? t('common:startFailed') : t('common:starting')}</h1>
       {state.error && (

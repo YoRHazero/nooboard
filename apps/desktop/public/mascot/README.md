@@ -1,5 +1,13 @@
 # Bird model and business animations
 
+## Q bird brand assets
+
+The approved Q bird illustration is preserved at `apps/desktop/assets/brand/q-bird.png`, with its image-generation prompt alongside it. It is based on the current cream-colored Blender bird. Run `npm run icons:generate` from `apps/desktop` to resize and encode this exact artwork using the installed Tauri CLI. The command updates the shared 256 px `public/mascot/icon.png` and the PNG, macOS ICNS and Windows ICO files in `src-tauri/icons`; it does not redraw or crop the character. Mobile outputs are discarded because this app targets desktops.
+
+The shared transparent icon appears in the startup screen, sidebar, device identity, discovery and pairing dialogs, clipboard panel, and browser favicon. Native window, installer, Dock/taskbar and tray icons use the corresponding bundle assets. macOS uses the icon's alpha silhouette as its menu-bar template; Windows retains the color artwork. Startup breathing stops for connection errors and respects both the operating system and application reduced-motion preferences. Theme and motion preferences apply before the first desktop snapshot, including the startup screen.
+
+## 3D scene
+
 The default home stage loads the complete `bird-business-19.glb` scene, including the approved bird, board, mailbox and supported paper. It uses authoritative snapshot events through `ActivityCues → Playback → ClipPlayer → BirdScene`. Playback never changes clipboard contents or transfer outcomes.
 
 Open `?mascot=business-19`, or choose **Inspect animations / 动画检查** in the browser footer, to inspect all twelve clips manually. The earlier `?mascot=motion-16` URL is an alias. The pose slider stops the selected clip at a chosen percentage; click its button to replay. **Live stage / 业务联动** returns to normal event-driven playback. This review mode does not emit business events.

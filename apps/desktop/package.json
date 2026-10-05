@@ -12,6 +12,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "tauri": "tauri",
+    "icons:generate": "node scripts/generate-brand-icons.mjs",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
     "i18n:check": "node scripts/check-i18n.mjs",
