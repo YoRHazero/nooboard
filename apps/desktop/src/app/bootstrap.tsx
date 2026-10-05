@@ -14,6 +14,9 @@ import { Providers } from './providers';
 import { App } from './App';
 export async function bootstrap(element: HTMLElement) {
   const preview = isTauri() ? undefined : new PreviewBridge();
+  const motionPreview = ['motion-16', 'business-19'].includes(
+    new URLSearchParams(window.location.search).get('mascot') ?? '',
+  );
   let storage: Storage | undefined;
   try {
     storage = localStorage;
@@ -28,8 +31,13 @@ export async function bootstrap(element: HTMLElement) {
     <StrictMode>
       <Providers desktop={desktop}>
         <App
+          motionPreview={motionPreview}
           footer={
-            preview ? <PreviewToolbar client={preview} /> : <DiagnosticToolbar runtime={runtime} />
+            preview ? (
+              <PreviewToolbar client={preview} motionPreview={motionPreview} />
+            ) : (
+              <DiagnosticToolbar runtime={runtime} />
+            )
           }
         />
       </Providers>

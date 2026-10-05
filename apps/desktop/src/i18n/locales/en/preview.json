@@ -15,5 +15,7 @@
   "stopReceiving": "Pause peer receiving",
   "startReceiving": "Resume peer receiving",
   "reset": "Reset",
-  "demoCode": "Demo code: 48217396 · "
+  "demoCode": "Demo code: 48217396 · ",
+  "birdMotion": "Inspect animations",
+  "originalStage": "Live stage"
 }

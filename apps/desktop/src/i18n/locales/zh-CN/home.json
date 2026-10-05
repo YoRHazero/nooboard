@@ -50,5 +50,22 @@
   "onlineCount": "{{online, number}}/{{total, number}} 台在线",
   "pairedList": "已配对设备列表",
   "manageDevices": "管理设备",
-  "stageDescription": "肥啾代表本机，左侧木板是当前剪贴板，右侧信箱查看活动与已配对设备。"
+  "stageDescription": "肥啾代表本机，左侧木板是当前剪贴板，右侧信箱查看活动与已配对设备。",
+  "motionPreview": "动作预览",
+  "motion_idle": "自然待机",
+  "motion_curious": "歪头观察",
+  "motion_hop": "短跳落地",
+  "motionLoading": "正在加载肥啾…",
+  "motionLoadFailed": "动画加载失败，请刷新重试",
+  "motionStill": "已启用减少动态效果，显示静态姿势",
+  "motion_capture": "复制记板",
+  "motion_send": "衔纸投递",
+  "motion_receive_text": "收取剪贴板",
+  "motion_receive_file": "查看收件",
+  "motion_success": "结果确认",
+  "motion_error": "未能完成",
+  "motion_paused": "暂停休息",
+  "motion_offline": "离线等待",
+  "motion_resume": "恢复唤醒",
+  "motionInspect": "停帧检查"
 }

@@ -8,10 +8,12 @@ export function HomePage({
   onDevices,
   onSettings,
   onTransfers,
+  motionPreview,
 }: {
   onDevices: () => void;
   onSettings: () => void;
   onTransfers: (key?: string) => void;
+  motionPreview?: boolean;
 }) {
   const { t } = useI18n();
   const state = useSnapshot();
@@ -59,7 +61,12 @@ export function HomePage({
           )
         )}
       </div>
-      <HomeStage onDevices={onDevices} onSettings={onSettings} onTransfers={onTransfers} />
+      <HomeStage
+        onDevices={onDevices}
+        onSettings={onSettings}
+        onTransfers={onTransfers}
+        motionPreview={motionPreview}
+      />
     </div>
   );
 }

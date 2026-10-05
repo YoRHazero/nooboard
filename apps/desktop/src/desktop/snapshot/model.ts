@@ -78,6 +78,7 @@ export type ActivityState =
 export interface Activity {
   id: string;
   contentTask?: string;
+  contentKind?: Wire.ContentKind;
   contentNode?: 'started' | 'finished';
   contentStage?: Wire.ContentStage;
   messageId?: Wire.MessageId;
@@ -120,7 +121,14 @@ export interface DesktopSnapshot {
 }
 /** Presentation cues only; no business outcome is derived from playing them. */
 export type DesktopEvent =
-  | { type: 'copied' | 'sent' | 'applied' | 'received' | 'rejected'; sequence: string }
+  | {
+      type: 'copied' | 'sent' | 'applied' | 'received' | 'rejected';
+      sequence: string;
+      contentTask?: string;
+      contentKind?: Wire.ContentKind;
+      contentNode?: 'started' | 'finished';
+      contentStage?: Wire.ContentStage;
+    }
   | { type: 'reset' };
 export interface ConnectionState {
   phase: 'idle' | 'connecting' | 'ready' | 'offline' | 'disposed';

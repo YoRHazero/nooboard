@@ -2,15 +2,23 @@ import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import type { Clip } from './playback';
 import { createTargets, type TargetLayout } from './targets';
+import type { MotionPreview, PreviewMotion } from './motionPreview';
+import { ClipPlayer } from './clipPlayer';
 
-const stillTime: Record<Clip, number> = {
+type SceneClip = Clip | PreviewMotion;
+const stillTime: Record<SceneClip, number> = {
   idle: 0,
   capture: 1.1,
   send: 3.55,
   receive_text: 6.96,
   error: 1.55,
-  paused: 1,
+  paused: 4,
   offline: 1.2,
+  curious: 0.7,
+  hop: 0.9,
+  receive_file: 2.8,
+  success: 0.65,
+  resume: 0.7,
 };
 
 function disposeTree(root: THREE.Object3D) {
@@ -38,8 +46,11 @@ export async function createScene(
   complete: (serial: number) => void,
   signal: AbortSignal,
   layout: (targets: TargetLayout) => void,
+  preview?: MotionPreview,
 ) {
-  const response = await fetch('/mascot/nooboard.glb', { signal });
+  const response = await fetch('/mascot/bird-business-19.glb', {
+    signal,
+  });
   if (!response.ok) throw new Error('Mascot asset unavailable');
   const buffer = await response.arrayBuffer();
   if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -49,7 +60,7 @@ export async function createScene(
     throw new DOMException('Aborted', 'AbortError');
   }
   try {
-    return new BirdScene(element, gltf, complete, layout);
+    return new BirdScene(element, gltf, complete, layout, preview);
   } catch (error) {
     disposeTree(gltf.scene);
     throw error;
@@ -61,10 +72,8 @@ export class BirdScene {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera = new THREE.OrthographicCamera(-4.1, 4.1, 2.3, -2.3, 0.1, 100);
-  private mixer: THREE.AnimationMixer;
-  private actions = new Map<string, THREE.AnimationAction>();
-  private current?: THREE.AnimationAction;
-  private clip: Clip = 'idle';
+  private player: ClipPlayer;
+  private clip: SceneClip = 'idle';
   private serial: number | null = null;
   private observer: ResizeObserver;
   private raf = 0;
@@ -82,6 +91,7 @@ export class BirdScene {
     private gltf: GLTF,
     private complete: (serial: number) => void,
     private layout: (targets: TargetLayout) => void,
+    private preview?: MotionPreview,
   ) {
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -95,14 +105,12 @@ export class BirdScene {
     this.renderer.domElement.setAttribute('aria-hidden', 'true');
     element.append(this.renderer.domElement);
     this.scene.add(gltf.scene);
-    this.mixer = new THREE.AnimationMixer(gltf.scene);
-    gltf.animations.forEach((clip) => this.actions.set(clip.name, this.mixer.clipAction(clip)));
-    this.actions.get('idle')?.play();
-    this.mixer.update(0);
+    this.player = new ClipPlayer(gltf.scene, gltf.animations, this.finished);
+    this.player.play('idle');
     gltf.scene.updateMatrixWorld(true);
     this.targets = createTargets(gltf.scene);
-    this.mixer.addEventListener('finished', this.finished);
-    this.camera.position.set(3, 5, 12.6);
+    const cameraPitch = THREE.MathUtils.degToRad(5);
+    this.camera.position.set(3, 1.25 + Math.hypot(3, 12.5) * Math.tan(cameraPitch), 12.6);
     this.camera.lookAt(0, 1.25, 0.1);
     this.scene.add(new THREE.HemisphereLight(0xfff1db, 0xa4aba1, 2.2));
     [
@@ -148,15 +156,19 @@ export class BirdScene {
     };
     this.birdShadow = shadow(3.2, 2.5);
     shadow(2.2, 1.8).position.set(2.25, 0.022, -0.1);
-    this.bird = gltf.scene.getObjectByName('Bird_Root');
+    this.bird = gltf.scene.getObjectByName('Nooboard_Form_09');
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(element);
     this.theme();
     this.resize();
     this.play('idle', null);
   }
-  private finished = (event: THREE.AnimationMixerEventMap['finished']) => {
-    if (event.action !== this.current) return;
+  private finished = () => {
+    if (this.preview) {
+      if (this.clip === 'paused') this.sleep();
+      else this.play('idle', null);
+      return;
+    }
     if (this.serial !== null) {
       const serial = this.serial;
       this.serial = null;
@@ -200,28 +212,14 @@ export class BirdScene {
     }
     this.renderer.render(this.scene, this.camera);
   }
-  play(clip: Clip, serial: number | null) {
+  play(clip: SceneClip, serial: number | null) {
     clearTimeout(this.timer);
     this.clip = clip;
     this.serial = serial;
-    const action = this.actions.get(clip);
-    if (!action) return;
-    const previous = this.current;
-    if (this.reduced) this.mixer.stopAllAction();
-    else if (previous && previous !== action) previous.fadeOut(0.16);
-    action.reset().setEffectiveWeight(1).setEffectiveTimeScale(1);
-    action.setLoop(
-      clip === 'idle' || clip === 'offline' ? THREE.LoopRepeat : THREE.LoopOnce,
-      Infinity,
-    );
-    action.clampWhenFinished = true;
-    action.play();
-    if (previous && previous !== action && !this.reduced) action.fadeIn(0.16);
-    this.current = action;
+    this.preview?.changed(clip);
+    this.player.play(clip, this.reduced ? stillTime[clip] : undefined);
     if (this.reduced) {
       this.sleep();
-      action.time = stillTime[clip];
-      this.mixer.update(0);
       this.render();
       if (serial !== null)
         this.timer = setTimeout(() => {
@@ -237,6 +235,14 @@ export class BirdScene {
     this.last = performance.now();
     this.raf = requestAnimationFrame(this.tick);
   }
+  /** Inspect a baked Blender pose without advancing the performance. */
+  seekPreview(progress: number) {
+    if (!this.preview) return;
+    clearTimeout(this.timer);
+    this.sleep();
+    this.player.seek(progress);
+    this.render();
+  }
   sleep() {
     cancelAnimationFrame(this.raf);
     this.raf = 0;
@@ -246,14 +252,14 @@ export class BirdScene {
     const delta = (time - this.last) / 1000;
     if (delta >= 1 / 30) {
       this.last = time;
-      this.mixer.update(Math.min(delta, 0.1));
+      this.player.update(Math.min(delta, 0.1));
       this.render();
     }
     if (
       !this.raf &&
       !document.hidden &&
       !this.reduced &&
-      !(this.clip === 'paused' && this.current?.paused)
+      !(this.clip === 'paused' && this.player.current?.paused)
     )
       this.raf = requestAnimationFrame(this.tick);
   };
@@ -261,9 +267,7 @@ export class BirdScene {
     clearTimeout(this.timer);
     this.sleep();
     this.observer.disconnect();
-    this.mixer.removeEventListener('finished', this.finished);
-    this.mixer.stopAllAction();
-    this.mixer.uncacheRoot(this.gltf.scene);
+    this.player.dispose(this.gltf.scene);
     disposeTree(this.scene);
     this.renderer.dispose();
     this.renderer.forceContextLoss();

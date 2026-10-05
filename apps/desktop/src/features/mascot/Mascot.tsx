@@ -5,21 +5,35 @@ import { Playback, type PlaybackState } from './playback';
 import type { BirdScene } from './scene';
 import type { TargetLayout } from './targets';
 import { posterTargets } from './poster';
+import type { Gesture } from './motions';
+import { previewMotions, type PreviewMotion } from './motionPreview';
 
 export function Mascot({
   onLayout,
   onPlayback,
+  motionPreview = false,
+  interaction,
 }: {
   onLayout: (targets: TargetLayout) => void;
   onPlayback: (state: PlaybackState) => void;
+  motionPreview?: boolean;
+  interaction?: { id: number; motion: Gesture };
 }) {
   const { t } = useI18n();
   const client = useDesktop();
   const { appearance } = useSnapshot();
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<BirdScene | null>(null);
+  const controller = useRef<Playback | null>(null);
+  const [performing, setPerforming] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [motion, setMotion] = useState<PreviewMotion>('idle');
+  const [progress, setProgress] = useState(0);
+  const [reduced, setReduced] = useState(false);
   useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
     const abort = new AbortController();
     const subscriptions: (() => void)[] = [];
     const fallback = new ResizeObserver(() => {
@@ -36,6 +50,14 @@ export function Mascot({
           (serial) => control.finish(serial),
           abort.signal,
           onLayout,
+          motionPreview
+            ? {
+                changed: (name) => {
+                  setMotion(name);
+                  setProgress(0);
+                },
+              }
+            : undefined,
         ),
       )
       .then((stage) => {
@@ -50,28 +72,36 @@ export function Mascot({
         const hidden = () => document.hidden || client.getSnapshot().host.visible === false;
         const visibility = () => {
           const next = hidden();
-          if (next === sleeping) return;
+          if (next === sleeping) {
+            if (next) stage.sleep();
+            return;
+          }
           sleeping = next;
           if (next) {
-            control.reset();
+            if (motionPreview) stage.play('idle', null);
+            else control.reset();
             stage.sleep();
           } else stage.wake();
         };
         const update = () => {
           const state = client.getSnapshot();
-          control.setMode(
-            state.settings.paused
-              ? 'paused'
-              : !state.peers.some((peer) => peer.online)
-                ? 'offline'
-                : 'idle',
-          );
-          stage.setReduced(state.appearance.reducedMotion || preference.matches);
+          if (!motionPreview)
+            control.setMode(
+              state.settings.paused
+                ? 'paused'
+                : !state.peers.some((peer) => peer.online)
+                  ? 'offline'
+                  : 'idle',
+              !hidden(),
+            );
+          const reduced = state.appearance.reducedMotion || preference.matches;
+          setReduced(reduced);
+          stage.setReduced(reduced);
           visibility();
         };
         subscriptions.push(
           client.onEvent((event) => {
-            if (!hidden()) control.event(event);
+            if (!motionPreview && !hidden()) control.event(event);
           }),
           client.subscribe(update),
         );
@@ -85,8 +115,19 @@ export function Mascot({
       })
       .catch(() => {
         /* The static scene keeps the workspace usable without WebGL. */
+        if (!abort.signal.aborted) setFailed(true);
       });
-    const control = new Playback((clip, serial) => scene.current?.play(clip, serial), onPlayback);
+    const control = new Playback(
+      (clip, serial) => {
+        setMotion(clip);
+        scene.current?.play(clip, serial);
+      },
+      (state) => {
+        setPerforming(state.active !== null);
+        onPlayback(state);
+      },
+    );
+    controller.current = control;
     return () => {
       abort.abort();
       fallback.disconnect();
@@ -94,8 +135,19 @@ export function Mascot({
       onPlayback({ active: null, activityId: null });
       scene.current?.dispose();
       scene.current = null;
+      controller.current = null;
     };
-  }, [client, onLayout, onPlayback]);
+  }, [client, onLayout, onPlayback, motionPreview]);
+  useEffect(() => {
+    if (
+      interaction &&
+      scene.current &&
+      !motionPreview &&
+      !document.hidden &&
+      client.getSnapshot().host.visible !== false
+    )
+      controller.current?.gesture(interaction.motion);
+  }, [interaction, motionPreview, client]);
   useEffect(() => {
     const media = matchMedia('(prefers-color-scheme: dark)');
     const repaint = () => requestAnimationFrame(() => scene.current?.theme());
@@ -104,10 +156,67 @@ export function Mascot({
     return () => media.removeEventListener('change', repaint);
   }, [appearance.theme]);
   return (
-    <div className="mascot">
+    <div
+      className="mascot"
+      data-motion={motion}
+      data-performing={motionPreview ? motion !== 'idle' : performing}
+    >
       <span className="sr-only">{t('home:stageDescription')}</span>
-      {!loaded && <img className="mascot__poster" src="/mascot/poster.png" alt="" />}
+      {!loaded && !motionPreview && (
+        <picture>
+          {appearance.theme !== 'light' && (
+            <source
+              srcSet="/mascot/poster-dark.jpg"
+              media={appearance.theme === 'system' ? '(prefers-color-scheme: dark)' : undefined}
+            />
+          )}
+          <img className="mascot__poster" src="/mascot/poster.jpg" alt="" />
+        </picture>
+      )}
       <div className="mascot__canvas" ref={host} />
+      {motionPreview && (
+        <div className="mascot__motion-controls" role="group" aria-label={t('home:motionPreview')}>
+          <span>{t('home:motionPreview')}</span>
+          {previewMotions.map((name) => (
+            <button
+              key={name}
+              type="button"
+              disabled={!loaded}
+              aria-pressed={loaded && motion === name}
+              onClick={() => {
+                setProgress(0);
+                scene.current?.play(name, null);
+              }}
+            >
+              {t(`home:motion_${name}`)}
+            </button>
+          ))}
+          {loaded && (
+            <label className="mascot__motion-scrubber">
+              {t('home:motionInspect')}
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="0.5"
+                value={progress}
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  setProgress(value);
+                  scene.current?.seekPreview(value / 100);
+                }}
+              />
+              <output>{progress}%</output>
+            </label>
+          )}
+          {!loaded && (
+            <small role={failed ? 'alert' : 'status'}>
+              {t(failed ? 'home:motionLoadFailed' : 'home:motionLoading')}
+            </small>
+          )}
+          {loaded && reduced && <small>{t('home:motionStill')}</small>}
+        </div>
+      )}
     </div>
   );
 }

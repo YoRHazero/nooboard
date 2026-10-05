@@ -50,5 +50,22 @@
   "onlineCount": "{{online, number}}/{{total, number}} online",
   "pairedList": "Paired device list",
   "manageDevices": "Manage devices",
-  "stageDescription": "The bird is this device. The board on the left shows your clipboard. The mailbox on the right shows activity and paired devices."
+  "stageDescription": "The bird is this device. The board on the left shows your clipboard. The mailbox on the right shows activity and paired devices.",
+  "motionPreview": "Motion preview",
+  "motion_idle": "Idle",
+  "motion_curious": "Look around",
+  "motion_hop": "Hop",
+  "motionLoading": "Loading bird…",
+  "motionLoadFailed": "Could not load the animation. Refresh to retry.",
+  "motionStill": "Reduced motion is on; showing still poses",
+  "motion_capture": "Capture",
+  "motion_send": "Send",
+  "motion_receive_text": "Receive clipboard",
+  "motion_receive_file": "Check received file",
+  "motion_success": "Confirmed",
+  "motion_error": "Unconfirmed",
+  "motion_paused": "Pause",
+  "motion_offline": "Offline",
+  "motion_resume": "Resume",
+  "motionInspect": "Inspect pose"
 }

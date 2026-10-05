@@ -5,7 +5,13 @@ import { useCommand, useSnapshot } from '../desktop/api';
 import { shortNoobId } from '../features/devices/selectors';
 import type { PreviewControls } from './bridge';
 
-export function PreviewToolbar({ client }: { client: PreviewControls }) {
+export function PreviewToolbar({
+  client,
+  motionPreview,
+}: {
+  client: PreviewControls;
+  motionPreview?: boolean;
+}) {
   const { t } = useI18n();
   const { execute } = useCommand();
   const { peers, settings } = useSnapshot();
@@ -19,6 +25,9 @@ export function PreviewToolbar({ client }: { client: PreviewControls }) {
         <span>{t('preview:environment')}</span>
       </span>
       <div>
+        <a className="text-button" href={motionPreview ? '?' : '?mascot=business-19'}>
+          {t(motionPreview ? 'preview:originalStage' : 'preview:birdMotion')}
+        </a>
         <button onClick={() => execute(() => client.sampleCopy())}>
           <CopyPlus size={14} />
           {t('preview:copySample')}

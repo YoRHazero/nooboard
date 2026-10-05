@@ -59,6 +59,8 @@ src-tauri/src/
 
 Preview follows the same connection, decoding and subscription path. Its fixtures cover visual states with scripted transitions, not a second implementation of core. Preview code must not serve as a business correctness oracle.
 
+The `?mascot=business-19` presentation preview (also accepting the earlier `?mascot=motion-16` URL) uses the real home stage with a complete Blender scene and twelve manually selectable clips. Its pose slider inspects baked frames. Bootstrap selects this mode; features receive it as a prop. Preview playback does not emit business events or decide delivery outcomes. The same complete scene is now the default asset. Activity cues carry content task/node/stage metadata so Playback waits for a real file receipt, correlates send results, and coalesces concurrent performances while the mailbox preserves every activity. ClipPlayer owns prop-safe clip transitions; hidden/reduced-motion behavior stays in Mascot/BirdScene. UI gestures never decide delivery outcomes. Asset provenance, export settings and packaging are documented in [the mascot asset guide](public/mascot/README.md).
+
 ## Extending and verifying
 
 Edit Rust DTOs first, then run `npm run ipc:generate` in `apps/desktop`. It runs the Rust schema test and generates `ipc/schema.json` and `src/desktop/bridge/generated.ts`. IDs and backend counters cross IPC as strings; JavaScript cannot represent arbitrary `u64`/`i64` values as numbers. UI byte counts and timestamps remain numbers.

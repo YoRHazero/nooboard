@@ -26,7 +26,7 @@ import { PairingPrompt } from '../features/devices/PairingPrompt';
 
 type Page = 'home' | 'history' | 'transfers' | 'devices' | 'settings';
 
-export function App({ footer }: { footer?: ReactNode }) {
+export function App({ footer, motionPreview }: { footer?: ReactNode; motionPreview?: boolean }) {
   const { t } = useI18n();
   const pages = {
     home: { title: t('common:home'), icon: House },
@@ -164,6 +164,7 @@ export function App({ footer }: { footer?: ReactNode }) {
             <div className="page-content" inert={!!connectionError} key={page}>
               {page === 'home' && (
                 <HomePage
+                  motionPreview={motionPreview}
                   onDevices={() => navigate('devices')}
                   onSettings={() => navigate('settings')}
                   onTransfers={(key) => {

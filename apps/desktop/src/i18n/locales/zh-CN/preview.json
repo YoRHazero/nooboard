@@ -15,5 +15,7 @@
   "stopReceiving": "对方停收",
   "startReceiving": "对方开收",
   "reset": "重置",
-  "demoCode": "演示配对码：48217396 · "
+  "demoCode": "演示配对码：48217396 · ",
+  "birdMotion": "动画检查",
+  "originalStage": "业务联动"
 }

@@ -182,7 +182,8 @@ export class PreviewBridge implements DesktopBridge {
         this.later(() => {
           const transfer = this.snapshot.transfers.find((t) => t.id.sequence === id.sequence);
           transfer?.targets.forEach((target) => {
-            target.state = 'Applied';
+            const peer = this.snapshot.peers.find((p) => p.noobId === target.noobId);
+            target.state = !peer?.online ? 'Offline' : peer.accepting ? 'Applied' : 'Rejected';
           });
         });
         this.publish();

@@ -2,9 +2,9 @@ import type { TargetLayout } from './targets';
 
 // Bounds in the 1200 × 700 fallback render, fitted with the image's contain sizing.
 const bounds: TargetLayout = {
-  board: { left: 5, top: 51, width: 12, height: 30 },
-  bird: { left: 10, top: 18, width: 32, height: 61 },
-  mailbox: { left: 67, top: 39, width: 20, height: 42 },
+  board: { left: 3.8417, top: 49.7485, width: 14.832, height: 28.2832 },
+  bird: { left: 6.6146, top: 21.1252, width: 39.9508, height: 57.3499 },
+  mailbox: { left: 64.5655, top: 37.915, width: 25.0582, height: 40.2942 },
 };
 
 export function posterTargets(width: number, height: number): TargetLayout {

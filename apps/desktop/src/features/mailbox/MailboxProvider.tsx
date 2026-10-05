@@ -25,7 +25,12 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
     const unlisten = client.onEvent((event) => {
       const activities = client.getSnapshot().activities;
       if (event.type === 'reset') inbox.reset(activities[0] ?? null);
-      else if (event.type === 'copied' || event.type === 'sent' || event.type === 'received') {
+      else if (
+        event.type === 'copied' ||
+        event.type === 'sent' ||
+        event.type === 'received' ||
+        event.contentNode === 'finished'
+      ) {
         const activity = activities.find((row) => row.id === event.sequence);
         if (activity) inbox.record(activity);
       }
@@ -38,7 +43,7 @@ export function MailboxProvider({ children }: { children: ReactNode }) {
   const onPlayback = useCallback(
     (state: PlaybackState) => {
       const activity = client.getSnapshot().activities.find((row) => row.id === state.activityId);
-      inbox.performance(state.active !== null, activity ?? null);
+      inbox.performance(state.activityId !== null, activity ?? null);
     },
     [client, inbox],
   );

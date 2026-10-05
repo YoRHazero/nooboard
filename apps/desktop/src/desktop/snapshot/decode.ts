@@ -22,6 +22,7 @@ export function decode(
   appearance: Appearance,
 ): DesktopSnapshot {
   const transfers = new Map(frame.transfers.map((t) => [messageKey(t.id), t]));
+  const content = new Map(frame.contentTransfers.map((task) => [task.key, task]));
   return {
     session: frame.session,
     revision: frame.revision,
@@ -80,6 +81,7 @@ export function decode(
       return {
         id: `${frame.session}:${record.sequence}`,
         contentTask: record.contentTask ?? undefined,
+        contentKind: record.contentTask ? content.get(record.contentTask)?.kind : undefined,
         contentNode:
           record.contentNode === 'started' || record.contentNode === 'finished'
             ? record.contentNode

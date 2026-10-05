@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ArrowUpRight } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import { useSnapshot } from '../../desktop/api';
+import type { Gesture } from '../mascot/motions';
 import { Mascot } from '../mascot/Mascot';
 import { posterTargets } from '../mascot/poster';
 import type { StageTarget, TargetLayout } from '../mascot/targets';
@@ -21,14 +22,19 @@ export function HomeStage({
   onDevices,
   onSettings,
   onTransfers,
+  motionPreview,
 }: {
   onDevices: () => void;
   onSettings: () => void;
   onTransfers: (key?: string) => void;
+  motionPreview?: boolean;
 }) {
   const { t } = useI18n();
   const { localDevice, appearance } = useSnapshot();
   const [targets, setTargets] = useState<TargetLayout>(fallback);
+  const [interaction, setInteraction] = useState<{ id: number; motion: Gesture }>();
+  const gesture = (motion: Gesture) =>
+    setInteraction((previous) => ({ id: (previous?.id ?? 0) + 1, motion }));
   const mailbox = useMailbox();
   const panels = useStagePanel((panel) => {
     if (panel.target === 'mailbox') mailbox.inbox.acknowledge();
@@ -54,7 +60,12 @@ export function HomeStage({
   return (
     <section ref={panels.stage} className="home-stage" aria-label={t('home:stageLabel')}>
       <div className="home-stage__scene">
-        <Mascot onLayout={setTargets} onPlayback={mailbox.onPlayback} />
+        <Mascot
+          onLayout={setTargets}
+          onPlayback={mailbox.onPlayback}
+          motionPreview={motionPreview}
+          interaction={interaction}
+        />
         {(Object.keys(labels) as StageTarget[]).map((target) => {
           const rect = targets[target];
           const label = labels[target];
@@ -78,7 +89,16 @@ export function HomeStage({
               aria-haspopup="dialog"
               aria-expanded={selected === target}
               aria-controls={selected === target ? 'stage-panel' : undefined}
-              onClick={() => panels.activate(target)}
+              onPointerEnter={(event) => {
+                if (target === 'bird' && event.pointerType === 'mouse') gesture('curious');
+              }}
+              onFocus={() => {
+                if (target === 'bird') gesture('curious');
+              }}
+              onClick={() => {
+                if (target === 'bird') gesture('hop');
+                panels.activate(target);
+              }}
             >
               {target === 'mailbox' && (
                 <MailboxBadge
