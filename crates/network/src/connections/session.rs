@@ -16,7 +16,7 @@ pub(super) async fn run(
     peer: String,
     generation: u64,
     events: mpsc::Sender<SessionEvent>,
-) {
+) -> Result<()> {
     struct Close(Outbox);
     impl Drop for Close {
         fn drop(&mut self) {
@@ -25,12 +25,13 @@ pub(super) async fn run(
     }
     let _close = Close(queue.clone());
     let (mut sender, mut receiver) = connection.into_split();
-    tokio::select! {
-        _ = write(&mut sender, &queue, &peer, generation, &events) => {},
-        _ = read(&mut receiver, &queue, &peer, generation, &events) => {},
-        _ = queue.closed() => {},
-    }
+    let result = tokio::select! {
+        result = write(&mut sender, &queue, &peer, generation, &events) => result,
+        result = read(&mut receiver, &queue, &peer, generation, &events) => result,
+        _ = queue.closed() => Err(Failure::Disconnected),
+    };
     receiver.close().await;
+    result
 }
 async fn write(
     sender: &mut ConnectionSender,
@@ -51,6 +52,9 @@ async fn write(
                     }).map_err(|_| Failure::Busy)?;
                 }
                 sender.send(&job.message).await?;
+                if matches!(job.message, Message::Unpaired) {
+                    return Ok(());
+                }
                 if let Some(id) = job.id() {
                     events.try_send(SessionEvent::Written {
                         peer: peer.into(), generation, id: id.clone(),
@@ -70,6 +74,7 @@ async fn read(
 ) -> Result<()> {
     loop {
         match receiver.receive().await? {
+            Message::Unpaired => return Err(Failure::Unpaired),
             Message::Ping => queue.control(Message::Pong)?,
             Message::Pong => {}
             message => events

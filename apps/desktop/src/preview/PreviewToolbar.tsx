@@ -1,9 +1,10 @@
 import { useI18n } from '../i18n/react';
 import { useState } from 'react';
-import { ArrowDownLeft, CopyPlus, FlaskConical, RotateCcw, Unplug } from 'lucide-react';
+import { ArrowDownLeft, CopyPlus, FlaskConical, RotateCcw } from 'lucide-react';
 import { useCommand, useSnapshot } from '../desktop/api';
 import { shortNoobId } from '../features/devices/selectors';
 import type { PreviewControls } from './bridge';
+import type { PeerConnectionState } from '../desktop/bridge/generated';
 
 export function PreviewToolbar({
   client,
@@ -55,13 +56,21 @@ export function PreviewToolbar({
           <ArrowDownLeft size={14} />
           {t('preview:receiveSample')}
         </button>
-        <button
+        <select
+          aria-label={t('preview:connectionScenario')}
+          value={peer?.connectionState ?? 'offline'}
           disabled={!peer}
-          onClick={() => execute(() => client.toggleConnection(peer?.noobId))}
+          onChange={(e) =>
+            peer &&
+            execute(() => client.setPeerState(peer.noobId, e.target.value as PeerConnectionState))
+          }
         >
-          <Unplug size={14} />
-          {peer?.online ? t('preview:disconnect') : t('preview:reconnect')}
-        </button>
+          <option value="connected">{t('common:connected')}</option>
+          <option value="paused">{t('devices:pausedState')}</option>
+          <option value="offline">{t('common:offline')}</option>
+          <option value="unconnected">{t('devices:unconnected')}</option>
+          <option value="unpaired">{t('devices:unpairedState')}</option>
+        </select>
         <button
           disabled={!peer?.online}
           onClick={() => peer && execute(() => client.toggleAccepting(peer.noobId))}

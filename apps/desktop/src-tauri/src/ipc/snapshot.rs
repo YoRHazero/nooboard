@@ -79,6 +79,9 @@ pub fn snapshot(value: nooboard_core::AppSnapshot) -> BackendSnapshot {
                 },
                 online: p.online,
                 accepting: p.accepting,
+                connection_state: p.connection_state.into(),
+                paused: p.paused,
+                unpaired_notice: p.unpaired_notice.map(|v| v.to_string()),
             })
             .collect(),
         manual_targets: status.manual_targets,

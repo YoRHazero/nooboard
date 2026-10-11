@@ -10,7 +10,9 @@ export function homeStatus({ settings, peers }: DesktopSnapshot) {
   const online = peers.filter((p) => p.online).length;
   if (!online)
     return {
-      label: t('home:allOffline'),
+      label: peers.every((peer) => peer.connectionState === 'offline')
+        ? t('home:allOffline')
+        : t('home:noneConnected'),
       detail: '',
       tone: 'quiet',
     };

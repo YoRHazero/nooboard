@@ -65,19 +65,24 @@ export function DiscoverDialog({ onClose }: { onClose: () => void }) {
       </div>
       <ul className="discover-list" aria-label={t('devices:nearby')}>
         {devices.map((device) => {
-          const paired = peers.some((p) => p.noobId === device.noobId);
+          const peer = peers.find((p) => p.noobId === device.noobId);
+          const canPairAgain = peer?.connectionState === 'unpaired';
+          const paired = !!peer && !canPairAgain;
           return (
             <li key={device.key}>
               <Monitor size={22} />
               <div className="device-name">
                 <strong>{device.deviceName}</strong>
                 <code title={device.noobId}>{shortNoobId(device.noobId, devices)}</code>
+                <code>{device.addresses.join(', ')}</code>
               </div>
               <Button
                 disabled={busy || paired}
                 onClick={() => void connect(device.addresses[0], device.noobId)}
               >
-                {paired ? t('devices:paired') : t('devices:pair')}
+                {paired
+                  ? t('devices:paired')
+                  : t(canPairAgain ? 'devices:pairAgain' : 'devices:pair')}
                 {!paired && <ArrowRight size={14} />}
               </Button>
             </li>

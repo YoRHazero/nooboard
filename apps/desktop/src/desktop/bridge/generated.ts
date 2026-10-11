@@ -162,12 +162,16 @@ export type PairingStage =
 export type Patch = { closeToTray?: boolean | null; language?: Language | null };
 export type Peer = {
   accepting: boolean;
+  connectionState: PeerConnectionState;
   deviceName: string;
   fingerprint: string;
   noobId: string;
   online: boolean;
+  paused: boolean;
   settings: PeerSettings;
+  unpairedNotice?: string | null;
 };
+export type PeerConnectionState = 'connected' | 'paused' | 'offline' | 'unconnected' | 'unpaired';
 export type PeerPatch = { address?: AddressChange | null; autoSend?: boolean | null };
 export type PeerSettings = { address?: string | null; autoSend: boolean };
 export type ProbeAction = 'copy' | 'receive';

@@ -52,6 +52,7 @@ export function decode(
     },
     peers: frame.peers.map((p) => ({
       ...p,
+      unpairedNotice: p.unpairedNotice ?? null,
       settings: { ...p.settings, address: p.settings.address ?? null },
     })),
     manualTargets: frame.manualTargets,

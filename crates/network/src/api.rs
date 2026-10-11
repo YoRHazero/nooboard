@@ -112,7 +112,11 @@ impl Network {
     /// Install a caller-authorized, already-persisted public trust record.
     pub async fn trust_peer(&self, peer: TrustedPeer) -> Result<()> {
         self.request(&self.connections, |reply| {
-            connections::runtime::Request::Trust { peer, reply }
+            connections::runtime::Request::Trust {
+                peer,
+                pairing: None,
+                reply,
+            }
         })
         .await
     }
@@ -121,6 +125,13 @@ impl Network {
         let peer = peer.into();
         self.request(&self.connections, |reply| {
             connections::runtime::Request::Revoke { peer, reply }
+        })
+        .await
+    }
+    /// Broadcast local sync pause without disconnecting or changing discovery.
+    pub async fn set_paused(&self, paused: bool) -> Result<()> {
+        self.request(&self.connections, |reply| {
+            connections::runtime::Request::Pause { paused, reply }
         })
         .await
     }

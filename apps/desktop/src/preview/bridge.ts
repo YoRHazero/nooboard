@@ -1,6 +1,6 @@
 import { RemotePreview } from './remote';
 import type { DesktopBridge, Session } from '../desktop/bridge/port';
-import type { Frame, Reply, Request } from '../desktop/bridge/generated';
+import type { Frame, Reply, Request, PeerConnectionState } from '../desktop/bridge/generated';
 import { fail } from '../i18n/errors';
 import {
   examples,
@@ -54,6 +54,17 @@ export class PreviewBridge implements DesktopBridge {
     if (this.disposed) throw fail('stopped');
   }
   private publish() {
+    for (const peer of this.snapshot.peers) {
+      peer.connectionState = peer.online
+        ? this.snapshot.settings.paused || peer.paused
+          ? 'paused'
+          : 'connected'
+        : this.snapshot.onboarding.nearby.some((device) => device.noobId === peer.noobId)
+          ? peer.unpairedNotice
+            ? 'unpaired'
+            : 'unconnected'
+          : 'offline';
+    }
     this.snapshot.revision = String(BigInt(this.snapshot.revision) + 1n);
     for (const receive of this.listeners)
       receive({ type: 'snapshot', data: structuredClone(this.snapshot) });
@@ -224,31 +235,48 @@ export class PreviewBridge implements DesktopBridge {
           },
         ];
         break;
-      case 'beginPairing':
+      case 'beginPairing': {
+        const target =
+          this.snapshot.peers.find((p) => p.noobId === request.data.expected) ?? nearbySample;
         this.snapshot.onboarding.session = {
           id: 'pairing-example',
           stage: 'EnteringCode',
           incoming: false,
-          noobId: nearbySample.noobId,
-          deviceName: nearbySample.deviceName,
+          noobId: target.noobId,
+          deviceName: target.deviceName,
           attemptsLeft: 3,
           expiresAt: Date.now() + 120_000,
         };
         break;
+      }
       case 'acceptPairing':
         if (this.snapshot.onboarding.session)
           Object.assign(this.snapshot.onboarding.session, { stage: 'ShowingCode', code: '123456' });
         break;
-      case 'pairingCode':
+      case 'pairingCode': {
         if (this.snapshot.onboarding.session) this.snapshot.onboarding.session.stage = 'Completed';
-        if (!this.snapshot.peers.some((p) => p.noobId === nearbySample.noobId))
+        const existing = this.snapshot.peers.find(
+          (p) => p.noobId === this.snapshot.onboarding.session?.noobId,
+        );
+        if (existing)
+          Object.assign(existing, {
+            online: true,
+            accepting: true,
+            paused: false,
+            unpairedNotice: null,
+          });
+        else
           this.snapshot.peers.push({
             ...nearbySample,
-            settings: { address: '192.168.1.64:24816', autoSend: false },
+            settings: { address: null, autoSend: false },
+            connectionState: 'connected',
+            paused: false,
+            unpairedNotice: null,
             online: true,
             accepting: true,
           });
         break;
+      }
       case 'dismissPairing':
         this.snapshot.onboarding.session = null;
         break;
@@ -365,6 +393,26 @@ export class PreviewBridge implements DesktopBridge {
     if (p) p.online = !p.online;
     this.publish();
   }
+  async setPeerState(noobId: string, state: PeerConnectionState) {
+    const peer = this.snapshot.peers.find((p) => p.noobId === noobId);
+    if (!peer) return;
+    this.snapshot.onboarding.nearby = this.snapshot.onboarding.nearby.filter(
+      (p) => p.noobId !== noobId,
+    );
+    if (state !== 'offline')
+      this.snapshot.onboarding.nearby.push({
+        key: noobId,
+        noobId,
+        deviceName: peer.deviceName,
+        addresses: ['192.168.1.38:24817'],
+        syncPort: 24816,
+      });
+    peer.online = state === 'connected' || state === 'paused';
+    peer.paused = state === 'paused';
+    peer.accepting = state === 'connected';
+    peer.unpairedNotice = state === 'unpaired' ? String(++this.sequence) : null;
+    this.publish();
+  }
   async toggleAccepting(noobId: string) {
     const p = this.snapshot.peers.find((p) => p.noobId === noobId);
     if (p) p.accepting = !p.accepting;
@@ -391,5 +439,11 @@ export class PreviewBridge implements DesktopBridge {
 }
 export type PreviewControls = Pick<
   PreviewBridge,
-  'sampleCopy' | 'sampleReceive' | 'sampleFiles' | 'toggleConnection' | 'toggleAccepting' | 'reset'
+  | 'sampleCopy'
+  | 'sampleReceive'
+  | 'sampleFiles'
+  | 'toggleConnection'
+  | 'setPeerState'
+  | 'toggleAccepting'
+  | 'reset'
 >;

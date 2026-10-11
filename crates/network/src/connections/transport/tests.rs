@@ -1,5 +1,6 @@
 use crate::{
     connections::transport::tls_tcp::TlsConfig,
+    error::Failure,
     identity::material::Identity,
     transfer::protocol::{Message, MessageId},
 };
@@ -44,8 +45,8 @@ async fn untrusted_identity_cannot_establish_a_business_connection() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap().to_string();
     let server = tokio::spawn(async move { bc.accept(listener.accept().await.unwrap().0).await });
-    assert!(ac.connect(&address).await.is_err());
-    assert!(server.await.unwrap().is_err());
+    assert!(matches!(ac.connect(&address).await, Err(Failure::Unpaired)));
+    assert!(matches!(server.await.unwrap(), Err(Failure::Unpaired)));
 }
 
 #[tokio::test]
@@ -134,4 +135,43 @@ async fn one_listener_authenticates_two_different_peers_concurrently() {
     assert_eq!(one.unwrap().peer_id(), server.noob_id().unwrap());
     assert_eq!(two.unwrap().peer_id(), server.noob_id().unwrap());
     assert_eq!(accept.await.unwrap(), expected);
+}
+
+#[tokio::test]
+async fn removing_the_last_peer_still_returns_an_authenticated_unpaired_receipt() {
+    let a = Identity::generate().unwrap();
+    let b = Identity::generate().unwrap();
+    let ac = TlsConfig::new(&a, b.certificate()).unwrap();
+    let bc = TlsConfig::with_peers(&b, &[]).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap().to_string();
+    let server = tokio::spawn(async move { bc.accept(listener.accept().await.unwrap().0).await });
+    assert!(matches!(ac.connect(&address).await, Err(Failure::Unpaired)));
+    assert!(matches!(server.await.unwrap(), Err(Failure::Unpaired)));
+}
+
+#[tokio::test]
+async fn another_trusted_server_cannot_revoke_the_expected_peer() {
+    let client = Identity::generate().unwrap();
+    let expected = Identity::generate().unwrap();
+    let other = Identity::generate().unwrap();
+    let cc = TlsConfig::with_peers(
+        &client,
+        &[
+            expected.certificate().to_vec(),
+            other.certificate().to_vec(),
+        ],
+    )
+    .unwrap();
+    let server = TlsConfig::with_peers(&other, &[]).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap().to_string();
+    let accept =
+        tokio::spawn(async move { server.accept(listener.accept().await.unwrap().0).await });
+    assert!(matches!(
+        cc.connect_peer(&address, &expected.noob_id().unwrap())
+            .await,
+        Err(Failure::Identity)
+    ));
+    assert!(accept.await.unwrap().is_err());
 }

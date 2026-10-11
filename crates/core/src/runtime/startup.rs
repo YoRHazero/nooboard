@@ -88,6 +88,7 @@ pub(crate) async fn launch(input: Launch) -> Result<(AppService, App)> {
             .await?;
         services.network = Some(network_service);
         network.set_accepting(config.settings.accepting()).await?;
+        network.set_paused(config.settings.paused).await?;
         let (stop, stopped) = watch::channel(false);
         let (persist_stop, persist_stopped) = watch::channel(false);
         let startup = config.settings.clone();

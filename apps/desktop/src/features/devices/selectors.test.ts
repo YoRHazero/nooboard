@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { shortNoobId, validAddress, parsePort } from './selectors';
+import { shortNoobId, validAddress, parsePort, peerState, canSend } from './selectors';
 import { createSeed, nearbySample } from '../../preview/seed';
 
 it('extends ambiguous prefixes while allowing repeated names', () => {
@@ -31,4 +31,32 @@ it('accepts only decimal ports within the explicit user range', () => {
     expect(parsePort(value)).toBe(Number(value));
   for (const value of ['', '0', '65536', '-1', '2.5', '1e3', '0x50', '0.0.0.0:24816'])
     expect(parsePort(value)).toBeNull();
+});
+
+it('does not describe a connected device with receiving disabled as paused', () => {
+  const peer = { ...createSeed().peers[0], accepting: false };
+  expect(peerState(peer).label).toBe('已连接');
+  expect(peerState(peer).detail).toBe('对方暂不接收');
+  expect(canSend(peer)).toBe(false);
+});
+
+it('explains who paused and prevents sending even before the receiving flag catches up', () => {
+  const peer = {
+    ...createSeed().peers[0],
+    connectionState: 'paused' as const,
+    accepting: true,
+    paused: false,
+  };
+  expect(peerState(peer, true).detail).toBe('本机已暂停同步');
+  expect(canSend(peer)).toBe(false);
+  peer.paused = true;
+  expect(peerState(peer, true).detail).toBe('双方已暂停同步');
+  expect(peerState(peer, false).detail).toBe('对方已暂停同步');
+});
+
+it('keeps discovery, connection attempts and explicit revocation distinct', () => {
+  const peer = { ...createSeed().peers[0], online: false };
+  expect(peerState({ ...peer, connectionState: 'offline' }).label).toBe('离线');
+  expect(peerState({ ...peer, connectionState: 'unconnected' }).label).toBe('未连接');
+  expect(peerState({ ...peer, connectionState: 'unpaired' }).label).toBe('未配对');
 });

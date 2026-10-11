@@ -23,6 +23,7 @@ import { DevicesPage } from '../features/devices/DevicesPage';
 import { SettingsPage } from '../features/settings/SettingsPage';
 import { appVersion } from './version';
 
+import { UnpairedPrompt } from '../features/devices/UnpairedPrompt';
 import { PairingPrompt } from '../features/devices/PairingPrompt';
 
 const SshPage = lazy(() =>
@@ -191,6 +192,7 @@ export function App({ footer, motionPreview }: { footer?: ReactNode; motionPrevi
           </div>
         </main>
         <PairingPrompt />
+        <UnpairedPrompt />
         {footer}
       </div>
     </MotionConfig>

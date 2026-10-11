@@ -2,14 +2,14 @@ import { type Problem, errorText, toProblem } from '../../i18n/errors';
 import { useI18n } from '../../i18n/react';
 import { useState } from 'react';
 import { useDesktop, useSnapshot } from '../../desktop/api';
-import { canSend, shortNoobId } from '../../features/devices/selectors';
+import { canSend, peerState, shortNoobId } from '../../features/devices/selectors';
 import { DeviceIcon, DeviceName } from '../devices/DeviceName';
 import { Button } from '../../ui/controls';
 import { Dialog } from '../../ui/Dialog';
 
 export function TargetPicker({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
-  const { peers, manualTargets } = useSnapshot();
+  const { peers, manualTargets, settings } = useSnapshot();
   const client = useDesktop();
   const [selected, setSelected] = useState([...manualTargets]);
   const [error, setError] = useState<Problem | null>(null);
@@ -47,9 +47,9 @@ export function TargetPicker({ onClose }: { onClose: () => void }) {
               <small>
                 {canSend(peer)
                   ? t('common:canReceive')
-                  : peer.online
-                    ? t('common:receivingPaused')
-                    : t('common:offline')}
+                  : peer.connectionState === 'connected'
+                    ? t('devices:notReceiving')
+                    : peerState(peer, settings.paused).label}
               </small>
             </label>
           </li>

@@ -96,12 +96,18 @@ impl Runtime {
         self.status
             .send_replace(self.sessions.values().cloned().collect());
     }
-    fn retire(&mut self, id: &PairingId, error: Option<ErrorKind>) -> bool {
+    async fn retire(&mut self, id: &PairingId, error: Option<ErrorKind>) -> bool {
         let Some(control) = self.controls.remove(id) else {
             return false;
         };
         control.cancel();
         self.pending.remove(id);
+        // Release the hold after completion or failure, never while the other side
+        // is still saving. A failed save can then be reported as unpaired.
+        tokio::select! {
+            _ = self.stop.changed() => {},
+            _ = self.connections.send(connections::runtime::Request::FinishPairing { id: id.clone() }) => {},
+        }
         if let Some(status) = self.sessions.get_mut(id) {
             status.code = None;
             status.stage = if error.is_some() {
@@ -168,7 +174,7 @@ impl Runtime {
                 })();
                 // A cancelled start must not leave an unobservable pairing running.
                 if let Err(Ok(id)) = reply.send(result) {
-                    self.retire(&id, Some(ErrorKind::Cancelled));
+                    self.retire(&id, Some(ErrorKind::Cancelled)).await;
                 }
             }
             Request::Accept { id, reply } => {
@@ -207,7 +213,7 @@ impl Runtime {
             }
             Request::Cancel { id, reply } => {
                 if !reply.is_closed() {
-                    let retired = self.retire(&id, Some(ErrorKind::Cancelled));
+                    let retired = self.retire(&id, Some(ErrorKind::Cancelled)).await;
                     let _ = reply.send(if retired {
                         Ok(())
                     } else {
@@ -227,6 +233,7 @@ impl Runtime {
                             result = async {
                                 self.connections.send(connections::runtime::Request::Trust {
                                     peer: pending.peer,
+                                    pairing: Some(id.clone()),
                                     reply: tx,
                                 }).await.map_err(|_| Failure::Closed)?;
                                 rx.await.map_err(|_| Failure::Closed)?
@@ -246,7 +253,7 @@ impl Runtime {
         }
         self.publish();
     }
-    fn event(&mut self, event: Event) {
+    async fn event(&mut self, event: Event) {
         match event {
             Event::Offered {
                 id,
@@ -294,7 +301,7 @@ impl Runtime {
                         })
                         .is_err()
                 {
-                    self.retire(&id, Some(ErrorKind::Busy));
+                    self.retire(&id, Some(ErrorKind::Busy)).await;
                 }
             }
             Event::Progress {
@@ -341,23 +348,23 @@ impl Runtime {
                         self.pending.insert(id, Pending { peer, saved });
                     } else {
                         let _ = saved.send(false);
-                        self.retire(&id, Some(ErrorKind::Busy));
+                        self.retire(&id, Some(ErrorKind::Busy)).await;
                     }
                 } else {
                     let _ = saved.send(false);
-                    self.retire(&id, Some(ErrorKind::Protocol));
+                    self.retire(&id, Some(ErrorKind::Protocol)).await;
                 }
             }
             Event::Completed { id } => {
                 let id = PairingId(id);
                 if self.controls.contains_key(&id) {
-                    self.retire(&id, None);
+                    self.retire(&id, None).await;
                 }
             }
             Event::Failed { id, error } => {
                 let id = PairingId(id);
                 if self.controls.contains_key(&id) {
-                    self.retire(&id, Some(convert(error).kind()));
+                    self.retire(&id, Some(convert(error).kind())).await;
                 }
             }
         }
@@ -370,13 +377,13 @@ impl Runtime {
             }
             tokio::select! {
                 _ = self.stop.changed() => break,
-                event = self.events.recv() => match event { Some(event) => self.event(event), None => break },
+                event = self.events.recv() => match event { Some(event) => self.event(event).await, None => break },
                 request = self.requests.recv() => match request { Some(request) => self.request(request).await, None => break },
             }
         }
         self.requests.close();
         for id in self.controls.keys().cloned().collect::<Vec<_>>() {
-            self.retire(&id, Some(ErrorKind::Stopped));
+            self.retire(&id, Some(ErrorKind::Stopped)).await;
         }
         self.publish();
         self.endpoint.shutdown().await

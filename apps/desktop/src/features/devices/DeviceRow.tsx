@@ -1,6 +1,6 @@
 import { useI18n } from '../../i18n/react';
 import { ChevronRight } from 'lucide-react';
-import type { Peer } from '../../desktop/api';
+import { useSnapshot, type Peer } from '../../desktop/api';
 import { peerState, shortNoobId } from '../../features/devices/selectors';
 import { Toggle } from '../../ui/controls';
 import { DeviceName, DeviceIcon } from './DeviceName';
@@ -21,7 +21,8 @@ export function DeviceRow({
   onDetails: () => void;
 }) {
   const { t } = useI18n();
-  const status = peerState(peer);
+  const { settings } = useSnapshot();
+  const status = peerState(peer, settings.paused);
   const label = `${peer.deviceName} ${shortNoobId(peer.noobId, peers)}`;
   return (
     <li className={`device-row ${selected ? 'is-selected' : ''}`}>
@@ -55,14 +56,15 @@ export function DeviceRow({
         <span>{t('common:autoSend')}</span>
         <Toggle
           label={t('devices:autoSendLabel', { name: label })}
+          disabled={peer.unpairedNotice != null}
           checked={peer.settings.autoSend}
           onChange={onAutoSend}
         />
       </div>
       <button
         className="device-row__more icon-button"
-        aria-label={t('devices:connectionLabel', { name: label })}
-        title={t('devices:connectionSettings')}
+        aria-label={t('devices:detailsLabel', { name: label })}
+        title={t('devices:details')}
         onClick={onDetails}
       >
         <ChevronRight size={16} />

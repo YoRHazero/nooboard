@@ -26,6 +26,7 @@ struct Queue {
     text: VecDeque<Job>,
     bulk: VecDeque<Message>,
     closed: bool,
+    revoked: bool,
     priority_run: u8,
     control_run: u8,
 }
@@ -52,7 +53,7 @@ impl Outbox {
     }
     pub fn text(&self, message: Message, policy: QueuePolicy) -> Result<Option<MessageId>> {
         let mut q = self.0.queue.lock().unwrap();
-        if q.closed {
+        if q.closed || q.revoked {
             return Err(Failure::Disconnected);
         }
         let replaced = if matches!(&policy, QueuePolicy::ReplaceTail(_))
@@ -71,7 +72,7 @@ impl Outbox {
     }
     pub fn control(&self, message: Message) -> Result<()> {
         let mut q = self.0.queue.lock().unwrap();
-        if q.closed {
+        if q.closed || q.revoked {
             return Err(Failure::Disconnected);
         }
         if q.control.len() >= 64 {
@@ -88,7 +89,7 @@ impl Outbox {
             notified.as_mut().enable();
             {
                 let mut q = self.0.queue.lock().unwrap();
-                if q.closed {
+                if q.closed || q.revoked {
                     return Err(Failure::Disconnected);
                 }
                 if q.bulk.len() < 2 {
@@ -118,6 +119,12 @@ impl Outbox {
                 let mut q = self.0.queue.lock().unwrap();
                 if q.closed {
                     return None;
+                }
+                if q.revoked {
+                    return q.control.pop_front().map(|message| Job {
+                        message,
+                        policy: QueuePolicy::Append,
+                    });
                 }
                 // Reserve a turn for bulk after a bounded control/text burst.
                 if q.priority_run >= 8
@@ -161,6 +168,21 @@ impl Outbox {
             }
             ready.await;
         }
+    }
+    /// Stop admission, discard queued content, then send one authenticated notice.
+    /// The session finishes any frame already being written before this final frame.
+    pub fn revoke(&self) {
+        let mut q = self.0.queue.lock().unwrap();
+        if q.closed || q.revoked {
+            return;
+        }
+        q.revoked = true;
+        q.control.clear();
+        q.text.clear();
+        q.bulk.clear();
+        q.control.push_back(Message::Unpaired);
+        self.0.ready.notify_waiters();
+        self.0.space.notify_waiters();
     }
     pub fn close(&self) {
         let mut q = self.0.queue.lock().unwrap();
@@ -256,6 +278,19 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+    #[tokio::test]
+    async fn revocation_discards_queued_content_and_sends_only_the_final_notice() {
+        let queue = Outbox::new();
+        queue.control(Message::Pong).unwrap();
+        queue.text(text(1), QueuePolicy::Append).unwrap();
+        queue.bulk(chunk(2)).await.unwrap();
+        queue.revoke();
+        assert!(queue.text(text(3), QueuePolicy::Append).is_err());
+        assert!(queue.bulk(chunk(4)).await.is_err());
+        assert!(queue.control(Message::Pong).is_err());
+        assert_eq!(queue.next().await.unwrap().message, Message::Unpaired);
+        assert!(queue.next().await.is_none());
     }
     #[tokio::test]
     async fn priority_traffic_cannot_starve_text_or_bulk() {

@@ -239,7 +239,7 @@ impl Runtime {
                     route.accepting = accepting;
                 }
             }
-            Message::Device { .. } => {}
+            Message::Device { .. } | Message::Paused { .. } => {}
             Message::Text {
                 id,
                 target_epoch,

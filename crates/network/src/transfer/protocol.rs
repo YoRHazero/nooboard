@@ -2,7 +2,7 @@ use crate::error::{Failure as Error, InternalResult as Result};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-pub const PROTOCOL_VERSION: u16 = 3;
+pub const PROTOCOL_VERSION: u16 = 4;
 pub const MAX_CHUNK_BYTES: usize = 256 * 1024;
 pub(crate) use super::model::{ContentKind, FileEntry, MAX_TEXT_BYTES};
 // JSON can expand each control byte into a six-byte escape.
@@ -13,6 +13,10 @@ pub(crate) use super::model::TransferId as MessageId;
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", deny_unknown_fields)]
 pub enum Message {
+    Unpaired,
+    Paused {
+        paused: bool,
+    },
     Hello {
         version: u16,
     },
@@ -129,6 +133,8 @@ pub enum TransferError {
 impl std::fmt::Debug for Message {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Unpaired => f.write_str("Unpaired"),
+            Self::Paused { paused } => f.debug_tuple("Paused").field(paused).finish(),
             Self::Text {
                 id,
                 target_epoch,
@@ -263,8 +269,20 @@ pub(crate) async fn write(writer: &mut (impl AsyncWrite + Unpin), message: &Mess
 }
 /// The caller must close the connection if this future is cancelled.
 pub(crate) async fn read(reader: &mut (impl AsyncRead + Unpin)) -> Result<Message> {
+    read_frame(reader, MAX_FRAME_BYTES).await
+}
+/// Before business authorization, accept only small handshake control frames.
+pub(crate) async fn read_handshake(reader: &mut (impl AsyncRead + Unpin)) -> Result<Message> {
+    let message = read_frame(reader, 1024).await?;
+    if matches!(message, Message::Hello { .. } | Message::Unpaired) {
+        Ok(message)
+    } else {
+        Err(Error::Protocol)
+    }
+}
+async fn read_frame(reader: &mut (impl AsyncRead + Unpin), limit: usize) -> Result<Message> {
     let size = reader.read_u32().await? as usize;
-    if size == 0 || size > MAX_FRAME_BYTES {
+    if size == 0 || size > limit {
         return Err(Error::Protocol);
     }
     let tag = reader.read_u8().await?;
@@ -304,6 +322,32 @@ pub(crate) async fn read(reader: &mut (impl AsyncRead + Unpin)) -> Result<Messag
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn handshake_rejects_content_and_large_frames_before_reading_the_body() {
+        let header = 1025_u32.to_be_bytes();
+        assert!(matches!(
+            read_handshake(&mut header.as_slice()).await,
+            Err(Error::Protocol)
+        ));
+        for message in [
+            Message::Hello {
+                version: PROTOCOL_VERSION,
+            },
+            Message::Unpaired,
+        ] {
+            let mut bytes = Vec::new();
+            write(&mut bytes, &message).await.unwrap();
+            assert_eq!(
+                read_handshake(&mut bytes.as_slice()).await.unwrap(),
+                message
+            );
+        }
+        let mut bytes = Vec::new();
+        write(&mut bytes, &Message::Paused { paused: true })
+            .await
+            .unwrap();
+        assert!(read_handshake(&mut bytes.as_slice()).await.is_err());
+    }
     #[tokio::test]
     async fn binary_chunks_roundtrip_without_json_expansion_and_are_bounded() {
         let id = MessageId {

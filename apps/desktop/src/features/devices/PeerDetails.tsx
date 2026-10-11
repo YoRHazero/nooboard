@@ -11,13 +11,12 @@ import { DeviceIcon, DeviceName, IdentityFields } from './DeviceName';
 
 export function PeerDetails({ peer, onClose }: { peer: Peer; onClose: () => void }) {
   const { t } = useI18n();
-  const { peers } = useSnapshot();
+  const { peers, settings, onboarding } = useSnapshot();
   const client = useDesktop();
-  const [address, setAddress] = useState(peer.settings.address ?? '');
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
-  const perform = async (operation: () => Promise<void>) => {
+  const perform = async (operation: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);
     try {
@@ -29,9 +28,16 @@ export function PeerDetails({ peer, onClose }: { peer: Peer; onClose: () => void
       setBusy(false);
     }
   };
-  const status = peerState(peer);
+  const status = peerState(peer, settings.paused);
+  const unpaired = peer.connectionState === 'unpaired';
+  const nearby = onboarding.nearby.find((device) => device.noobId === peer.noobId);
   return (
-    <Dialog title={confirm ? t('devices:unpairTitle') : t('devices:details')} onClose={onClose}>
+    <Dialog
+      title={
+        confirm ? t(unpaired ? 'devices:removeTitle' : 'devices:unpairTitle') : t('devices:details')
+      }
+      onClose={onClose}
+    >
       <div className="peer-detail-heading">
         <span className="device-row__icon">
           <DeviceIcon platform={peer.platform} size={28} />
@@ -43,24 +49,22 @@ export function PeerDetails({ peer, onClose }: { peer: Peer; onClose: () => void
         </span>
       </div>
       {confirm ? (
-        <p className="dialog-copy">{t('devices:unpairEffect')}</p>
+        <p className="dialog-copy">
+          {t(unpaired ? 'devices:removeEffect' : 'devices:unpairEffect')}
+        </p>
       ) : (
         <>
-          <label className="form-field">
-            <span>{t('devices:peerAddress')}</span>
-            <input
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="192.168.1.38:24816"
-              autoComplete="off"
-              spellCheck={false}
-            />
-          </label>
-          <p className="field-note">{t('devices:emptyAddress')}</p>
           <IdentityFields device={peer} />
           <p className="field-note">
-            {peer.platform ?? t('devices:pairedDevices')} · {status.detail} ·{' '}
-            {peer.settings.autoSend ? t('devices:participates') : t('devices:notParticipating')}
+            {peer.platform && <>{peer.platform} · </>}
+            {status.detail}
+            {!unpaired && (
+              <>
+                {' '}
+                ·{' '}
+                {peer.settings.autoSend ? t('devices:participates') : t('devices:notParticipating')}
+              </>
+            )}
           </p>
         </>
       )}
@@ -80,26 +84,35 @@ export function PeerDetails({ peer, onClose }: { peer: Peer; onClose: () => void
               disabled={busy}
               onClick={() => void perform(() => client.unpair(peer.noobId))}
             >
-              {t('devices:confirmUnpair')}
+              {t(unpaired ? 'devices:removeDevice' : 'devices:confirmUnpair')}
             </Button>
           </>
         ) : (
           <>
             <Button variant="quiet" className="unpair-button" onClick={() => setConfirm(true)}>
               <Unplug size={14} />
-              {t('devices:unpair')}
+              {t(unpaired ? 'devices:removeDevice' : 'devices:unpair')}
             </Button>
-            <Button
-              variant="primary"
-              disabled={busy}
-              onClick={() =>
-                void perform(() =>
-                  client.configurePeer(peer.noobId, { address: address.trim() || null }),
-                )
-              }
-            >
-              {t('devices:saveAddress')}
-            </Button>
+            {unpaired && nearby?.addresses[0] && (
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={() =>
+                  void perform(() => client.beginPairing(nearby.addresses[0], peer.noobId))
+                }
+              >
+                {t('devices:pairAgain')}
+              </Button>
+            )}
+            {peer.connectionState === 'paused' && settings.paused && (
+              <Button
+                disabled={busy}
+                onClick={() => void perform(() => client.updateSyncSettings({ paused: false }))}
+              >
+                {t('devices:resumeLocal')}
+              </Button>
+            )}
+            <Button onClick={onClose}>{t('common:close')}</Button>
           </>
         )}
       </div>

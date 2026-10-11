@@ -33,3 +33,13 @@ it('reports partial delivery without claiming all recipients received it', () =>
     }),
   ).toBe('1/2 台已接收');
 });
+
+it('does not call a discoverable unconnected or unpaired device offline', () => {
+  const state = createSeed();
+  state.peers = [{ ...state.peers[0], online: false, connectionState: 'unconnected' }];
+  expect(homeStatus(state).label).toBe('设备尚未连接');
+  state.peers[0].connectionState = 'unpaired';
+  expect(homeStatus(state).label).toBe('设备尚未连接');
+  state.peers[0].connectionState = 'offline';
+  expect(homeStatus(state).label).toBe('设备均已离线');
+});

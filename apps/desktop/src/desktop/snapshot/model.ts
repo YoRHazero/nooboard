@@ -37,6 +37,9 @@ export interface Peer extends DeviceIdentity {
   settings: PeerSettings;
   online: boolean;
   accepting: boolean;
+  connectionState: Wire.PeerConnectionState;
+  paused: boolean;
+  unpairedNotice: string | null;
 }
 export interface TextItem {
   id: EntryId;

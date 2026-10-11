@@ -51,8 +51,11 @@ fn trust(service: &Network) -> TrustedPeer {
     }
 }
 async fn link(a: &Network, b: &Network) {
-    a.trust_peer(trust(b)).await.unwrap();
+    let mut passive = trust(b);
+    passive.addresses.clear();
+    a.trust_peer(passive).await.unwrap();
     b.trust_peer(trust(a)).await.unwrap();
+    a.trust_peer(trust(b)).await.unwrap();
     let aid = a.status().identity.id;
     let bid = b.status().identity.id;
     wait(a, |s| {
@@ -184,6 +187,14 @@ async fn real_pairing_retries_code_and_requires_persistence_before_activating_tr
     let NetworkEvent::PairingVerified { id, .. } = event(&mut a_events).await else {
         panic!("expected verified record")
     };
+    // A slow local save must not be interpreted by the other side as unpairing.
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    assert!(
+        b.status()
+            .connections
+            .iter()
+            .all(|p| !p.connected && p.unpaired_notice.is_none())
+    );
     a.complete_pairing(id, true).await.unwrap();
     wait(&a, |s| {
         s.pairings
@@ -842,4 +853,156 @@ async fn cancelling_one_destination_keeps_shared_content_available_to_the_other(
     a_service.shutdown().await.unwrap();
     b_service.shutdown().await.unwrap();
     c_service.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn online_unpair_notifies_the_peer_and_keeps_information_until_removed() {
+    let (sa, a, mut ae) = start("a").await;
+    let (sb, b, mut be) = start("b").await;
+    // B has no dial address, so the first receipt must travel over the live session.
+    let mut passive = trust(&a);
+    passive.addresses.clear();
+    b.trust_peer(passive).await.unwrap();
+    a.trust_peer(trust(&b)).await.unwrap();
+    wait(&a, |s| s.connections.iter().any(|p| p.accepting)).await;
+    wait(&b, |s| s.connections.iter().any(|p| p.accepting)).await;
+    let aid = a.status().identity.id;
+    let bid = b.status().identity.id;
+    // An unrelated trust update must not invalidate a revocation on this live session.
+    let (sc, c, _ce) = start("c").await;
+    let mut other = trust(&c);
+    other.addresses.clear();
+    b.trust_peer(other).await.unwrap();
+    sc.shutdown().await.unwrap();
+    a.revoke_peer(bid).await.unwrap();
+    let status = wait(&b, |s| {
+        s.connections
+            .iter()
+            .any(|p| p.peer == aid && p.unpaired_notice.is_some())
+    })
+    .await;
+    let peer = status.connections.iter().find(|p| p.peer == aid).unwrap();
+    assert!(!peer.connected);
+    let notice = peer.unpaired_notice;
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    assert_eq!(
+        b.status()
+            .connections
+            .iter()
+            .find(|p| p.peer == aid)
+            .unwrap()
+            .unpaired_notice,
+        notice
+    );
+    // A caller-authorized new pairing clears the receipt and restores connectivity.
+    let pair_id = a
+        .start_pairing(vec![b.status().pairing_address])
+        .await
+        .unwrap();
+    let NetworkEvent::PairingOffered { id: offered, .. } = event(&mut be).await else {
+        panic!("pairing offer")
+    };
+    b.accept_pairing(offered.clone()).await.unwrap();
+    let status = wait(&b, |s| {
+        s.pairings
+            .iter()
+            .any(|p| p.id == offered && p.code.is_some())
+    })
+    .await;
+    let code = status
+        .pairings
+        .iter()
+        .find(|p| p.id == offered)
+        .unwrap()
+        .code
+        .clone()
+        .unwrap();
+    wait(&a, |s| {
+        s.pairings
+            .iter()
+            .any(|p| p.id == pair_id && p.stage == PairingStage::EnteringCode)
+    })
+    .await;
+    a.submit_pairing_code(pair_id, code).await.unwrap();
+    let NetworkEvent::PairingVerified { id, .. } = event(&mut be).await else {
+        panic!("verified")
+    };
+    b.complete_pairing(id, true).await.unwrap();
+    let NetworkEvent::PairingVerified { id, .. } = event(&mut ae).await else {
+        panic!("verified")
+    };
+    a.complete_pairing(id, true).await.unwrap();
+    wait(&a, |s| s.connections.iter().any(|p| p.accepting)).await;
+    wait(&b, |s| s.connections.iter().any(|p| p.accepting)).await;
+    assert!(
+        b.status()
+            .connections
+            .iter()
+            .find(|p| p.peer == aid)
+            .unwrap()
+            .unpaired_notice
+            .is_none()
+    );
+    bounded(sa.shutdown()).await.unwrap();
+    bounded(sb.shutdown()).await.unwrap();
+}
+
+#[tokio::test]
+async fn offline_unpair_is_reported_on_the_next_connection_attempt() {
+    let (sa, a, _ae) = start("a").await;
+    let (sb, b, _be) = start("b").await;
+    link(&a, &b).await;
+    let aid = a.status().identity.id;
+    let bid = b.status().identity.id;
+    b.disconnect(aid.clone()).await.unwrap();
+    wait(&b, |s| s.connections.iter().all(|p| !p.connected)).await;
+    wait(&a, |s| s.connections.iter().all(|p| !p.connected)).await;
+    a.revoke_peer(bid).await.unwrap();
+    assert!(b.status().connections[0].unpaired_notice.is_none());
+    b.connect(aid.clone()).await.unwrap();
+    wait(&b, |s| {
+        s.connections
+            .iter()
+            .any(|p| p.peer == aid && p.unpaired_notice.is_some())
+    })
+    .await;
+    assert!(!b.status().connections[0].connected);
+    bounded(sa.shutdown()).await.unwrap();
+    bounded(sb.shutdown()).await.unwrap();
+}
+
+#[tokio::test]
+async fn pause_is_distinct_from_receiving_and_survives_reconnection() {
+    let (sa, a, _ae) = start("a").await;
+    let (sb, b, _be) = start("b").await;
+    link(&a, &b).await;
+    let aid = a.status().identity.id;
+    let bid = b.status().identity.id;
+    a.set_accepting(false).await.unwrap();
+    wait(&b, |s| !s.connections[0].accepting).await;
+    assert!(!b.status().connections[0].paused);
+    a.set_paused(true).await.unwrap();
+    wait(&b, |s| {
+        assert!(s.connections[0].connected);
+        s.connections[0].paused
+    })
+    .await;
+    assert!(b.status().connections[0].connected);
+    a.disconnect(bid.clone()).await.unwrap();
+    wait(&b, |s| !s.connections[0].connected).await;
+    a.connect(bid).await.unwrap();
+    wait(&b, |s| {
+        s.connections
+            .iter()
+            .any(|p| p.peer == aid && p.connected && p.paused)
+    })
+    .await;
+    a.set_paused(false).await.unwrap();
+    wait(&b, |s| {
+        s.connections[0].connected && !s.connections[0].paused
+    })
+    .await;
+    assert!(!b.status().connections[0].accepting);
+    bounded(sa.shutdown()).await.unwrap();
+    bounded(sb.shutdown()).await.unwrap();
 }

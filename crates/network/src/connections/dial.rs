@@ -19,8 +19,10 @@ pub(super) async fn connect<T, F: Future<Output = Result<T>>>(
 ) -> Result<T> {
     tokio::time::timeout(ROUND_TIMEOUT, async {
         for address in addresses {
-            if let Ok(connection) = attempt(address).await {
-                return Ok(connection);
+            match attempt(address).await {
+                Ok(connection) => return Ok(connection),
+                Err(Failure::Unpaired) => return Err(Failure::Unpaired),
+                Err(_) => {}
             }
         }
         Err(Failure::Disconnected)

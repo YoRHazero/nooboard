@@ -18,8 +18,8 @@
   "localControls": "This device · Quick controls",
   "birdLabel": "Bird: quick controls",
   "mailbox": "Mailbox",
-  "mailboxHint": "Activity · Paired devices",
-  "mailboxLabel": "Mailbox: activity and paired devices",
+  "mailboxHint": "Activity · Saved devices",
+  "mailboxLabel": "Mailbox: activity and saved devices",
   "stageLabel": "Interactive bird stage",
   "syncControls": "Sync controls",
   "sendMode": "Text send mode",
@@ -48,7 +48,7 @@
   "batchCount_one": "{{count, number}} event in this batch",
   "batchCount_other": "{{count, number}} events in this batch",
   "onlineCount": "{{online, number}}/{{total, number}} online",
-  "pairedList": "Paired device list",
+  "pairedList": "Saved device list",
   "manageDevices": "Manage devices",
   "stageDescription": "The bird is this device. The board on the left shows your clipboard. The mailbox on the right shows activity and paired devices.",
   "motionPreview": "Motion preview",
@@ -67,5 +67,6 @@
   "motion_paused": "Pause",
   "motion_offline": "Offline",
   "motion_resume": "Resume",
-  "motionInspect": "Inspect pose"
+  "motionInspect": "Inspect pose",
+  "noneConnected": "No devices connected"
 }

@@ -997,15 +997,20 @@
       "type": "object",
       "required": [
         "accepting",
+        "connectionState",
         "deviceName",
         "fingerprint",
         "noobId",
         "online",
+        "paused",
         "settings"
       ],
       "properties": {
         "accepting": {
           "type": "boolean"
+        },
+        "connectionState": {
+          "$ref": "#/definitions/PeerConnectionState"
         },
         "deviceName": {
           "type": "string"
@@ -1019,10 +1024,29 @@
         "online": {
           "type": "boolean"
         },
+        "paused": {
+          "type": "boolean"
+        },
         "settings": {
           "$ref": "#/definitions/PeerSettings"
+        },
+        "unpairedNotice": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
+    },
+    "PeerConnectionState": {
+      "type": "string",
+      "enum": [
+        "connected",
+        "paused",
+        "offline",
+        "unconnected",
+        "unpaired"
+      ]
     },
     "PeerPatch": {
       "type": "object",

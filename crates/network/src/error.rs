@@ -8,6 +8,7 @@ pub enum ErrorKind {
     Stopped,
     NotFound,
     Identity,
+    Unpaired,
     Credentials,
     Protocol,
     Unavailable,
@@ -59,6 +60,8 @@ pub(crate) enum Failure {
     Tls(#[from] rustls::Error),
     #[error("invalid identity")]
     Identity,
+    #[error("peer no longer authorizes this device")]
+    Unpaired,
     #[error("credential operation failed")]
     Credentials,
     #[error("invalid protocol")]
@@ -91,6 +94,7 @@ impl Failure {
         match self {
             Self::Io(_) | Self::Disconnected => ErrorKind::Unavailable,
             Self::Tls(_) | Self::Identity => ErrorKind::Identity,
+            Self::Unpaired => ErrorKind::Unpaired,
             Self::Credentials => ErrorKind::Credentials,
             Self::Protocol => ErrorKind::Protocol,
             Self::Timeout => ErrorKind::Timeout,

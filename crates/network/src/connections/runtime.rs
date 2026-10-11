@@ -10,6 +10,7 @@ use crate::{
     error::{Failure, InternalResult as Result},
     identity::{TrustedPeer, material::Identity},
     options::Options,
+    pairing::PairingId,
     transfer::protocol::{Message, MessageId},
 };
 use std::{
@@ -27,10 +28,18 @@ use tokio::{
 pub(crate) enum Request {
     Trust {
         peer: TrustedPeer,
+        pairing: Option<PairingId>,
         reply: oneshot::Sender<Result<()>>,
+    },
+    FinishPairing {
+        id: PairingId,
     },
     Revoke {
         peer: String,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    Pause {
+        paused: bool,
         reply: oneshot::Sender<Result<()>>,
     },
     Enable {
@@ -90,6 +99,7 @@ pub(super) enum SessionEvent {
 }
 struct Slot {
     generation: u64,
+    paused: bool,
     outbox: Outbox,
 }
 enum Completion {
@@ -99,11 +109,13 @@ enum Completion {
         result: Result<Connection>,
     },
     Candidate {
+        revision: u64,
         connection: Connection,
     },
     Session {
         peer: String,
         generation: u64,
+        unpaired: bool,
     },
 }
 pub(crate) struct Runtime {
@@ -118,12 +130,16 @@ pub(crate) struct Runtime {
     stop: watch::Receiver<bool>,
     peers: BTreeMap<String, TrustedPeer>,
     disabled: HashSet<String>,
+    pairing: BTreeMap<String, PairingId>,
     active: BTreeMap<String, Slot>,
     pending: HashSet<String>,
     next_address: BTreeMap<String, usize>,
+    unpaired: BTreeMap<String, u64>,
+    discovered: HashSet<String>,
+    paused: bool,
     revision: u64,
     generation: u64,
-    tls: Option<TlsConfig>,
+    tls: TlsConfig,
 }
 impl Runtime {
     pub async fn bind(
@@ -161,9 +177,13 @@ impl Runtime {
             stop,
             peers,
             disabled: HashSet::new(),
+            pairing: BTreeMap::new(),
             active: BTreeMap::new(),
             pending: HashSet::new(),
             next_address: BTreeMap::new(),
+            unpaired: BTreeMap::new(),
+            discovered: HashSet::new(),
+            paused: false,
             revision: 0,
             generation: 0,
             tls,
@@ -189,6 +209,8 @@ impl Runtime {
                     device_name: peer.identity.device_name.clone(),
                     connected: self.active.contains_key(id),
                     accepting: false,
+                    paused: self.active.get(id).is_some_and(|s| s.paused),
+                    unpaired_notice: self.unpaired.get(id).copied(),
                     generation: self.active.get(id).map_or(0, |s| s.generation),
                 })
                 .collect(),
@@ -205,7 +227,11 @@ impl Runtime {
     }
     fn request(&mut self, request: Request) {
         match request {
-            Request::Trust { peer, reply } => {
+            Request::Trust {
+                peer,
+                pairing,
+                reply,
+            } => {
                 if reply.is_closed() {
                     return;
                 }
@@ -221,16 +247,27 @@ impl Runtime {
                     let changed_identity = self.peers.get(&id).is_some_and(|old| {
                         old.identity.certificate != peers[&id].identity.certificate
                     });
-                    if changed_identity {
+                    if changed_identity || pairing.is_some() {
                         self.disconnect(&id);
                     }
                     self.peers = peers;
                     self.tls = tls;
                     self.revision = self.revision.checked_add(1).ok_or(Failure::Internal)?;
                     self.disabled.remove(&id);
+                    self.unpaired.remove(&id);
+                    if let Some(pairing) = pairing {
+                        self.pairing.insert(id, pairing);
+                    }
                     Ok(())
                 })();
                 let _ = reply.send(result);
+            }
+            Request::FinishPairing { id } => {
+                let previous = self.pairing.len();
+                self.pairing.retain(|_, session| session != &id);
+                if self.pairing.len() != previous {
+                    self.revision = self.revision.wrapping_add(1);
+                }
             }
             Request::Revoke { peer, reply } => {
                 if reply.is_closed() {
@@ -239,14 +276,33 @@ impl Runtime {
                 let mut peers = self.peers.clone();
                 peers.remove(&peer);
                 let result = make_tls(&self.identity, &peers).map(|tls| {
-                    self.disconnect(&peer);
+                    if let Some(slot) = self.active.remove(&peer) {
+                        slot.outbox.revoke();
+                        let _ = self.events.try_send(Event::Offline {
+                            peer: peer.clone(),
+                            generation: slot.generation,
+                        });
+                    }
                     self.disabled.remove(&peer);
                     self.next_address.remove(&peer);
+                    self.unpaired.remove(&peer);
+                    self.pairing.remove(&peer);
                     self.peers = peers;
                     self.tls = tls;
                     self.revision = self.revision.wrapping_add(1);
                 });
                 let _ = reply.send(result);
+            }
+            Request::Pause { paused, reply } => {
+                if !reply.is_closed() && self.paused != paused {
+                    self.paused = paused;
+                    for slot in self.active.values() {
+                        if slot.outbox.control(Message::Paused { paused }).is_err() {
+                            slot.outbox.close();
+                        }
+                    }
+                }
+                let _ = reply.send(Ok(()));
             }
             Request::Enable {
                 peer,
@@ -272,9 +328,33 @@ impl Runtime {
         }
         self.publish();
     }
+    fn mark_unpaired(&mut self, id: &str) -> Result<()> {
+        if !self.peers.contains_key(id)
+            || self.unpaired.contains_key(id)
+            || self.pairing.contains_key(id)
+        {
+            return Ok(());
+        }
+        self.generation = self.generation.checked_add(1).ok_or(Failure::Internal)?;
+        self.unpaired.insert(id.to_owned(), self.generation);
+        self.disconnect(id);
+        self.publish();
+        Ok(())
+    }
+    fn refresh_discovery(&mut self, devices: &[NearbyDevice]) {
+        let discovered: HashSet<_> = devices.iter().map(|h| h.noob_id.clone()).collect();
+        // A new appearance starts a fresh status check. Receipt state is not persisted.
+        for id in discovered.difference(&self.discovered) {
+            self.unpaired.remove(id);
+        }
+        self.discovered = discovered;
+        self.publish();
+    }
     fn dial(&mut self, tasks: &mut JoinSet<Completion>) {
         for (id, peer) in &self.peers {
             if self.disabled.contains(id)
+                || self.pairing.contains_key(id)
+                || self.unpaired.contains_key(id)
                 || self.active.contains_key(id)
                 || self.pending.contains(id)
                 || tasks.len() >= 96
@@ -296,9 +376,7 @@ impl Runtime {
             if addresses.is_empty() {
                 continue;
             }
-            let Some(tls) = self.tls.clone() else {
-                continue;
-            };
+            let tls = self.tls.clone();
             let addresses =
                 dial::order(self.next_address.entry(id.clone()).or_default(), addresses);
             let id = id.clone();
@@ -334,6 +412,8 @@ impl Runtime {
             return Ok(());
         };
         if self.disabled.contains(&peer)
+            || self.pairing.contains_key(&peer)
+            || self.unpaired.contains_key(&peer)
             || record.identity.fingerprint != connection.peer_fingerprint()
         {
             return Ok(());
@@ -345,6 +425,9 @@ impl Runtime {
         self.generation = self.generation.checked_add(1).ok_or(Failure::Internal)?;
         let generation = self.generation;
         let outbox = Outbox::new();
+        outbox.control(Message::Paused {
+            paused: self.paused,
+        })?;
         outbox.control(Message::Device {
             device_name: self.name.clone(),
         })?;
@@ -364,18 +447,24 @@ impl Runtime {
             peer.clone(),
             Slot {
                 generation,
+                paused: false,
                 outbox: outbox.clone(),
             },
         );
         let events = session_events.clone();
         tasks.spawn(async move {
-            session::run(connection, outbox, peer.clone(), generation, events).await;
-            Completion::Session { peer, generation }
+            let result = session::run(connection, outbox, peer.clone(), generation, events).await;
+            Completion::Session {
+                peer,
+                generation,
+                unpaired: matches!(result, Err(Failure::Unpaired)),
+            }
         });
         self.publish();
         Ok(())
     }
     pub async fn run(mut self) -> Result<()> {
+        let mut hints = self.hints.clone();
         let mut tasks = JoinSet::new();
         let (session_events, mut incoming) = mpsc::channel(64);
         let mut retry = tokio::time::interval(Duration::from_secs(1));
@@ -397,6 +486,10 @@ impl Runtime {
                                 if let Some(id) = &expected {
                                     self.pending.remove(id);
                                 }
+                                if revision == self.revision && matches!(result, Err(Failure::Unpaired))
+                                    && let Some(id) = &expected {
+                                    self.mark_unpaired(id)?;
+                                }
                                 if revision == self.revision && let Ok(connection) = result {
                                     let preferred = expected.is_some() == (self.own_id.as_str() < connection.peer_id());
                                     if preferred {
@@ -406,17 +499,22 @@ impl Runtime {
                                         // Never replace a session already exposed to transfers.
                                         tasks.spawn(async move {
                                             tokio::time::sleep(Duration::from_millis(200)).await;
-                                            Completion::Candidate { connection }
+                                            Completion::Candidate { connection, revision }
                                         });
                                     }
                                 }
                             }
-                            Completion::Candidate { connection } => {
-                                self.connected(connection, &mut tasks, &session_events)?;
+                            Completion::Candidate { connection, revision } => {
+                                if revision == self.revision {
+                                    self.connected(connection, &mut tasks, &session_events)?;
+                                }
                             }
-                            Completion::Session { peer, generation } => {
+                            Completion::Session { peer, generation, unpaired } => {
                                 if self.active.get(&peer).is_some_and(|s| s.generation == generation) {
                                     self.disconnect(&peer);
+                                    if unpaired {
+                                        self.mark_unpaired(&peer)?;
+                                    }
                                     self.publish();
                                 }
                             }
@@ -433,6 +531,12 @@ impl Runtime {
                         }
                         let event = match event {
                             SessionEvent::Message { peer, generation, message } => {
+                                if let Message::Paused { paused } = &message {
+                                    if let Some(slot) = self.active.get_mut(&peer) {
+                                        slot.paused = *paused;
+                                    }
+                                    self.publish();
+                                }
                                 if let Message::Device { device_name } = &message
                                     && let Some(record) = self.peers.get_mut(&peer) {
                                     record.identity.device_name.clone_from(device_name);
@@ -450,7 +554,8 @@ impl Runtime {
                     },
                     accepted = self.listener.accept() => {
                         let (stream, _) = accepted?;
-                        if let Some(tls) = self.tls.clone().filter(|_| tasks.len() < 96) {
+                        if tasks.len() < 96 {
+                            let tls = self.tls.clone();
                             let revision = self.revision;
                             let stop = self.stop.clone();
                             tasks.spawn(async move {
@@ -461,6 +566,10 @@ impl Runtime {
                                 }
                             });
                         }
+                    },
+                    _ = hints.changed() => {
+                        self.refresh_discovery(&hints.borrow_and_update());
+                        self.dial(&mut tasks);
                     },
                     _ = retry.tick() => self.dial(&mut tasks),
                 }
@@ -478,22 +587,14 @@ impl Runtime {
         result
     }
 }
-fn make_tls(
-    identity: &Identity,
-    peers: &BTreeMap<String, TrustedPeer>,
-) -> Result<Option<TlsConfig>> {
-    if peers.is_empty() {
-        Ok(None)
-    } else {
-        TlsConfig::with_peers(
-            identity,
-            &peers
-                .values()
-                .map(|p| p.identity.certificate.clone())
-                .collect::<Vec<_>>(),
-        )
-        .map(Some)
-    }
+fn make_tls(identity: &Identity, peers: &BTreeMap<String, TrustedPeer>) -> Result<TlsConfig> {
+    TlsConfig::with_peers(
+        identity,
+        &peers
+            .values()
+            .map(|p| p.identity.certificate.clone())
+            .collect::<Vec<_>>(),
+    )
 }
 
 async fn interruptible<T>(
@@ -508,3 +609,7 @@ async fn interruptible<T>(
         result = work => result,
     }
 }
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;

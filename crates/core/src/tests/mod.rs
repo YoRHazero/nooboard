@@ -141,8 +141,11 @@ fn fixture(app: &App) -> PeerFixture {
 }
 pub(crate) async fn pair(a: &App, b: &App) {
     let (aid, bid) = (a.status().noob_id, b.status().noob_id);
-    a.trust_peer(fixture(b)).await.unwrap();
+    let mut passive = fixture(b);
+    passive.address = None;
+    a.trust_peer(passive).await.unwrap();
     b.trust_peer(fixture(a)).await.unwrap();
+    a.trust_peer(fixture(b)).await.unwrap();
     a.select_targets(vec![bid.clone()]).await.unwrap();
     b.select_targets(vec![aid.clone()]).await.unwrap();
     wait(a, |s| {

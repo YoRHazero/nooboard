@@ -21,7 +21,7 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const READ_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Only explicitly confirmed certificates may establish business connections.
-/// All chain and CertificateVerify checks use rustls' built-in WebPKI verifiers.
+/// Other clients may authenticate their key solely to learn they are unpaired.
 #[derive(Clone)]
 pub struct TlsConfig {
     client: Arc<ClientConfig>,
@@ -50,17 +50,11 @@ impl TlsConfig {
             .with_protocol_versions(&[&rustls::version::TLS13])?
             .with_root_certificates(roots.clone())
             .with_client_auth_cert(vec![identity.cert.clone()], identity.key.clone_key())?;
-        let verifier = rustls::server::WebPkiClientVerifier::builder_with_provider(
-            Arc::new(roots),
-            provider.clone(),
-        )
-        .build()
-        .map_err(|_| Error::Identity)?;
         let mut server = ServerConfig::builder_with_provider(provider)
             .with_protocol_versions(&[&rustls::version::TLS13])?
-            .with_client_cert_verifier(verifier)
+            .with_client_cert_verifier(Arc::new(super::client_identity::ClientIdentity))
             .with_single_cert(vec![identity.cert.clone()], identity.key.clone_key())?;
-        client.alpn_protocols = vec![b"nooboard/3".to_vec()];
+        client.alpn_protocols = vec![b"nooboard/4".to_vec()];
         server.alpn_protocols = client.alpn_protocols.clone();
         // Sessions are always freshly authenticated; unpairing cannot leave resumed sessions.
         client.resumption = rustls::client::Resumption::disabled();
@@ -90,7 +84,9 @@ impl TlsConfig {
             let tls = TlsConnector::from(self.client.clone())
                 .connect(name, tcp)
                 .await?;
-            let connection = self.finish(TlsStream::Client(tls)).await?;
+            let connection = self
+                .finish(TlsStream::Client(tls), Some(expected_id))
+                .await?;
             if connection.peer_id != expected_id {
                 return Err(Error::Identity);
             }
@@ -103,24 +99,42 @@ impl TlsConfig {
         tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
             tcp.set_nodelay(true)?;
             let tls = TlsAcceptor::from(self.server.clone()).accept(tcp).await?;
-            self.finish(TlsStream::Server(tls)).await
+            self.finish(TlsStream::Server(tls), None).await
         })
         .await
         .map_err(|_| Error::Timeout)?
     }
-    async fn finish(&self, mut stream: TlsStream<TcpStream>) -> Result<Connection> {
+    async fn finish(
+        &self,
+        mut stream: TlsStream<TcpStream>,
+        expected: Option<&str>,
+    ) -> Result<Connection> {
         let state = stream.get_ref().1;
         let certificate = state
             .peer_certificates()
             .and_then(|c| c.first())
             .ok_or(Error::Identity)?;
         let peer_id = crate::identity::material::noob_id(certificate)?;
-        if state.alpn_protocol() != Some(b"nooboard/3".as_slice())
-            || self.peers.get(&peer_id).map(Vec::as_slice) != Some(certificate.as_ref())
-        {
+        if state.alpn_protocol() != Some(b"nooboard/4".as_slice()) {
+            return Err(Error::Identity);
+        }
+        let trusted = self.peers.get(&peer_id).map(Vec::as_slice) == Some(certificate.as_ref());
+        // Validate the specific pinned server BEFORE interpreting any status reply.
+        if expected.is_some_and(|id| id != peer_id || !trusted) {
             return Err(Error::Identity);
         }
         let peer_fingerprint = crate::identity::material::fingerprint(certificate);
+        if !trusted {
+            if protocol::read_handshake(&mut stream).await?
+                != (Message::Hello {
+                    version: PROTOCOL_VERSION,
+                })
+            {
+                return Err(Error::Protocol);
+            }
+            protocol::write(&mut stream, &Message::Unpaired).await?;
+            return Err(Error::Unpaired);
+        }
         protocol::write(
             &mut stream,
             &Message::Hello {
@@ -128,12 +142,10 @@ impl TlsConfig {
             },
         )
         .await?;
-        if protocol::read(&mut stream).await?
-            != (Message::Hello {
-                version: PROTOCOL_VERSION,
-            })
-        {
-            return Err(Error::Protocol);
+        match protocol::read_handshake(&mut stream).await? {
+            Message::Hello { version } if version == PROTOCOL_VERSION => {}
+            Message::Unpaired => return Err(Error::Unpaired),
+            _ => return Err(Error::Protocol),
         }
         let (reader, writer) = tokio::io::split(stream);
         let (sender, incoming) = mpsc::channel(16);

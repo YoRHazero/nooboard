@@ -15,14 +15,43 @@ export function shortNoobId(
   return id.slice(0, length);
 }
 export function canSend(peer: Peer) {
-  return peer.online && peer.accepting;
+  return peer.online && peer.accepting && peer.connectionState === 'connected';
 }
-export function peerState(peer: Peer) {
-  if (!peer.online)
-    return { label: t('common:offline'), detail: t('common:waitingConnection'), tone: 'quiet' };
-  if (!peer.accepting)
-    return { label: t('common:connected'), detail: t('common:peerPaused'), tone: 'limited' };
-  return { label: t('common:connected'), detail: t('common:peerAccepting'), tone: 'online' };
+export function peerState(peer: Peer, localPaused = false) {
+  switch (peer.connectionState) {
+    case 'unpaired':
+      return {
+        label: t('devices:unpairedState'),
+        detail: t('devices:pairAgainHelp'),
+        tone: 'limited',
+      };
+    case 'unconnected':
+      return {
+        label: t('devices:unconnected'),
+        detail: t('devices:autoConnecting'),
+        tone: 'quiet',
+      };
+    case 'offline':
+      return { label: t('common:offline'), detail: t('devices:waitingDiscovery'), tone: 'quiet' };
+    case 'paused':
+      return {
+        label: t('devices:pausedState'),
+        detail: t(
+          localPaused
+            ? peer.paused
+              ? 'devices:bothPaused'
+              : 'devices:localPaused'
+            : 'devices:remotePaused',
+        ),
+        tone: 'limited',
+      };
+    case 'connected':
+      return {
+        label: t('common:connected'),
+        detail: peer.accepting ? t('common:peerAccepting') : t('devices:notReceiving'),
+        tone: peer.accepting ? 'online' : 'limited',
+      };
+  }
 }
 export function validAddress(address: string) {
   const match = address.match(/^(\[[\da-fA-F:]+\]|[a-zA-Z\d.-]+):(\d{1,5})$/);

@@ -114,6 +114,14 @@ pub(crate) fn assemble(
                 settings: p.settings.clone(),
                 online: live.is_some_and(|v| v.connected),
                 accepting: live.is_some_and(|v| v.accepting),
+                connection_state: peer_connection_state(
+                    live.is_some_and(|v| v.connected),
+                    c.settings.paused || live.is_some_and(|v| v.paused),
+                    n.nearby.iter().any(|v| &v.noob_id == id),
+                    live.is_some_and(|v| v.unpaired_notice.is_some()),
+                ),
+                paused: live.is_some_and(|v| v.paused),
+                unpaired_notice: live.and_then(|v| v.unpaired_notice),
             }
         })
         .collect();
@@ -167,5 +175,65 @@ fn transfer_failure(error: nooboard_network::ErrorKind) -> TransferFailure {
         ErrorKind::Cancelled => TransferFailure::Cancelled,
         ErrorKind::InvalidInput => TransferFailure::Unsupported,
         _ => TransferFailure::Protocol,
+    }
+}
+
+fn peer_connection_state(
+    connected: bool,
+    paused: bool,
+    discovered: bool,
+    unpaired: bool,
+) -> PeerConnectionState {
+    if connected {
+        if paused {
+            PeerConnectionState::Paused
+        } else {
+            PeerConnectionState::Connected
+        }
+    } else if !discovered {
+        PeerConnectionState::Offline
+    } else if unpaired {
+        PeerConnectionState::Unpaired
+    } else {
+        PeerConnectionState::Unconnected
+    }
+}
+
+#[cfg(test)]
+mod peer_state_tests {
+    use super::*;
+    #[test]
+    fn discovery_and_pause_do_not_override_a_live_connection_or_hide_disconnection() {
+        assert_eq!(
+            peer_connection_state(true, false, false, false),
+            PeerConnectionState::Connected
+        );
+        assert_eq!(
+            peer_connection_state(true, true, false, false),
+            PeerConnectionState::Paused
+        );
+        assert_eq!(
+            peer_connection_state(false, true, false, false),
+            PeerConnectionState::Offline
+        );
+        assert_eq!(
+            peer_connection_state(false, true, true, false),
+            PeerConnectionState::Unconnected
+        );
+    }
+    #[test]
+    fn unpaired_devices_become_offline_when_discovery_disappears() {
+        assert_eq!(
+            peer_connection_state(false, false, true, true),
+            PeerConnectionState::Unpaired
+        );
+        assert_eq!(
+            peer_connection_state(false, false, false, true),
+            PeerConnectionState::Offline
+        );
+        assert_eq!(
+            peer_connection_state(false, false, true, false),
+            PeerConnectionState::Unconnected
+        );
     }
 }

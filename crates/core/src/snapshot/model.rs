@@ -9,6 +9,15 @@ pub enum AppState {
     Stopped,
     Failed,
 }
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum PeerConnectionState {
+    Connected,
+    Paused,
+    Offline,
+    Unconnected,
+    Unpaired,
+}
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PeerStatus {
     pub noob_id: String,
@@ -17,6 +26,10 @@ pub struct PeerStatus {
     pub settings: PeerSettings,
     pub online: bool,
     pub accepting: bool,
+    pub connection_state: PeerConnectionState,
+    /// Whether the remote device has paused synchronization.
+    pub paused: bool,
+    pub unpaired_notice: Option<u64>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Status {

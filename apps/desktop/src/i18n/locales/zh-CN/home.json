@@ -18,8 +18,8 @@
   "localControls": "本机 · 快捷控制",
   "birdLabel": "肥啾：本机快捷控制",
   "mailbox": "信箱",
-  "mailboxHint": "活动 · 已配对设备",
-  "mailboxLabel": "信箱：活动与已配对设备",
+  "mailboxHint": "活动 · 已保存设备",
+  "mailboxLabel": "信箱：活动与已保存设备",
   "stageLabel": "可交互的肥啾舞台",
   "syncControls": "同步方式",
   "sendMode": "文字发送方式",
@@ -48,7 +48,7 @@
   "batchCount_one": "本批 {{count, number}} 条活动",
   "batchCount_other": "本批 {{count, number}} 条活动",
   "onlineCount": "{{online, number}}/{{total, number}} 台在线",
-  "pairedList": "已配对设备列表",
+  "pairedList": "已保存设备列表",
   "manageDevices": "管理设备",
   "stageDescription": "肥啾代表本机，左侧木板是当前剪贴板，右侧信箱查看活动与已配对设备。",
   "motionPreview": "动作预览",
@@ -67,5 +67,6 @@
   "motion_paused": "暂停休息",
   "motion_offline": "离线等待",
   "motion_resume": "恢复唤醒",
-  "motionInspect": "停帧检查"
+  "motionInspect": "停帧检查",
+  "noneConnected": "设备尚未连接"
 }

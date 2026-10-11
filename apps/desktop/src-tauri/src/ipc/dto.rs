@@ -165,6 +165,26 @@ pub struct PeerPatch {
 }
 #[derive(Clone, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
+pub enum PeerConnectionState {
+    Connected,
+    Paused,
+    Offline,
+    Unconnected,
+    Unpaired,
+}
+impl From<nooboard_core::PeerConnectionState> for PeerConnectionState {
+    fn from(value: nooboard_core::PeerConnectionState) -> Self {
+        match value {
+            nooboard_core::PeerConnectionState::Connected => Self::Connected,
+            nooboard_core::PeerConnectionState::Paused => Self::Paused,
+            nooboard_core::PeerConnectionState::Offline => Self::Offline,
+            nooboard_core::PeerConnectionState::Unconnected => Self::Unconnected,
+            nooboard_core::PeerConnectionState::Unpaired => Self::Unpaired,
+        }
+    }
+}
+#[derive(Clone, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct Peer {
     pub noob_id: String,
     pub device_name: String,
@@ -172,6 +192,9 @@ pub struct Peer {
     pub settings: PeerSettings,
     pub online: bool,
     pub accepting: bool,
+    pub connection_state: PeerConnectionState,
+    pub paused: bool,
+    pub unpaired_notice: Option<String>,
 }
 #[derive(Clone, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

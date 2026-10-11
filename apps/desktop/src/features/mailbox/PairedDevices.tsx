@@ -1,6 +1,6 @@
 import { useI18n } from '../../i18n/react';
 import { ArrowUpRight } from 'lucide-react';
-import type { Peer } from '../../desktop/api';
+import { useSnapshot, type Peer } from '../../desktop/api';
 import { peerState } from '../../features/devices/selectors';
 import { DeviceIcon, DeviceName } from '../devices/DeviceName';
 export function PairedDevices({
@@ -11,6 +11,7 @@ export function PairedDevices({
   onManage: () => void;
 }) {
   const { t } = useI18n();
+  const { settings } = useSnapshot();
   return (
     <section className="mailbox-devices" aria-label={t('devices:pairedDevices')}>
       <header className="mailbox-section-heading">
@@ -25,7 +26,7 @@ export function PairedDevices({
       {devices.length ? (
         <ul className="mailbox-device-list" tabIndex={0} aria-label={t('home:pairedList')}>
           {devices.map((peer) => {
-            const status = peerState(peer);
+            const status = peerState(peer, settings.paused);
             return (
               <li key={peer.noobId} className="mailbox-device">
                 <span
@@ -38,11 +39,7 @@ export function PairedDevices({
                 <DeviceName device={peer} identities={devices} />
                 <span className={`home-status is-${status.tone}`} title={status.detail}>
                   <i />
-                  {peer.online
-                    ? peer.accepting
-                      ? t('common:online')
-                      : t('common:receivingPaused')
-                    : t('common:offline')}
+                  {status.label}
                 </span>
               </li>
             );

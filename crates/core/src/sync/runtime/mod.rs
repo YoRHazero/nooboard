@@ -241,6 +241,7 @@ impl Runtime {
     }
     async fn reconcile(&mut self) -> Result<()> {
         let config = self.refresh_routes().await?;
+        self.network.set_paused(config.settings.paused).await?;
         if self.accepting != config.settings.accepting() {
             self.network
                 .set_accepting(config.settings.accepting())

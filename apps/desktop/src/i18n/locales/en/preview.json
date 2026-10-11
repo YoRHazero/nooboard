@@ -17,5 +17,6 @@
   "reset": "Reset",
   "demoCode": "Demo code: 48217396 · ",
   "birdMotion": "Inspect animations",
-  "originalStage": "Live stage"
+  "originalStage": "Live stage",
+  "connectionScenario": "Simulated device state"
 }

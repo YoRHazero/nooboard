@@ -208,3 +208,59 @@ async fn real_pairing_persists_verified_identity_and_dismiss_does_not_revoke_suc
     sa.shutdown().await.unwrap();
     sb.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn pause_state_is_shared_while_connections_remain_available_for_unpairing() {
+    let (sa, a) = start(&Clipboard::new()).await;
+    let (sb, b) = start(&Clipboard::new()).await;
+    pair(&a, &b).await;
+    a.set_settings(Settings {
+        paused: true,
+        ..a.status().settings
+    })
+    .await
+    .unwrap();
+    wait(&a, |s| {
+        s.status.peers[0].connection_state == PeerConnectionState::Paused
+    })
+    .await;
+    wait(&b, |s| {
+        s.status.peers[0].connection_state == PeerConnectionState::Paused
+            && !s.status.peers[0].accepting
+    })
+    .await;
+    assert!(a.status().peers[0].online && b.status().peers[0].online);
+    assert!(!a.status().peers[0].paused);
+    assert!(b.status().peers[0].paused);
+    b.set_settings(Settings {
+        paused: true,
+        ..b.status().settings
+    })
+    .await
+    .unwrap();
+    wait(&a, |s| s.status.peers[0].paused).await;
+    a.set_settings(Settings {
+        paused: false,
+        ..a.status().settings
+    })
+    .await
+    .unwrap();
+    wait(&b, |s| !s.status.peers[0].paused).await;
+    assert_eq!(
+        a.status().peers[0].connection_state,
+        PeerConnectionState::Paused
+    );
+    a.unpair(b.status().noob_id).await.unwrap();
+    wait(&b, |s| s.status.peers[0].unpaired_notice.is_some()).await;
+    assert!(a.status().peers.is_empty());
+    // Discovery is disabled in this fixture: keep the receipt, but display offline.
+    assert_eq!(
+        b.status().peers[0].connection_state,
+        PeerConnectionState::Offline
+    );
+    assert!(!b.status().peers[0].online);
+    b.unpair(a.status().noob_id).await.unwrap();
+    wait(&b, |s| s.status.peers.is_empty()).await;
+    sa.shutdown().await.unwrap();
+    sb.shutdown().await.unwrap();
+}

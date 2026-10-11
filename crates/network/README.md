@@ -56,7 +56,7 @@ src/
 │   └── transport/          # 私有 TLS 1.3 传输及认证测试
 └── transfer/
     ├── model.rs            # 发送请求、内容、操作 ID、结果
-    ├── protocol.rs         # 私有 v3 报文、帧边界和校验
+    ├── protocol.rs         # 私有 v4 报文、帧边界和校验
     ├── runtime/
     │   ├── mod.rs          # 状态所有者与任务生命周期
     │   ├── dispatch.rs     # API 请求和连接事件入口
@@ -99,6 +99,12 @@ src/
 3. 验证成功后收到 `PairingVerified { peer, .. }`。这是公开证书、设备 ID 和地址组成的记录，可以序列化为文本。
 4. 调用者保存该记录，再调用 `complete_pairing(id, true)`；保存失败则传 `false`。只有确认保存后，network 才激活本端信任。
 5. 重启时通过 `Options.trusted_peers` 恢复记录。`trust_peer` 也可安装调用者已保存并授权的记录。`revoke_peer` 立即撤销运行时信任；调用者同时负责删除持久化记录。
+
+配对保存后会暂缓建立业务连接，直到本次配对流程结束，避免另一端尚在保存时被误判为解除配对。在线撤销会丢弃排队内容，并尽力在当前认证连接上发送 `Unpaired`；断线或离线撤销后，对方再次连接时也能得到回执。即使最后一个可信设备已删除，监听器仍保留此状态回复能力。
+
+TLS 先验证客户端持有其证书对应的私钥，业务连接再检查已保存的完整证书。未授权客户端只能得到未配对回复，无法传输内容；客户端只接受预期设备的已固定证书所签署的 TLS 会话中的回复。收到回执后，`ConnectionStatus.unpaired_notice` 携带当前运行期的通知编号并停止重试，记录本身由调用者决定保留或删除。重复发现广播不会清除回执；设备消失后再次出现、重新配对或服务重启会允许重新核对。
+
+`set_paused` 单独传递本机的同步暂停标记，`ConnectionStatus.paused` 表示对方的暂停标记，与 `accepting` 分开。调用者仍负责发送策略和接收开关。协议已升级到 v4（ALPN `nooboard/4`），两端必须使用支持该版本的应用。
 
 已结束的配对无法取消，接口返回 `NotFound` 并保持原来的完成状态或失败原因。
 
@@ -200,4 +206,4 @@ mDNS 需要支持组播回环的环境，单独执行：
 cargo test -p nooboard-network --locked mdns_discovers_updates_and_withdraws_a_peer_without_trusting_it -- --ignored
 ```
 
-系统凭据弹窗、Linux Secret Service 会话以及跨机 LAN/VPN 需在对应环境验收。连接使用 TLS/PAKE 和 v3 内容传输协议；core 持有服务所有者、请求句柄和独占事件接收端。全工作区检查与隔离测试入口见 [测试与实机验收](../../docs/testing.md)。
+系统凭据弹窗、Linux Secret Service 会话以及跨机 LAN/VPN 需在对应环境验收。连接使用 TLS/PAKE 和 v4 内容传输协议；core 持有服务所有者、请求句柄和独占事件接收端。全工作区检查与隔离测试入口见 [测试与实机验收](../../docs/testing.md)。

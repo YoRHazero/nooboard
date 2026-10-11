@@ -16,7 +16,7 @@ pub use crate::{
     options::Options,
     snapshot::model::{
         ActivityKind, ActivityRecord, AppSnapshot, AppState, ClipboardKind, CurrentClipboard,
-        Event, Fault, PeerStatus, Status,
+        Event, Fault, PeerConnectionState, PeerStatus, Status,
     },
     sync::model::{
         ContentStage, ContentTransfer, Delivery, DeliveryState, Transfer, TransferFailure,
