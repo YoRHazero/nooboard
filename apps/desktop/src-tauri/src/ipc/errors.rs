@@ -19,6 +19,7 @@ pub fn ui(code: &'static str) -> UiError {
 pub fn core(error: nooboard_core::Error) -> UiError {
     use nooboard_core::Error;
     ui(match error {
+        Error::Ssh(error) => return ssh(error),
         Error::Network(_) => "network",
         Error::Storage(_) => "storage",
         Error::Clipboard(_) => "clipboard",
@@ -59,6 +60,40 @@ pub fn pairing(error: &PairingFailure) -> UiError {
         },
     };
     ui(code)
+}
+
+pub fn ssh(error: nooboard_core::SshError) -> UiError {
+    use nooboard_core::SshError as E;
+    ui(match error {
+        E::Authentication => "sshAuthentication",
+        E::HostKeyChanged => "sshHostKeyChanged",
+        E::HostKeyRejected => "sshHostKeyRejected",
+        E::Timeout => "sshTimeout",
+        E::Connection(_) => "sshConnection",
+        E::SftpUnavailable => "sshSftpUnavailable",
+        E::InvalidPath => "sshInvalidPath",
+        E::NotFound => "sshNotFound",
+        E::NotDirectory => "sshNotDirectory",
+        E::NotFile => "sshNotFile",
+        E::PermissionDenied => "sshPermission",
+        E::StaleCursor => "sshStaleCursor",
+        E::Credentials => "sshCredentials",
+        E::Unconfirmed => "sshUnconfirmed",
+        E::SourceChanged => "sshSourceChanged",
+        E::Io(_) | E::Protocol(_) => "sshIo",
+        E::Busy | E::Limit => "busy",
+        E::Cancelled => "sshCancelled",
+        E::Stopped => "stopped",
+        E::Internal => "serviceFault",
+    })
+}
+
+pub fn remote(error: nooboard_core::Error) -> UiError {
+    match error {
+        nooboard_core::Error::NotFound => ui("sshCancelled"),
+        nooboard_core::Error::Offline => ui("sshConnection"),
+        other => core(other),
+    }
 }
 
 #[cfg(test)]

@@ -129,7 +129,7 @@ async fn legacy_registry_migrates_public_trust_atomically_and_corrupt_documents_
     let config = crate::configuration::document::load(&storage, settings())
         .await
         .unwrap();
-    assert_eq!(config.version, 3);
+    assert_eq!(config.version, 4);
     assert_eq!(config.manual_targets, vec![peer.noob_id.clone()]);
     assert_eq!(
         config.peers[&peer.noob_id].trusted.identity.fingerprint,

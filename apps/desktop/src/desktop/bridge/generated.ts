@@ -49,7 +49,12 @@ export type ConfigurationStatus = {
   restartRequired: boolean;
   savedRevision: string;
 };
-export type Connection = { diagnostic: boolean; host: Snapshot; snapshot: BackendSnapshot };
+export type Connection = {
+  diagnostic: boolean;
+  host: Snapshot;
+  remote: RemoteSnapshot;
+  snapshot: BackendSnapshot;
+};
 export type ContentKind = 'Image' | 'Files';
 export type ContentStage =
   | 'Preparing'
@@ -95,6 +100,9 @@ export type DeliveryState =
   | 'QueueFull';
 export type Fault = { message: UiError; sequence: string };
 export type Frame =
+  | { data: RemoteSnapshot; type: 'remote' }
+  | { data: TerminalFrame; type: 'terminal' }
+  | { type: 'terminalReset' }
   | { data: BackendSnapshot; type: 'snapshot' }
   | { data: BackendSnapshot; type: 'recovered' }
   | { data: Snapshot; type: 'host' }
@@ -163,13 +171,130 @@ export type Peer = {
 export type PeerPatch = { address?: AddressChange | null; autoSend?: boolean | null };
 export type PeerSettings = { address?: string | null; autoSend: boolean };
 export type ProbeAction = 'copy' | 'receive';
+export type RemoteChallenge = {
+  address: string;
+  algorithm: string;
+  fingerprint: string;
+  id: string;
+  sessionId: string;
+};
+export type RemoteConnection = { error?: UiError | null; state: RemotePhase };
+export type RemoteDirection = 'Upload' | 'Download';
+export type RemoteDirectory = {
+  entries: Array<RemoteEntry>;
+  error?: UiError | null;
+  path: string;
+  state: RemoteDirectoryState;
+};
+export type RemoteDirectoryState = 'Loading' | 'Partial' | 'Complete' | 'Stale' | 'Error';
+export type RemoteEntry = {
+  kind: RemoteKind;
+  modified?: number | null;
+  name: string;
+  path: string;
+  size?: number | null;
+};
+export type RemoteFileTarget = { files: string; generation: string; workspace: string };
+export type RemoteKind = 'Directory' | 'File' | 'Symlink' | 'Other' | 'Unknown';
+export type RemotePhase = 'Connecting' | 'Ready' | 'Ended' | 'Failed' | 'Closed';
+export type RemoteProfile = {
+  deviceId: string;
+  id: string;
+  port: number;
+  remembered: boolean;
+  username: string;
+};
+export type RemoteReplay = { bytes: Array<number>; end: string; gap: boolean; start: string };
+export type RemoteReply =
+  | { type: 'done' }
+  | { data: { id: string }; type: 'connected' }
+  | { data: RemoteReplay; type: 'replay' };
+export type RemoteRequest =
+  | {
+      data: {
+        device: string;
+        password?: string | null;
+        port: number;
+        remember: boolean;
+        username: string;
+        workspace?: string | null;
+      };
+      type: 'connect';
+    }
+  | { data: { accept: boolean; id: string }; type: 'hostKey' }
+  | { data: { device: string; port: number }; type: 'forgetHostKey' }
+  | { data: { workspace: string }; type: 'close' }
+  | { data: { bytes: Array<number>; session: string; workspace: string }; type: 'input' }
+  | { data: { columns: number; rows: number; session: string; workspace: string }; type: 'resize' }
+  | { data: { after: string; session: string; workspace: string }; type: 'replay' }
+  | { data: { path: string; target: RemoteFileTarget }; type: 'navigate' }
+  | { data: { more: boolean; path: string; target: RemoteFileTarget }; type: 'list' }
+  | { data: { path: string; target: RemoteFileTarget }; type: 'collapse' }
+  | { data: { directory: string; target: RemoteFileTarget }; type: 'selectUpload' }
+  | { data: { directory: string; paths: Array<string>; target: RemoteFileTarget }; type: 'upload' }
+  | { data: { paths: Array<string>; target: RemoteFileTarget }; type: 'download' }
+  | { type: 'selectDownloadDirectory' }
+  | { data: { id: string }; type: 'cancel' }
+  | { data: { id: string }; type: 'retry' }
+  | { data: { id: string }; type: 'forgetTransfer' }
+  | { data: { id: string }; type: 'reveal' };
+export type RemoteSnapshot = {
+  challenges: Array<RemoteChallenge>;
+  downloadDirectory?: string | null;
+  profiles: Array<RemoteProfile>;
+  revision: string;
+  transfers: Array<RemoteTransfer>;
+  workspaces: Array<RemoteWorkspace>;
+};
+export type RemoteTransfer = {
+  destination: string;
+  deviceId: string;
+  direction: RemoteDirection;
+  error?: UiError | null;
+  id: string;
+  sessionId: string;
+  source: string;
+  state: RemoteTransferState;
+  target?: string | null;
+  temporaryPath?: string | null;
+  total?: number | null;
+  transferred: number;
+};
+export type RemoteTransferState =
+  | 'Queued'
+  | 'WaitingForConnection'
+  | 'Running'
+  | 'Finalizing'
+  | 'Succeeded'
+  | 'Failed'
+  | 'Cancelled'
+  | 'Unconfirmed';
+export type RemoteWorkspace = {
+  address?: string | null;
+  deviceId: string;
+  directories?: Array<RemoteDirectory> | null;
+  error?: UiError | null;
+  files: RemoteConnection;
+  filesId: string;
+  generation: string;
+  id: string;
+  initialDirectory?: string | null;
+  port: number;
+  profileId: string;
+  root?: string | null;
+  terminal: RemoteConnection;
+  terminalId: string;
+  username: string;
+};
 export type Reply =
+  | { data: RemoteReply; type: 'remote' }
   | { type: 'done' }
   | { data: MessageId; type: 'sent' }
   | { data: { revision: string }; type: 'saved' }
   | { data: HistoryPage; type: 'history' }
   | { data: Snapshot; type: 'host' };
 export type Request =
+  | { data: RemoteRequest; type: 'remote' }
   | { type: 'discover' }
   | { data: { address: string; expected?: string | null }; type: 'beginPairing' }
   | { data: { id: string }; type: 'acceptPairing' }
@@ -224,6 +349,7 @@ export type SyncSettingsPatch = {
   paused?: boolean | null;
   receive?: boolean | null;
 };
+export type TerminalFrame = { bytes: Array<number>; offset: string; sessionId: string };
 export type Transfer = {
   automatic: boolean;
   bytes: number;

@@ -1,4 +1,7 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import type { FileDrop } from '../remote/model';
 import { locale } from '@tauri-apps/plugin-os';
 import type { DesktopBridge, Session } from './port';
 import type { Connection, Frame, Request, Reply } from './generated';
@@ -28,6 +31,24 @@ export class TauriBridge implements DesktopBridge {
   }
   async setup() {
     return (await import('./menu')).initializeMenu();
+  }
+  async onFileDrop(listener: (event: FileDrop) => void) {
+    let paths: string[] = [];
+    const scale = await getCurrentWindow().scaleFactor();
+    return getCurrentWebview().onDragDropEvent(({ payload }) => {
+      if (payload.type === 'leave') {
+        listener({ type: 'leave', paths: [], x: 0, y: 0 });
+        paths = [];
+        return;
+      }
+      if (payload.type === 'enter' || payload.type === 'drop') paths = payload.paths;
+      listener({
+        type: payload.type === 'drop' ? 'drop' : 'over',
+        paths,
+        x: payload.position.x / scale,
+        y: payload.position.y / scale,
+      });
+    });
   }
   dispose() {}
 }

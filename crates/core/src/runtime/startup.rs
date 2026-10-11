@@ -57,6 +57,9 @@ pub(crate) async fn launch(input: Launch) -> Result<(AppService, App)> {
             }
         };
         let initial = clipboard.read().await?;
+        let (ssh_service, ssh, ssh_events) =
+            nooboard_ssh::SshService::start(Default::default()).await?;
+        services.ssh = Some(ssh_service);
         // Cached verified addresses allow offline startup. Optional hostname hints
         // are resolved by the device runtime, without blocking unrelated devices.
         let trusted_peers = config
@@ -89,6 +92,13 @@ pub(crate) async fn launch(input: Launch) -> Result<(AppService, App)> {
         let (persist_stop, persist_stopped) = watch::channel(false);
         let startup = config.settings.clone();
         let (config, config_runtime) = configuration::channel(config, stopped.clone());
+        let remote = crate::remote::runtime::Remote::new(
+            ssh,
+            config.clone(),
+            network.clone(),
+            &input.options.profile,
+            stopped.clone(),
+        );
         let (history, history_runtime) = history::channel(stopped.clone());
         let (device, device_runtime) = devices::create(network.clone(), config.clone());
         let (sync, sync_runtime) = sync::create(
@@ -122,6 +132,7 @@ pub(crate) async fn launch(input: Launch) -> Result<(AppService, App)> {
         let (snapshots, receiver) = watch::channel(initial);
         let (events, _) = broadcast::channel(128);
         let app = App {
+            remote: remote.clone(),
             configuration: config.clone(),
             devices: device.requests.clone(),
             sync: sync.requests.clone(),
@@ -136,6 +147,8 @@ pub(crate) async fn launch(input: Launch) -> Result<(AppService, App)> {
             app,
             super::Running {
                 services: std::mem::take(&mut services),
+                remote,
+                ssh_events,
                 stop: stop.clone(),
                 stopped,
                 persist_stop,

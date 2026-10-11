@@ -4,6 +4,7 @@ export interface Session {
   close(): Promise<void>;
 }
 export interface DesktopBridge {
+  onFileDrop?(listener: (event: import('../remote/model').FileDrop) => void): Promise<() => void>;
   readonly mode: 'native' | 'preview';
   connect(receive: (frame: Frame) => void, signal: AbortSignal): Promise<Session>;
   request(request: Request): Promise<Reply>;

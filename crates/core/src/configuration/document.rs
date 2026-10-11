@@ -20,10 +20,7 @@ pub(crate) async fn load(storage: &Storage, defaults: Settings) -> Result<Config
         .await?;
     let default_receive_directory = defaults.receive_directory.clone();
     let (mut config, migrated) = if let Some(text) = &documents[0] {
-        (
-            serde_json::from_str(text).map_err(|_| Error::Configuration)?,
-            false,
-        )
+        (decode(text)?, false)
     } else if let Some(text) = &documents[1] {
         (migrate_v2(text)?, true)
     } else if documents[3].is_some() {
@@ -53,6 +50,14 @@ pub(crate) async fn load(storage: &Storage, defaults: Settings) -> Result<Config
         },
     )
     .await?;
+    Ok(config)
+}
+
+fn decode(text: &str) -> Result<Configuration> {
+    let mut config: Configuration = serde_json::from_str(text).map_err(|_| Error::Configuration)?;
+    if config.version == 3 {
+        config.version = 4;
+    }
     Ok(config)
 }
 

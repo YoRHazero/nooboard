@@ -1,3 +1,5 @@
+import en_ssh from './locales/en/ssh.json';
+import zh_ssh from './locales/zh-CN/ssh.json';
 import en_common from './locales/en/common.json';
 import en_devices from './locales/en/devices.json';
 import en_history from './locales/en/history.json';
@@ -17,6 +19,7 @@ import zh_errors from './locales/zh-CN/errors.json';
 
 export const resources = {
   en: {
+    ssh: en_ssh,
     common: en_common,
     devices: en_devices,
     history: en_history,
@@ -27,6 +30,7 @@ export const resources = {
     errors: en_errors,
   },
   'zh-CN': {
+    ssh: zh_ssh,
     common: zh_common,
     devices: zh_devices,
     history: zh_history,

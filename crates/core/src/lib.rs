@@ -1,4 +1,4 @@
-//! Application policies and workflows. Only this crate coordinates the three services.
+//! Application policies and workflows. Only this crate coordinates the independent services.
 #![doc = include_str!("../README.md")]
 mod api;
 mod configuration;
@@ -10,6 +10,7 @@ mod error;
 mod history;
 mod options;
 mod ports;
+mod remote;
 mod runtime;
 mod snapshot;
 mod sync;

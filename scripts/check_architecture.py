@@ -8,8 +8,8 @@ metadata = json.loads(subprocess.check_output(
     ["cargo", "metadata", "--no-deps", "--format-version", "1", "--locked"], text=True
 ))
 packages = {package["name"]: package for package in metadata["packages"]}
-ports = {"nooboard-clipboard", "nooboard-network", "nooboard-storage"}
-expected = ports | {"nooboard-core", "nooboard-desktop"}
+ports = {"nooboard-clipboard", "nooboard-network", "nooboard-storage", "nooboard-ssh"}
+expected = ports | {"nooboard-core", "nooboard-desktop", "nooboard-ssh"}
 assert set(packages) == expected, "unexpected workspace crates"
 for name, package in packages.items():
     local = {dep["name"] for dep in package["dependencies"] if dep.get("path")}
@@ -101,4 +101,26 @@ for source in core.rglob("*.rs"):
         assert not re.search(r"\b(?:mpsc|oneshot|watch)::|crate::runtime", code), f"model owns runtime channels: {source}"
     if "self.clipboard.write_content(" in code:
         assert relative.as_posix() == "sync/runtime/apply.rs", f"clipboard write outside application queue: {source}"
+# SSH is an independent service. Its SFTP features own separate runtimes and
+# expose neither protocol-library handles nor shell-specific integration.
+ssh = clipboard.parent.parent / "ssh" / "src"
+ssh_root = (ssh / "lib.rs").read_text(encoding="utf-8")
+assert not re.search(r"^pub(?:\([^)]*\))? mod\b", ssh_root, re.M), "ssh exports an implementation module"
+assert re.findall(r"^pub use (.*);$", ssh_root, re.M) == ["api::*"], "ssh bypasses API facade"
+ssh_api = (ssh / "api.rs").read_text(encoding="utf-8")
+for public_type in ("SshService", "Ssh", "SshEvents"):
+    assert re.search(rf"^pub struct {public_type}\s*\{{", ssh_api, re.M), f"{public_type} must be defined at the public boundary"
+assert not re.search(r"\b(?:russh|russh_sftp|keyring)::|(?:std|tokio)::fs", ssh_api), "ssh API performs driver work"
+for feature in ("directory", "transfer"):
+    assert (ssh / "sftp" / feature / "runtime.rs").is_file(), f"SFTP {feature} has no runtime"
+assert not (ssh / "transfer").exists(), "SFTP transfer must remain under sftp"
+for source in ssh.rglob("*.rs"):
+    code = source.read_text(encoding="utf-8")
+    relative = source.relative_to(ssh)
+    assert not re.search(r"nooboard_(?:core|network|storage|clipboard)::|\btauri::", code), f"SSH service imports application dependencies: {source}"
+    if "keyring::" in code:
+        assert relative.parts[0] == "credentials", f"credential driver outside adapter: {source}"
+    if source.name == "model.rs":
+        assert not re.search(r"\b(?:mpsc|oneshot|watch|russh|russh_sftp|keyring)::|(?:std|tokio)::fs", code), f"SSH model owns a driver or runtime: {source}"
+    assert not re.search(r"(?:std|tokio)::process|\bCommand::new", code), f"SSH shells out to a local program: {source}"
 print("Architecture constraints passed.")

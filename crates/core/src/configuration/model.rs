@@ -103,6 +103,8 @@ pub(crate) struct Configuration {
     pub settings: Settings,
     pub peers: BTreeMap<String, Peer>,
     pub manual_targets: Vec<String>,
+    #[serde(default)]
+    pub remote: crate::remote::model::Configuration,
     #[serde(skip)]
     pub revision: u64,
     /// Last activation revision per target, retained across coalesced watch updates.
@@ -112,19 +114,21 @@ pub(crate) struct Configuration {
 impl Configuration {
     pub fn new(settings: Settings) -> Self {
         Self {
-            version: 3,
+            version: 4,
             settings,
             peers: BTreeMap::new(),
             manual_targets: vec![],
+            remote: Default::default(),
             revision: 0,
             automatic_revisions: BTreeMap::new(),
         }
     }
     pub fn validate(&self) -> Result<()> {
-        if self.version != 3 || self.peers.len() > 64 {
+        if self.version != 4 || self.peers.len() > 64 {
             return Err(Error::Configuration);
         }
         self.settings.validate()?;
+        self.remote.validate()?;
         for (id, peer) in &self.peers {
             if id != &peer.trusted.identity.id {
                 return Err(Error::Configuration);

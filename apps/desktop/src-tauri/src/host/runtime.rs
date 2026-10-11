@@ -97,6 +97,12 @@ impl Host {
                     tray::update(&handle, None);
                 }));
             }
+            let remote = backend.app().remote();
+            if remote.snapshot().download_directory.is_none()
+                && let Ok(path) = handle.path().download_dir()
+            {
+                let _ = remote.set_download_directory(path).await;
+            }
             *running = Some(backend);
         }
         Ok(())
@@ -117,6 +123,7 @@ impl Host {
         let (connection, pump) = super::subscription::start(
             subscription,
             backend.app().subscribe(),
+            backend.app().remote(),
             handle.state::<Desktop>().state.subscribe(),
             backend.diagnostic(),
             channel,

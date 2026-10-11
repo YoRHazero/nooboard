@@ -89,3 +89,8 @@ export function useCommand() {
   );
   return { execute, pending: pending > 0, error };
 }
+
+export function useRemote() {
+  const desktop = useDesktop();
+  return useSyncExternalStore(desktop.subscribeRemote, desktop.getRemote);
+}

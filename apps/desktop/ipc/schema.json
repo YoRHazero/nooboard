@@ -330,6 +330,7 @@
       "required": [
         "diagnostic",
         "host",
+        "remote",
         "snapshot"
       ],
       "properties": {
@@ -338,6 +339,9 @@
         },
         "host": {
           "$ref": "#/definitions/Snapshot"
+        },
+        "remote": {
+          "$ref": "#/definitions/RemoteSnapshot"
         },
         "snapshot": {
           "$ref": "#/definitions/BackendSnapshot"
@@ -497,6 +501,56 @@
     },
     "Frame": {
       "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/RemoteSnapshot"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "remote"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/TerminalFrame"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "terminal"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "terminalReset"
+              ]
+            }
+          }
+        },
         {
           "type": "object",
           "required": [
@@ -1017,8 +1071,1136 @@
         "receive"
       ]
     },
+    "RemoteChallenge": {
+      "type": "object",
+      "required": [
+        "address",
+        "algorithm",
+        "fingerprint",
+        "id",
+        "sessionId"
+      ],
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "algorithm": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        }
+      }
+    },
+    "RemoteConnection": {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UiError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/definitions/RemotePhase"
+        }
+      }
+    },
+    "RemoteDirection": {
+      "type": "string",
+      "enum": [
+        "Upload",
+        "Download"
+      ]
+    },
+    "RemoteDirectory": {
+      "type": "object",
+      "required": [
+        "entries",
+        "path",
+        "state"
+      ],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RemoteEntry"
+          }
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UiError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/definitions/RemoteDirectoryState"
+        }
+      }
+    },
+    "RemoteDirectoryState": {
+      "type": "string",
+      "enum": [
+        "Loading",
+        "Partial",
+        "Complete",
+        "Stale",
+        "Error"
+      ]
+    },
+    "RemoteEntry": {
+      "type": "object",
+      "required": [
+        "kind",
+        "name",
+        "path"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/RemoteKind"
+        },
+        "modified": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "size": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        }
+      }
+    },
+    "RemoteFileTarget": {
+      "type": "object",
+      "required": [
+        "files",
+        "generation",
+        "workspace"
+      ],
+      "properties": {
+        "files": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "string"
+        },
+        "workspace": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RemoteKind": {
+      "type": "string",
+      "enum": [
+        "Directory",
+        "File",
+        "Symlink",
+        "Other",
+        "Unknown"
+      ]
+    },
+    "RemotePhase": {
+      "type": "string",
+      "enum": [
+        "Connecting",
+        "Ready",
+        "Ended",
+        "Failed",
+        "Closed"
+      ]
+    },
+    "RemoteProfile": {
+      "type": "object",
+      "required": [
+        "deviceId",
+        "id",
+        "port",
+        "remembered",
+        "username"
+      ],
+      "properties": {
+        "deviceId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "remembered": {
+          "type": "boolean"
+        },
+        "username": {
+          "type": "string"
+        }
+      }
+    },
+    "RemoteReplay": {
+      "type": "object",
+      "required": [
+        "bytes",
+        "end",
+        "gap",
+        "start"
+      ],
+      "properties": {
+        "bytes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          }
+        },
+        "end": {
+          "type": "string"
+        },
+        "gap": {
+          "type": "boolean"
+        },
+        "start": {
+          "type": "string"
+        }
+      }
+    },
+    "RemoteReply": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "done"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "connected"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/RemoteReplay"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "replay"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "RemoteRequest": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "device",
+                "port",
+                "remember",
+                "username"
+              ],
+              "properties": {
+                "device": {
+                  "type": "string"
+                },
+                "password": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "port": {
+                  "type": "integer",
+                  "format": "uint16",
+                  "minimum": 0.0
+                },
+                "remember": {
+                  "type": "boolean"
+                },
+                "username": {
+                  "type": "string"
+                },
+                "workspace": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "connect"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "accept",
+                "id"
+              ],
+              "properties": {
+                "accept": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "hostKey"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "device",
+                "port"
+              ],
+              "properties": {
+                "device": {
+                  "type": "string"
+                },
+                "port": {
+                  "type": "integer",
+                  "format": "uint16",
+                  "minimum": 0.0
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "forgetHostKey"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "workspace"
+              ],
+              "properties": {
+                "workspace": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "close"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "bytes",
+                "session",
+                "workspace"
+              ],
+              "properties": {
+                "bytes": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "minimum": 0.0
+                  }
+                },
+                "session": {
+                  "type": "string"
+                },
+                "workspace": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "input"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "columns",
+                "rows",
+                "session",
+                "workspace"
+              ],
+              "properties": {
+                "columns": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0.0
+                },
+                "rows": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0.0
+                },
+                "session": {
+                  "type": "string"
+                },
+                "workspace": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "resize"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "after",
+                "session",
+                "workspace"
+              ],
+              "properties": {
+                "after": {
+                  "type": "string"
+                },
+                "session": {
+                  "type": "string"
+                },
+                "workspace": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "replay"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "path",
+                "target"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "target": {
+                  "$ref": "#/definitions/RemoteFileTarget"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "navigate"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "more",
+                "path",
+                "target"
+              ],
+              "properties": {
+                "more": {
+                  "type": "boolean"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "target": {
+                  "$ref": "#/definitions/RemoteFileTarget"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "list"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "path",
+                "target"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "target": {
+                  "$ref": "#/definitions/RemoteFileTarget"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "collapse"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "directory",
+                "target"
+              ],
+              "properties": {
+                "directory": {
+                  "type": "string"
+                },
+                "target": {
+                  "$ref": "#/definitions/RemoteFileTarget"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "selectUpload"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "directory",
+                "paths",
+                "target"
+              ],
+              "properties": {
+                "directory": {
+                  "type": "string"
+                },
+                "paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "target": {
+                  "$ref": "#/definitions/RemoteFileTarget"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "upload"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "paths",
+                "target"
+              ],
+              "properties": {
+                "paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "target": {
+                  "$ref": "#/definitions/RemoteFileTarget"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "download"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "selectDownloadDirectory"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "cancel"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "retry"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "forgetTransfer"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "reveal"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "RemoteSnapshot": {
+      "type": "object",
+      "required": [
+        "challenges",
+        "profiles",
+        "revision",
+        "transfers",
+        "workspaces"
+      ],
+      "properties": {
+        "challenges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RemoteChallenge"
+          }
+        },
+        "downloadDirectory": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "profiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RemoteProfile"
+          }
+        },
+        "revision": {
+          "type": "string"
+        },
+        "transfers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RemoteTransfer"
+          }
+        },
+        "workspaces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RemoteWorkspace"
+          }
+        }
+      }
+    },
+    "RemoteTransfer": {
+      "type": "object",
+      "required": [
+        "destination",
+        "deviceId",
+        "direction",
+        "id",
+        "sessionId",
+        "source",
+        "state",
+        "transferred"
+      ],
+      "properties": {
+        "destination": {
+          "type": "string"
+        },
+        "deviceId": {
+          "type": "string"
+        },
+        "direction": {
+          "$ref": "#/definitions/RemoteDirection"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UiError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/definitions/RemoteTransferState"
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "temporaryPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "transferred": {
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "RemoteTransferState": {
+      "type": "string",
+      "enum": [
+        "Queued",
+        "WaitingForConnection",
+        "Running",
+        "Finalizing",
+        "Succeeded",
+        "Failed",
+        "Cancelled",
+        "Unconfirmed"
+      ]
+    },
+    "RemoteWorkspace": {
+      "type": "object",
+      "required": [
+        "deviceId",
+        "files",
+        "filesId",
+        "generation",
+        "id",
+        "port",
+        "profileId",
+        "terminal",
+        "terminalId",
+        "username"
+      ],
+      "properties": {
+        "address": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deviceId": {
+          "type": "string"
+        },
+        "directories": {
+          "description": "Omitted when unchanged since the preceding frame. Full on connect.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/RemoteDirectory"
+          }
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UiError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "files": {
+          "$ref": "#/definitions/RemoteConnection"
+        },
+        "filesId": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "initialDirectory": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "port": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "profileId": {
+          "type": "string"
+        },
+        "root": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "terminal": {
+          "$ref": "#/definitions/RemoteConnection"
+        },
+        "terminalId": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        }
+      }
+    },
     "Reply": {
       "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/RemoteReply"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "remote"
+              ]
+            }
+          }
+        },
         {
           "type": "object",
           "required": [
@@ -1117,6 +2299,25 @@
     },
     "Request": {
       "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/RemoteRequest"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "remote"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
         {
           "type": "object",
           "required": [
@@ -1861,6 +3062,30 @@
         }
       },
       "additionalProperties": false
+    },
+    "TerminalFrame": {
+      "type": "object",
+      "required": [
+        "bytes",
+        "offset",
+        "sessionId"
+      ],
+      "properties": {
+        "bytes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          }
+        },
+        "offset": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        }
+      }
     },
     "Transfer": {
       "type": "object",

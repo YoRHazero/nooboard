@@ -1,4 +1,11 @@
 //! The public application boundary. Handles never own a service lifetime.
+pub use crate::remote::{
+    model::{
+        DirectoryState, RemoteChallenge, RemoteDirectory, RemoteFileTarget, RemoteLogin,
+        RemoteProfile, RemoteSnapshot, RemoteWorkspace,
+    },
+    runtime::Remote,
+};
 pub use crate::{
     configuration::model::{Mode, PeerSettings, Settings},
     devices::model::{
@@ -17,6 +24,11 @@ pub use crate::{
 };
 pub use nooboard_network::{
     ContentKind, LocalAddress, NearbyDevice, PairingStage, TransferId as MessageId,
+};
+pub use nooboard_ssh::{
+    ConnectionState as SshConnectionState, Error as SshError, FileKind as RemoteFileKind,
+    Password as SshPassword, PtySize, RemotePath, TerminalChunk, TerminalReplay,
+    TransferSpec as RemoteTransferSpec, TransferState as RemoteTransferState,
 };
 // Backend selection is a startup concern; business APIs contain no SQL or driver types.
 pub use nooboard_storage::{BackendConfig, SqliteOptions};
@@ -62,6 +74,7 @@ impl Drop for AppService {
 }
 #[derive(Clone)]
 pub struct App {
+    pub(crate) remote: Remote,
     pub(crate) configuration: configuration::Handle,
     pub(crate) devices: mpsc::Sender<devices::Request>,
     pub(crate) sync: mpsc::Sender<sync::Request>,
@@ -73,6 +86,9 @@ pub struct App {
     pub(crate) certificate: Vec<u8>,
 }
 impl App {
+    pub fn remote(&self) -> Remote {
+        self.remote.clone()
+    }
     async fn configuration_visible(&self) -> Result<()> {
         let revision = self.configuration.current().revision;
         let mut snapshots = self.snapshots.clone();

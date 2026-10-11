@@ -1,0 +1,32 @@
+[package]
+name = "nooboard-ssh"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+default = ["native-credentials"]
+native-credentials = ["dep:keyring"]
+
+[dependencies]
+tokio.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+russh = { version = "0.64.1", default-features = false, features = ["ring", "rsa"] }
+russh-sftp = "3.0.1"
+zeroize = "1"
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+keyring = { version = "3.6.3", features = ["apple-native", "windows-native"], optional = true }
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6.3", features = ["sync-secret-service", "crypto-rust", "vendored"], optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true
+rand = "0.10"
+tempfile.workspace = true
+
+[lints]
+workspace = true

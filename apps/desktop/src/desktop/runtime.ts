@@ -1,7 +1,8 @@
+import { emptyRemote, mergeRemote, coalesceRemote, type TerminalFrame } from './remote/model';
 import type { Desktop, DesktopRuntime } from './api';
 import { ProblemError, fail, toProblem, type Problem } from '../i18n/errors';
 import type { DesktopBridge, Session } from './bridge/port';
-import type { Request, Reply, BackendSnapshot } from './bridge/generated';
+import type { Request, Reply, BackendSnapshot, RemoteSnapshot } from './bridge/generated';
 import { SnapshotStore } from './snapshot/store';
 import { PreferenceRuntime, type PreferenceStorage } from './preferences/runtime';
 import type { ConnectionState, HostState } from './snapshot/model';
@@ -16,6 +17,9 @@ export function createRuntime(
 class Runtime implements DesktopRuntime {
   readonly desktop: Desktop;
   diagnostic = false;
+  private remoteState = emptyRemote();
+  private remoteListeners = new Set<() => void>();
+  private terminalListeners = new Set<(frame: TerminalFrame | null) => void>();
   private disposed = false;
   private generation = 0;
   private session: Session | null = null;
@@ -43,6 +47,22 @@ class Runtime implements DesktopRuntime {
     };
     this.desktop = Object.freeze({
       mode: bridge.mode,
+      getRemote: () => this.remoteState,
+      subscribeRemote: (listener) => {
+        this.remoteListeners.add(listener);
+        return () => {
+          this.remoteListeners.delete(listener);
+        };
+      },
+      remote: async (request) =>
+        (await this.command({ type: 'remote', data: request }, 'remote')).data,
+      onTerminal: (listener) => {
+        this.terminalListeners.add(listener);
+        return () => {
+          this.terminalListeners.delete(listener);
+        };
+      },
+      onFileDrop: (listener) => bridge.onFileDrop?.(listener) ?? Promise.resolve(() => {}),
       getSnapshot: this.store.getSnapshot,
       subscribe: this.store.subscribe,
       onEvent: this.store.onEvent,
@@ -185,11 +205,26 @@ class Runtime implements DesktopRuntime {
     let connected = false;
     let pending: BackendSnapshot | null = null;
     let stopped: Problem | null = null;
+    let pendingRemote: RemoteSnapshot | null = null;
     try {
       await previous?.close();
       if (this.disposed || generation !== this.generation) return;
       const session = await this.bridge.connect((frame) => {
         if (this.disposed || generation !== this.generation) return;
+        if (frame.type === 'remote') {
+          if (stopped) return;
+          if (connected) this.acceptRemote(frame.data);
+          else
+            pendingRemote = pendingRemote ? coalesceRemote(frame.data, pendingRemote) : frame.data;
+          return;
+        }
+        if (frame.type === 'terminal' || frame.type === 'terminalReset') {
+          if (connected && !stopped)
+            this.terminalListeners.forEach((fn) =>
+              fn(frame.type === 'terminal' ? frame.data : null),
+            );
+          return;
+        }
         if (frame.type === 'host') {
           this.acceptHost(frame.data);
           return;
@@ -221,10 +256,13 @@ class Runtime implements DesktopRuntime {
       this.acceptHost(session.initial.host);
       this.store.apply(session.initial.snapshot, this.host!, true);
       if (pending) this.store.apply(pending, this.host!, true);
+      this.acceptRemote(session.initial.remote);
+      if (pendingRemote) this.acceptRemote(pendingRemote);
       connected = true;
       if (stopped) throw new ProblemError(stopped);
       this.store.setError(undefined);
       this.connection('ready');
+      this.terminalListeners.forEach((fn) => fn(null));
     } catch (error) {
       if (this.disposed || generation !== this.generation) return;
       const problem = toProblem(error);
@@ -232,6 +270,10 @@ class Runtime implements DesktopRuntime {
       this.connection('offline', problem);
       throw new ProblemError(problem);
     }
+  }
+  private acceptRemote(snapshot: RemoteSnapshot) {
+    this.remoteState = mergeRemote(snapshot, this.remoteState);
+    this.remoteListeners.forEach((fn) => fn());
   }
   async probe(action: 'copy' | 'receive') {
     await this.command({ type: 'probe', data: { action } }, 'done');
@@ -246,6 +288,8 @@ class Runtime implements DesktopRuntime {
     this.cleanup?.();
     this.connection('disposed');
     this.listeners.clear();
+    this.remoteListeners.clear();
+    this.terminalListeners.clear();
     this.store.dispose();
     this.bridge.dispose();
     const session = this.session;

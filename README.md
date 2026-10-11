@@ -8,12 +8,13 @@
 
 ## 第一轮开发
 
-四个独立于界面的 Rust 库，通过自动化测试与最小命令行示例验证文字同步及本地文字历史：
+五个独立于界面的 Rust 库，通过自动化测试与最小命令行示例验证文字同步及本地文字历史：
 
 ```text
 core → clipboard
      → network
      → storage
+     → ssh
 ```
 
 - `core`：通过独立的 `AppService` 和可克隆的 `App` 协调设备、同步、配置与历史业务。接口和工作流程见 [core 文档](crates/core/README.md)。
@@ -23,11 +24,15 @@ core → clipboard
 
 底层库之间不直接互相依赖。React + TypeScript 交互设计稿位于 `apps/desktop`，首页通过肥啾舞台上的木板、肥啾与信箱展开操作。Tauri 桌面入口只依赖 core，支持图片和文件手动传输。前端按 `app → desktop/api ← features` 划分，运行时负责连接与订阅，页面使用请求句柄。文件结构、请求流程和协议生成方式见 [桌面架构文档](apps/desktop/ARCHITECTURE.md)。
 
+SSH 终端与 SFTP 文件工作区的实现基线见 [SSH 工作区详细方案](docs/ssh-workspace-design.md)。独立的 [ssh crate](crates/ssh/README.md) 已实现密码认证、主机密钥核验、独立终端/SFTP 连接、按需目录读取和后台普通文件传输，并已接入 core、Tauri 和 React 页面。进入「SSH 工作区」即可选择已配对设备，通过密码登录对方已启用的 SSH 服务；右侧目录按需展开，支持多选文件上传、原生拖入上传和下载目录设置。终端与 SFTP 独立连接，关闭标签不取消文件任务。首次使用必须核验 SSH 主机指纹；勾选记住密码后，仅在认证成功时保存到系统凭据库。
+
+第一版不递归传输文件夹，不做 shell 钩子或终端 pwd 跟踪，不提供原生拖出下载和断点续传。下载按钮保存到设置的目录，完成后可以在文件管理器中显示。真实跨平台服务、系统凭据库与原生拖拽仍需各平台实机验收。
+
 ## 验证计划
 
 `clipboard → storage → network → core` 的接口重构已接通，桌面入口和示例使用新的服务所有者与请求句柄。底层库之间仍不互相依赖；完整验证从以下工作区命令开始。旧 `configuration_v2` 配置和公开设备记录由 core 原子迁移，详见 [持久化与兼容范围](crates/core/README.md#持久化与兼容范围)。
 
-工具链固定为 Rust 1.93.0。仅构建四个库无需 Node.js；完整桌面工程需要 Node.js 22.12+，先在 `apps/desktop` 执行 `npm ci` 和 `npm run build`。Windows 构建需要 MSVC C++ Build Tools 与 Windows SDK，macOS 需要 Xcode Command Line Tools。
+工具链固定为 Rust 1.93.0。仅构建 Rust 库无需 Node.js；完整桌面工程需要 Node.js 22.12+，先在 `apps/desktop` 执行 `npm ci` 和 `npm run build`。Windows 构建需要 MSVC C++ Build Tools 与 Windows SDK，macOS 需要 Xcode Command Line Tools。
 
 ```sh
 cargo fmt --all -- --check
