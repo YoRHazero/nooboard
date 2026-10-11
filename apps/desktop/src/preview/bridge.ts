@@ -55,6 +55,9 @@ export class PreviewBridge implements DesktopBridge {
   }
   private publish() {
     for (const peer of this.snapshot.peers) {
+      peer.connectionAddress = peer.online
+        ? (peer.connectionAddress ?? peer.settings.address ?? '192.168.1.64:24816')
+        : null;
       peer.connectionState = peer.online
         ? this.snapshot.settings.paused || peer.paused
           ? 'paused'
@@ -270,6 +273,7 @@ export class PreviewBridge implements DesktopBridge {
             ...nearbySample,
             settings: { address: null, autoSend: false },
             connectionState: 'connected',
+            connectionAddress: '192.168.1.64:24816',
             paused: false,
             unpairedNotice: null,
             online: true,

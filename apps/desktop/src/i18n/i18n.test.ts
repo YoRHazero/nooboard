@@ -11,12 +11,12 @@ afterEach(async () => {
 });
 it('uses English plural rules and localized numbers', async () => {
   await i18n.changeLanguage('en');
-  expect(t('devices:sendTo', { count: 0 })).toBe('Send to 0 devices');
-  expect(t('devices:sendTo', { count: 1 })).toBe('Send to 1 device');
-  expect(t('devices:sendTo', { count: 2 })).toBe('Send to 2 devices');
+  expect(t('home:sendTo', { count: 0 })).toBe('To 0 devices');
+  expect(t('home:sendTo', { count: 1 })).toBe('To 1 device');
+  expect(t('home:sendTo', { count: 2 })).toBe('To 2 devices');
   expect(t('common:items', { count: 1000 })).toBe('1,000 items');
   await i18n.changeLanguage('zh-CN');
-  expect(t('devices:sendTo', { count: 1 })).toBe('发送到 1 台');
+  expect(t('home:sendTo', { count: 1 })).toBe('发给 1 台设备');
 });
 it('reformats an existing date, delivery state and stored error after switching', async () => {
   const error = toProblem(fail('pairingCodeRemaining', { count: 1 }));

@@ -25,6 +25,8 @@ pub struct PeerStatus {
     pub fingerprint: String,
     pub settings: PeerSettings,
     pub online: bool,
+    /// Actual remote socket endpoint, available only while connected.
+    pub connection_address: Option<String>,
     pub accepting: bool,
     pub connection_state: PeerConnectionState,
     /// Whether the remote device has paused synchronization.

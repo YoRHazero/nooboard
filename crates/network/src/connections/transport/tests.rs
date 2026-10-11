@@ -17,12 +17,14 @@ async fn mutual_authentication_and_text_delivery() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap().to_string();
     let server = tokio::spawn(async move {
-        let (tcp, _) = listener.accept().await.unwrap();
+        let (tcp, remote_address) = listener.accept().await.unwrap();
         let mut connection = bc.accept(tcp).await.unwrap();
+        assert_eq!(connection.peer_address(), remote_address);
         let message = connection.receive().await.unwrap();
         connection.send(&message).await.unwrap();
     });
     let mut client = ac.connect(&address).await.unwrap();
+    assert_eq!(client.peer_address().to_string(), address);
     let message = Message::Text {
         id: MessageId {
             session: "a".repeat(32),

@@ -3198,7 +3198,7 @@ dependencies = [
 
 [[package]]
 name = "nooboard-clipboard"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "image",
  "libc",
@@ -3217,7 +3217,7 @@ dependencies = [
 
 [[package]]
 name = "nooboard-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "base64 0.22.1",
  "image",
@@ -3239,7 +3239,7 @@ dependencies = [
 
 [[package]]
 name = "nooboard-desktop"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "nooboard-core",
  "rfd",
@@ -3257,7 +3257,7 @@ dependencies = [
 
 [[package]]
 name = "nooboard-network"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "chacha20poly1305",
  "hex",
@@ -3282,7 +3282,7 @@ dependencies = [
 
 [[package]]
 name = "nooboard-ssh"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "keyring",
  "rand 0.10.3",
@@ -3299,7 +3299,7 @@ dependencies = [
 
 [[package]]
 name = "nooboard-storage"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "rusqlite",
  "sha2 0.10.9",

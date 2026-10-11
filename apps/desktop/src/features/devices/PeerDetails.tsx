@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Unplug } from 'lucide-react';
 import type { Peer } from '../../desktop/api';
 import { useDesktop, useSnapshot } from '../../desktop/api';
-import { peerState } from '../../features/devices/selectors';
+import { peerAddresses, peerState } from '../../features/devices/selectors';
 import { Button } from '../../ui/controls';
 import { Dialog } from '../../ui/Dialog';
 import { DeviceIcon, DeviceName, IdentityFields } from './DeviceName';
@@ -31,6 +31,7 @@ export function PeerDetails({ peer, onClose }: { peer: Peer; onClose: () => void
   const status = peerState(peer, settings.paused);
   const unpaired = peer.connectionState === 'unpaired';
   const nearby = onboarding.nearby.find((device) => device.noobId === peer.noobId);
+  const addresses = peerAddresses(peer, onboarding.nearby);
   return (
     <Dialog
       title={
@@ -55,6 +56,40 @@ export function PeerDetails({ peer, onClose }: { peer: Peer; onClose: () => void
       ) : (
         <>
           <IdentityFields device={peer} />
+          <dl className="identity-fields peer-addresses">
+            <div>
+              <dt>{t('devices:currentConnectionAddress')}</dt>
+              <dd>
+                {addresses.current ? (
+                  <>
+                    <code>{addresses.current}</code>
+                    <p className="field-note">{t('devices:currentConnectionAddressHelp')}</p>
+                  </>
+                ) : (
+                  <span className="field-note">{t('devices:noCurrentConnection')}</span>
+                )}
+              </dd>
+            </div>
+            {addresses.discovered.length > 0 && (
+              <div>
+                <dt>{t('devices:discoveredSyncAddresses')}</dt>
+                <dd>
+                  {addresses.discovered.map((address) => (
+                    <code key={address}>{address}</code>
+                  ))}
+                </dd>
+              </div>
+            )}
+            {addresses.saved && (
+              <div>
+                <dt>{t('devices:savedAddress')}</dt>
+                <dd>
+                  <code>{addresses.saved}</code>
+                  <p className="field-note">{t('devices:savedAddressHelp')}</p>
+                </dd>
+              </div>
+            )}
+          </dl>
           <p className="field-note">
             {peer.platform && <>{peer.platform} · </>}
             {status.detail}

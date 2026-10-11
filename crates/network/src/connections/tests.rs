@@ -93,6 +93,7 @@ async fn late_start_and_new_discovered_address_reconnect_the_same_identity() {
         Runtime::bind(&a_options, a, stopped_a).await.unwrap();
     let task_a = tokio::spawn(runtime_a.run());
     assert!(!handle_a.status.borrow()[0].connected);
+    assert_eq!(handle_a.status.borrow()[0].peer_address, None);
     let mut previous_address = None;
     let mut retired = Vec::new();
     for _ in 0..2 {
@@ -114,11 +115,20 @@ async fn late_start_and_new_discovered_address_reconnect_the_same_identity() {
         }]);
         connection_state(&mut handle_a.status, true).await;
         connection_state(&mut handle_b.status, true).await;
+        assert_eq!(
+            handle_a.status.borrow()[0].peer_address,
+            Some(handle_b.address)
+        );
+        assert_eq!(
+            handle_b.status.borrow()[0].peer_address.unwrap().ip(),
+            handle_a.address.ip()
+        );
         assert!(handle_a.status.borrow()[0].unpaired_notice.is_none());
         stop_b.send_replace(true);
         task_b.await.unwrap().unwrap();
         handle_a.hints.send_replace(vec![]);
         connection_state(&mut handle_a.status, false).await;
+        assert_eq!(handle_a.status.borrow()[0].peer_address, None);
         // Reserve the retired endpoint so the restarted device must get a new address.
         previous_address = Some(handle_b.address);
         retired.push(TcpListener::bind(handle_b.address).await.unwrap());

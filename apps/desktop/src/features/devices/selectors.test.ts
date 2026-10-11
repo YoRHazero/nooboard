@@ -1,5 +1,12 @@
 import { expect, it } from 'vitest';
-import { shortNoobId, validAddress, parsePort, peerState, canSend } from './selectors';
+import {
+  shortNoobId,
+  validAddress,
+  parsePort,
+  peerState,
+  canSend,
+  peerAddresses,
+} from './selectors';
 import { createSeed, nearbySample } from '../../preview/seed';
 
 it('extends ambiguous prefixes while allowing repeated names', () => {
@@ -59,4 +66,35 @@ it('keeps discovery, connection attempts and explicit revocation distinct', () =
   expect(peerState({ ...peer, connectionState: 'offline' }).label).toBe('离线');
   expect(peerState({ ...peer, connectionState: 'unconnected' }).label).toBe('未连接');
   expect(peerState({ ...peer, connectionState: 'unpaired' }).label).toBe('未配对');
+});
+
+it('keeps the actual endpoint separate from saved addresses and discovered sync ports', () => {
+  const peer = { ...createSeed().peers[0], connectionAddress: '192.168.1.99:53421' };
+  const nearby = {
+    key: 'peer',
+    noobId: peer.noobId,
+    deviceName: peer.deviceName,
+    addresses: ['192.168.1.99:24817', '[fe80::1%4]:24817', '192.168.1.99:24817'],
+    syncPort: 24818,
+  };
+  expect(peerAddresses(peer, [nearby, { ...nearby, noobId: 'other' }])).toEqual({
+    current: '192.168.1.99:53421',
+    discovered: ['192.168.1.99:24818', '[fe80::1%4]:24818'],
+    saved: null,
+  });
+  expect(peerAddresses(peer, []).saved).toBeNull();
+});
+
+it('only presents a saved address as a fallback and never labels it as a live connection', () => {
+  const peer = { ...createSeed().peers[0], online: false };
+  expect(peerAddresses(peer, [])).toEqual({
+    current: null,
+    discovered: [],
+    saved: peer.settings.address,
+  });
+  expect(peerAddresses({ ...peer, settings: { ...peer.settings, address: null } }, [])).toEqual({
+    current: null,
+    discovered: [],
+    saved: null,
+  });
 });

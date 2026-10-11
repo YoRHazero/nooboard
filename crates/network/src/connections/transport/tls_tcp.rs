@@ -147,6 +147,7 @@ impl TlsConfig {
             Message::Unpaired => return Err(Error::Unpaired),
             _ => return Err(Error::Protocol),
         }
+        let peer_address = stream.get_ref().0.peer_addr()?;
         let (reader, writer) = tokio::io::split(stream);
         let (sender, incoming) = mpsc::channel(16);
         let task = tokio::spawn(read_messages(reader, sender));
@@ -158,6 +159,7 @@ impl TlsConfig {
             },
             peer_id,
             peer_fingerprint,
+            peer_address,
         })
     }
 }
@@ -182,6 +184,7 @@ pub struct Connection {
     receiver: ConnectionReceiver,
     peer_id: String,
     peer_fingerprint: String,
+    peer_address: std::net::SocketAddr,
 }
 impl Connection {
     pub fn peer_id(&self) -> &str {
@@ -189,6 +192,9 @@ impl Connection {
     }
     pub fn peer_fingerprint(&self) -> &str {
         &self.peer_fingerprint
+    }
+    pub fn peer_address(&self) -> std::net::SocketAddr {
+        self.peer_address
     }
     pub fn into_split(self) -> (ConnectionSender, ConnectionReceiver) {
         (self.sender, self.receiver)

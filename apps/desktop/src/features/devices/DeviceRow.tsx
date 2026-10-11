@@ -8,15 +8,11 @@ import { DeviceName, DeviceIcon } from './DeviceName';
 export function DeviceRow({
   peer,
   peers,
-  selected,
-  onSelect,
   onAutoSend,
   onDetails,
 }: {
   peer: Peer;
   peers: readonly Peer[];
-  selected: boolean;
-  onSelect: () => void;
   onAutoSend: (value: boolean) => void;
   onDetails: () => void;
 }) {
@@ -25,16 +21,7 @@ export function DeviceRow({
   const status = peerState(peer, settings.paused);
   const label = `${peer.deviceName} ${shortNoobId(peer.noobId, peers)}`;
   return (
-    <li className={`device-row ${selected ? 'is-selected' : ''}`}>
-      <label className="device-select">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onSelect}
-          aria-label={t('devices:sendToLabel', { name: label })}
-        />
-        <span className="sr-only">{t('common:manualSend')}</span>
-      </label>
+    <li className="device-row">
       <button
         className="device-row__identity"
         onClick={onDetails}

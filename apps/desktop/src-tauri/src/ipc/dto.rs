@@ -191,6 +191,7 @@ pub struct Peer {
     pub fingerprint: String,
     pub settings: PeerSettings,
     pub online: bool,
+    pub connection_address: Option<String>,
     pub accepting: bool,
     pub connection_state: PeerConnectionState,
     pub paused: bool,

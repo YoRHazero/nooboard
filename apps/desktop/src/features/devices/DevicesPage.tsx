@@ -7,11 +7,10 @@ import { DiscoverDialog } from './DiscoverDialog';
 import { LocalDevicePanel } from './LocalDevicePanel';
 import { DeviceRow } from './DeviceRow';
 import { PeerDetails } from './PeerDetails';
-import { SendSelection } from './SendSelection';
 
 export function DevicesPage() {
   const { t } = useI18n();
-  const { peers, manualTargets, settings, configuration } = useSnapshot();
+  const { peers, settings, configuration } = useSnapshot();
   const client = useDesktop();
   const { execute } = useCommand();
   const [pairing, setPairing] = useState(false);
@@ -42,7 +41,6 @@ export function DevicesPage() {
         {peers.length ? (
           <>
             <div className="device-columns" aria-hidden="true">
-              <span>{t('common:manual')}</span>
               <span>{t('common:devices')}</span>
               <span>{t('devices:connectionStatus')}</span>
               <span>{t('common:autoSend')}</span>
@@ -54,16 +52,6 @@ export function DevicesPage() {
                   key={peer.noobId}
                   peer={peer}
                   peers={peers}
-                  selected={manualTargets.includes(peer.noobId)}
-                  onSelect={() =>
-                    execute(() =>
-                      client.selectTargets(
-                        manualTargets.includes(peer.noobId)
-                          ? manualTargets.filter((id) => id !== peer.noobId)
-                          : [...manualTargets, peer.noobId],
-                      ),
-                    )
-                  }
                   onAutoSend={(autoSend) =>
                     execute(() => client.configurePeer(peer.noobId, { autoSend }))
                   }
@@ -85,7 +73,6 @@ export function DevicesPage() {
                   : t('devices:noneAutoEnabled')}
               </p>
             </div>
-            <SendSelection />
           </>
         ) : (
           <EmptyState icon={<Plus size={24} />} title={t('devices:empty')} />

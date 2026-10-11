@@ -99,6 +99,7 @@ pub(super) enum SessionEvent {
 }
 struct Slot {
     generation: u64,
+    peer_address: SocketAddr,
     paused: bool,
     outbox: Outbox,
 }
@@ -208,6 +209,7 @@ impl Runtime {
                     peer: id.clone(),
                     device_name: peer.identity.device_name.clone(),
                     connected: self.active.contains_key(id),
+                    peer_address: self.active.get(id).map(|s| s.peer_address),
                     accepting: false,
                     paused: self.active.get(id).is_some_and(|s| s.paused),
                     unpaired_notice: self.unpaired.get(id).copied(),
@@ -447,6 +449,7 @@ impl Runtime {
             peer.clone(),
             Slot {
                 generation,
+                peer_address: connection.peer_address(),
                 paused: false,
                 outbox: outbox.clone(),
             },

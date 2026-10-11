@@ -78,6 +78,7 @@ pub fn snapshot(value: nooboard_core::AppSnapshot) -> BackendSnapshot {
                     auto_send: p.settings.auto_send,
                 },
                 online: p.online,
+                connection_address: p.connection_address,
                 accepting: p.accepting,
                 connection_state: p.connection_state.into(),
                 paused: p.paused,

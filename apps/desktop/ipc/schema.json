@@ -1009,6 +1009,12 @@
         "accepting": {
           "type": "boolean"
         },
+        "connectionAddress": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "connectionState": {
           "$ref": "#/definitions/PeerConnectionState"
         },

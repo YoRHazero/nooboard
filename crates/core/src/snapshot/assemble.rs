@@ -113,6 +113,10 @@ pub(crate) fn assemble(
                 fingerprint: p.trusted.identity.fingerprint.clone(),
                 settings: p.settings.clone(),
                 online: live.is_some_and(|v| v.connected),
+                connection_address: live
+                    .filter(|v| v.connected)
+                    .and_then(|v| v.peer_address)
+                    .map(|address| address.to_string()),
                 accepting: live.is_some_and(|v| v.accepting),
                 connection_state: peer_connection_state(
                     live.is_some_and(|v| v.connected),

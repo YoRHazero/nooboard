@@ -162,6 +162,7 @@ export type PairingStage =
 export type Patch = { closeToTray?: boolean | null; language?: Language | null };
 export type Peer = {
   accepting: boolean;
+  connectionAddress?: string | null;
   connectionState: PeerConnectionState;
   deviceName: string;
   fingerprint: string;

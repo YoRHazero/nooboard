@@ -36,6 +36,7 @@ export interface PeerSettings {
 export interface Peer extends DeviceIdentity {
   settings: PeerSettings;
   online: boolean;
+  connectionAddress: string | null;
   accepting: boolean;
   connectionState: Wire.PeerConnectionState;
   paused: boolean;

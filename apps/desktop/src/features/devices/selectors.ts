@@ -1,5 +1,26 @@
 import { t } from '../../i18n/index';
-import type { DeviceIdentity, Peer } from '../../desktop/api';
+import type { DeviceIdentity, NearbyDevice, Peer } from '../../desktop/api';
+
+/** Keep live socket endpoints distinct from discovery hints and saved dial addresses. */
+export function peerAddresses(peer: Peer, nearby: readonly NearbyDevice[]) {
+  const current = peer.online ? peer.connectionAddress : null;
+  const discovered = [
+    ...new Set(
+      nearby
+        .filter((device) => device.noobId === peer.noobId)
+        .flatMap((device) =>
+          device.addresses.map(
+            (address) => `${address.slice(0, address.lastIndexOf(':'))}:${device.syncPort}`,
+          ),
+        ),
+    ),
+  ];
+  return {
+    current,
+    discovered,
+    saved: !current && !discovered.length ? peer.settings.address : null,
+  };
+}
 
 export function shortNoobId(
   id: string,
