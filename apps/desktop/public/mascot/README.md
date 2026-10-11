@@ -1,5 +1,7 @@
 # Bird model and business animations
 
+Asset-maintenance reference. For using the app, see the [user README](../../../../README.md); for building it, see the [development guide](../../../../docs/development.md).
+
 ## Q bird brand assets
 
 The approved Q bird illustration is preserved at `apps/desktop/assets/brand/q-bird.png`, with its image-generation prompt alongside it. It is based on the current cream-colored Blender bird. Run `npm run icons:generate` from `apps/desktop` to resize and encode this exact artwork using the installed Tauri CLI. The command updates the shared 256 px `public/mascot/icon.png` and the PNG, macOS ICNS and Windows ICO files in `src-tauri/icons`; it does not redraw or crop the character. Mobile outputs are discarded because this app targets desktops.
@@ -12,20 +14,22 @@ The default home stage loads the complete `bird-business-19.glb` scene, includin
 
 Open `?mascot=business-19`, or choose **Inspect animations / 动画检查** in the browser footer, to inspect all twelve clips manually. The earlier `?mascot=motion-16` URL is an alias. The pose slider stops the selected clip at a chosen percentage; click its button to replay. **Live stage / 业务联动** returns to normal event-driven playback. This review mode does not emit business events.
 
-| Authoritative change | Performance |
-| --- | --- |
-| Local text copied | capture |
-| Text send activity begins | send |
-| Incoming text applied | receive_text |
-| Incoming files/image finished as Completed or Saved | receive_file |
-| Receipt for the relevant send confirms Applied/Completed | success, after the send performance finishes |
-| Relevant rejected, failed or unconfirmed receipt | error; cancellation stays quiet |
-| Synchronization paused / all peers offline / resumed or reconnected | paused / offline / resume |
-| Bird hovered or keyboard-focused / clicked | curious / hop |
+| Authoritative change                                                | Performance                                  |
+| ------------------------------------------------------------------- | -------------------------------------------- |
+| Local text copied                                                   | capture                                      |
+| Text send activity begins                                           | send                                         |
+| Incoming text applied                                               | receive_text                                 |
+| Incoming files/image finished as Completed or Saved                 | receive_file                                 |
+| Receipt for the relevant send confirms Applied/Completed            | success, after the send performance finishes |
+| Relevant rejected, failed or unconfirmed receipt                    | error; cancellation stays quiet              |
+| Synchronization paused / all peers offline / resumed or reconnected | paused / offline / resume                    |
+| Bird hovered or keyboard-focused / clicked                          | curious / hop                                |
 
 File transfer start and byte completion do not trigger receipt animation. Saved remains a partial business outcome even though the file can be inspected. Receipt correlation uses the activity ID for text and the task key for content transfers, including a receipt delivered in the same snapshot as the send activity. Newer activity invalidates a pending cosmetic receipt. Busy events remain in the mailbox without building an animation queue; gesture and wake animations yield to business activity. A carried-paper performance finishes placing its props before entering pause/offline, while the actual business mode changes immediately. Hidden windows reset playback and suspend rendering. Recovery and initial snapshots never replay old events.
 
 ## Source and export
+
+The shipped GLB, posters and icons are committed and sufficient to build the app. The `.develop_doc` directory is an ignored local design archive, not part of a fresh clone. Re-exporting the animation requires obtaining that editable source separately; the paths below document its provenance, not a normal build prerequisite.
 
 The editable source is `.develop_doc/design/bird-business-19/NOOBOARD-business-19.blend` at the repository root (local design archive). It retains version 18's approved shape, wing material, modifiers and three base motions. The legacy board/mailbox choreography is appended as a reference; its hidden rig drives body/travel timing. New head gestures, foot lift, wing balance, eyelid poses and paper/door constraints were edited in Blender's native UI. No script regenerates the bird, poses or geometry.
 
@@ -57,20 +61,20 @@ The editable Blender source was saved with all corrections and the full 1–1700
 
 ## Performances
 
-| Clip | Inclusive Blender frames | Duration | Performance |
-| --- | --- | --- | --- |
-| idle | 1–121 | 4 s | Breathing and blinking |
-| curious | 141–241 | 3.333 s | Curious head turn |
-| hop | 261–360 | 3.3 s | Anticipation, hop and settle |
-| capture | 546–613 | 2.792 s | Look down, lift foot at the board, settle |
-| send | 687–879 | 8 s | Take paper from the board, carry it to the closed mailbox, turn it flat and insert at the slot, return |
-| receive_text | 880–1078 | 8.25 s | Open mailbox, extend the paper tray, take the flat paper, carry it to the board and place it |
-| receive_file | 1079–1215 | 5.667 s | Open mailbox and inspect the file; leave it inside and return empty-beaked |
-| success | 1344–1386 | 1.75 s | Small affirmative nod |
-| error | 1387–1447 | 2.5 s | Hesitation and puzzled head tilt |
-| paused | 1448–1520 | 3 s | Settle and close eyes; hold the final pose |
-| offline | 1521–1617 | 4 s | Remain awake and wait; loop |
-| resume | 1618–1678 | 2 s | Open eyes, lift head and return to neutral |
+| Clip         | Inclusive Blender frames | Duration | Performance                                                                                            |
+| ------------ | ------------------------ | -------- | ------------------------------------------------------------------------------------------------------ |
+| idle         | 1–121                    | 4 s      | Breathing and blinking                                                                                 |
+| curious      | 141–241                  | 3.333 s  | Curious head turn                                                                                      |
+| hop          | 261–360                  | 3.3 s    | Anticipation, hop and settle                                                                           |
+| capture      | 546–613                  | 2.792 s  | Look down, lift foot at the board, settle                                                              |
+| send         | 687–879                  | 8 s      | Take paper from the board, carry it to the closed mailbox, turn it flat and insert at the slot, return |
+| receive_text | 880–1078                 | 8.25 s   | Open mailbox, extend the paper tray, take the flat paper, carry it to the board and place it           |
+| receive_file | 1079–1215                | 5.667 s  | Open mailbox and inspect the file; leave it inside and return empty-beaked                             |
+| success      | 1344–1386                | 1.75 s   | Small affirmative nod                                                                                  |
+| error        | 1387–1447                | 2.5 s    | Hesitation and puzzled head tilt                                                                       |
+| paused       | 1448–1520                | 3 s      | Settle and close eyes; hold the final pose                                                             |
+| offline      | 1521–1617                | 4 s      | Remain awake and wait; loop                                                                            |
+| resume       | 1618–1678                | 2 s      | Open eyes, lift head and return to neutral                                                             |
 
 Send and success are distinct performances. Animation completion is not proof of delivery. Files stay associated with the mailbox; only clipboard content is carried back to the board. The legacy receive-file board/crooked-paper tail at frames 1216–1343 is intentionally not shipped.
 

@@ -1,4 +1,6 @@
-# Clipboard
+# nooboard-clipboard
+
+库接口参考，面向调用者与维护者。[应用使用](../../README.md) · [开发指南](../../docs/development.md) · [测试与实机验收](../../docs/testing.md)
 
 独立于网络、存储和界面的原生剪贴板服务。提供文本、图片和本地文件引用，支持 macOS、Windows、X11 和 Wayland，不依赖 arboard。
 

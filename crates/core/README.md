@@ -1,5 +1,7 @@
 # nooboard-core
 
+库接口参考，面向调用者与维护者。[应用使用](../../README.md) · [开发指南](../../docs/development.md) · [测试与实机验收](../../docs/testing.md)
+
 core 负责用户设置、设备使用策略、同步规则和跨库工作流程。它只使用 clipboard、storage、network、ssh 的公开句柄，不持有数据库连接、TLS 会话、文件传输 worker 或私钥。desktop 只依赖 core。
 
 ## 公开入口与生命周期
@@ -63,6 +65,12 @@ src/
 │       ├── send.rs         手动及自动发送
 │       ├── receive.rs      接收策略与实际结果反馈
 │       └── apply.rs        唯一的生产剪贴板写入路径
+├── remote/
+│   ├── connection.rs       SSH 登录、地址与主机信任
+│   ├── credentials.rs      凭据策略的测试端口
+│   ├── directory.rs        文件树根路径、查询与缓存
+│   ├── transfer.rs         固定文件任务参数与重试
+│   └── runtime.rs          SSH 状态观察、工作区与回收
 ├── history/
 │   ├── model.rs            历史查询结果与历史版本
 │   ├── policy.rs           时间与保留策略
@@ -117,9 +125,9 @@ configuration 为各目标记录最近一次启用的配置版本，sync 将它�
 
 加载或迁移配置后，若接收目录仍为空，使用宿主提供的默认目录并随配置保存；用户已设置的目录优先。宿主也未提供默认值时保持为空。
 
-本轮不保留旧 Rust API 的兼容层。旧 `configuration_v2` 文档由 configuration 迁移：保留设备策略、手动目标和已确认的公开证书，并通过 network 的公开证书解析接口恢复身份信息。新文档写入与旧键删除在 storage 的一次原子设置操作中提交。无设备的旧 settings 文档也可迁移；更早的单设备 peer 格式明确拒绝，避免静默改变信任。损坏或版本未知的文档保留原样。
+Rust API 与持久化格式的兼容性分别管理。旧 `configuration_v2` 文档由 configuration 迁移：保留设备策略、手动目标和已确认的公开证书，并通过 network 的公开证书解析接口恢复身份信息。新文档写入与旧键删除在 storage 的一次原子设置操作中提交。无设备的旧 settings 文档也可迁移；更早的单设备 peer 格式明确拒绝，避免静默改变信任。损坏或版本未知的文档保留原样。
 
-旧数据库不会被自动删除或覆盖；storage 继续负责自己的数据库结构与文本历史迁移。系统私钥仅由 network 的凭据后端管理。
+旧数据库不会被自动删除或覆盖；storage 继续负责自己的数据库结构与文本历史迁移。设备身份私钥由 network 的凭据后端管理，SSH 密码由 SSH 凭据适配管理。
 
 ## SSH 工作区
 

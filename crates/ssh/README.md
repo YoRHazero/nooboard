@@ -1,6 +1,8 @@
 # nooboard-ssh
 
-独立的 SSH 终端和 SFTP 服务，不依赖 core、network、storage 或桌面框架。作为 [SSH 工作区](../../docs/ssh-workspace-design.md) 的底层服务，已由 core 装配，并通过 Tauri 类型化 IPC 接入 React 页面。
+库接口参考，面向调用者与维护者。[应用使用](../../README.md) · [开发指南](../../docs/development.md) · [测试与实机验收](../../docs/testing.md)
+
+独立的 SSH 终端和 SFTP 服务，不依赖 core、network、storage 或桌面框架。由 core 装配，通过 Tauri 类型化 IPC 接入桌面页面。跨模块契约见 [SSH 工作区设计](../../docs/ssh-workspace-design.md)，应用操作见 [SSH 使用指南](../../docs/ssh-guide.md)。
 
 ## 所有权与模块
 

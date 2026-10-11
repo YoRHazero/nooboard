@@ -1,8 +1,10 @@
 # nooboard-storage
 
+库接口参考，面向调用者与维护者。[应用使用](../../README.md) · [开发指南](../../docs/development.md) · [测试与实机验收](../../docs/testing.md)
+
 文字历史与文本配置的持久化服务。上游持有可克隆的 `Storage` 句柄，通过有界请求队列与内部 runtime 通信；连接、SQL、事务和数据库迁移由后端私有实现。
 
-本轮是破坏性重构：旧 `Database` 接口已删除，core 已通过服务所有者和请求句柄接入新接口。`files`、`secrets` 及其依赖已从 storage 删除；跨端文件传输和身份凭据管理由 [network](../network/README.md) 承担。
+文件传输及系统凭据不属于本库：nooboard 设备传输和身份由 [network](../network/README.md) 管理，SSH/SFTP 及其密码由 [ssh](../ssh/README.md) 管理。core 通过服务所有者和请求句柄访问 storage。
 
 ## 职责
 
@@ -128,14 +130,7 @@ SQLite 使用 WAL 和 `BEGIN IMMEDIATE` 写事务，跨连接串行完成去重�
 
 数据库仍是明文，新建 Unix 文件权限为 `0600`；`clear` 是逻辑删除，不承诺物理安全擦除。
 
-接入 PostgreSQL 时：
-
-1. 在 `backend/postgres/` 实现同一 `Backend`，将连接池、SQL、迁移、错误映射留在该目录。
-2. 在 `options.rs` 增加启动配置，在 `backend/mod.rs` 增加工厂分支，并提供可选依赖/feature。
-3. 用 PostgreSQL 的锁与事务隔离落实跨连接去重、裁剪原子性和批量读取快照；不能仅依赖本进程队列或摘要唯一约束。
-4. 运行 `tests/contract/` 的同一套测试，补充该驱动的并发、失败和迁移测试。上游仅更换启动配置，保留 `Storage` 请求接口。
-
-本轮未实现 PostgreSQL，也未提供 SQLite 到 PostgreSQL 的数据搬迁工具。不同数据库的 schema 和迁移分别由各自适配器维护。
+目前提供 SQLite 驱动，不提供 PostgreSQL 或数据库间迁移工具。新增驱动时，应把连接、SQL、锁与迁移封装在自己的 `backend` 适配器，并运行同一套 `tests/contract/` 测试；不能依赖本进程队列代替数据库的并发隔离。
 
 ## 验证
 
