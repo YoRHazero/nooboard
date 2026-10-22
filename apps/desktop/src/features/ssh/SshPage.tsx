@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useReducer, useState, type CSSProperties } from 'react';
 import {
   PanelRightClose,
   PanelRightOpen,
@@ -15,6 +15,7 @@ import { Login } from './Login';
 import { TerminalPane } from './TerminalPane';
 import { FileTree } from './FileTree';
 import { TransferQueue } from './TransferQueue';
+import { sessionSelection, type SessionSelection } from './session-selection';
 import { errorText, toProblem } from '../../i18n/errors';
 import './ssh.css';
 export function SshPage() {
@@ -23,17 +24,23 @@ export function SshPage() {
   const { peers } = useSnapshot();
   const { execute, pending } = useCommand();
   const { t } = useI18n();
-  const [active, setActive] = useState<string | undefined>(() => remote.workspaces[0]?.id);
+  const [selected, select] = useReducer(
+    sessionSelection,
+    remote.workspaces[0]?.id,
+    (id): SessionSelection => (id ? { id, awaitingSnapshot: false } : undefined),
+  );
+  const active = selected?.id;
   const [device, setDevice] = useState(() => peers[0]?.noobId ?? '');
   const [files, setFiles] = useState(true);
   const [width, setWidth] = useState(330);
   const [selection, setSelection] = useState('');
   const [login, setLogin] = useState(false);
   const workspace = remote.workspaces.find((w) => w.id === active);
+  const awaitingWorkspace = selected?.awaitingSnapshot && !workspace;
   const challenge = remote.challenges[0];
   useEffect(() => {
-    if (active && !remote.workspaces.some((w) => w.id === active)) setActive(undefined);
-  }, [active, remote.workspaces]);
+    select({ type: 'snapshot', ids: remote.workspaces.map((w) => w.id) });
+  }, [selected, remote.workspaces]);
   useEffect(() => {
     setSelection('');
     setLogin(false);
@@ -42,7 +49,7 @@ export function SshPage() {
     if (!peers.some((p) => p.noobId === device)) setDevice(peers[0]?.noobId ?? '');
   }, [peers, device]);
   const connected = (id: string) => {
-    setActive(id);
+    select({ type: 'connected', id });
     setLogin(false);
   };
   return (
@@ -55,7 +62,7 @@ export function SshPage() {
                 role="tab"
                 title={`${w.username}@${w.deviceId}:${w.port}`}
                 aria-selected={active === w.id}
-                onClick={() => setActive(w.id)}
+                onClick={() => select({ type: 'select', id: w.id })}
               >
                 <span className={`ssh-dot ${w.terminal.state === 'Ready' ? 'is-ready' : ''}`} />
                 {peers.find((p) => p.noobId === w.deviceId)?.deviceName ?? w.deviceId}
@@ -71,7 +78,7 @@ export function SshPage() {
               </IconButton>
             </div>
           ))}
-          <IconButton label={t('ssh:newSession')} onClick={() => setActive(undefined)}>
+          <IconButton label={t('ssh:newSession')} onClick={() => select({ type: 'select' })}>
             <Plus size={17} />
           </IconButton>
         </div>
@@ -124,7 +131,12 @@ export function SshPage() {
       )}
       <div className={`ssh-body ${files && workspace ? 'has-files' : ''}`}>
         <div className="ssh-terminal-area">
-          {workspace ? (
+          {awaitingWorkspace ? (
+            <div className="ssh-connecting" role="status">
+              <TerminalSquare size={28} />
+              <p>{t('ssh:connecting')}</p>
+            </div>
+          ) : workspace ? (
             <>
               {(workspace.terminal.state === 'Ready' || workspace.terminal.state === 'Ended') && (
                 <TerminalPane

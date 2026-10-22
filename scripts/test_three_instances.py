@@ -25,7 +25,15 @@ def main():
                     continue
                 owner.call("trust_peer", noob_id=other.identity["noob_id"], certificate=other.identity["certificate"],
                            fingerprint=other.identity["fingerprint"], device_name="同名电脑",
-                           address=other.identity["listen_address"])
+                           address=None)
+
+        # All three listeners must trust each other before anyone starts dialing.
+        for owner in peers:
+            for other in peers:
+                if other is owner:
+                    continue
+                owner.call("configure_peer", noob_id=other.identity["noob_id"],
+                           settings={"address": other.identity["listen_address"], "auto_send": False})
 
         def ready():
             return all(len(p.call("status")["peers"]) == 2

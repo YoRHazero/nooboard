@@ -216,6 +216,10 @@ async fn authenticated_peer_name_is_saved_without_changing_trust_or_device_prefe
     old.device_name = "Pairing-time name".into();
     let id = old.noob_id.clone();
     let fingerprint = old.confirmed_fingerprint.clone();
+    // Prepare the listener before giving the other side an address to dial.
+    let mut passive = fixture(&aa);
+    passive.address = None;
+    ab.trust_peer(passive).await.unwrap();
     aa.trust_peer(old.clone()).await.unwrap();
     let preferences = PeerSettings {
         address: old.address,

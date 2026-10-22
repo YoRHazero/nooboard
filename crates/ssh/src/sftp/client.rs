@@ -1,4 +1,7 @@
-use crate::{connection::client::Connection, *};
+use crate::{
+    connection::{channel::request_reply, client::Connection},
+    *,
+};
 use russh::{ChannelMsg, Disconnect};
 use russh_sftp::client::{Config, RawSftpSession};
 use std::{sync::Mutex, time::Duration};
@@ -15,7 +18,7 @@ impl Client {
         let operation = async {
             let mut channel = connection.channel_open_session().await?;
             channel.request_subsystem(true, "sftp").await?;
-            if !matches!(channel.wait().await, Some(ChannelMsg::Success)) {
+            if !matches!(request_reply(&mut channel).await, Some(ChannelMsg::Success)) {
                 return Err(Error::SftpUnavailable);
             }
             let raw = RawSftpSession::new_with_config(

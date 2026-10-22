@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { KeyRound, TerminalSquare } from 'lucide-react';
 import {
   useDesktop,
@@ -33,11 +33,14 @@ export function Login({
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState<string>();
   const { execute, pending } = useCommand();
+  const submitting = useRef(false);
   const saved = remote.profiles.find(
     (p) =>
       p.deviceId === device && p.username === username && p.port === Number(port) && p.remembered,
   );
   const connect = async (stored = false) => {
+    if (submitting.current) return;
+    submitting.current = true;
     setError(undefined);
     const secret = stored ? undefined : password;
     setPassword('');
@@ -60,6 +63,8 @@ export function Login({
       if (result.type === 'connected') onConnected(result.data.id);
     } catch (reason) {
       setError(errorText(toProblem(reason)));
+    } finally {
+      submitting.current = false;
     }
   };
   const failure = workspace?.terminal.error ?? workspace?.files.error;
@@ -75,6 +80,7 @@ export function Login({
         <p>{t('ssh:loginHint')}</p>
       </div>
       <form
+        aria-busy={pending}
         onSubmit={(event) => {
           event.preventDefault();
           void execute(() => connect());
@@ -130,7 +136,7 @@ export function Login({
         )}
         <div className="ssh-login__actions ssh-login__wide">
           <Button type="submit" variant="primary" disabled={pending || !device}>
-            {t('ssh:connect')}
+            {t(pending ? 'ssh:connecting' : 'ssh:connect')}
           </Button>
           {saved && (
             <Button disabled={pending} onClick={() => void execute(() => connect(true))}>

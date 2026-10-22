@@ -81,7 +81,11 @@ mod tests {
                 addresses: vec![status.listen_address],
             }
         };
-        a.trust_peer(trusted(&b)).await.unwrap();
+        // Install passive trust before either side can dial. An early dial would
+        // correctly receive Unpaired and stop retrying until trust is reset.
+        let mut passive = trusted(&b);
+        passive.addresses.clear();
+        a.trust_peer(passive).await.unwrap();
         b.trust_peer(trusted(&a)).await.unwrap();
         let mut network_state = a.subscribe();
         tokio::time::timeout(Duration::from_secs(5), async {

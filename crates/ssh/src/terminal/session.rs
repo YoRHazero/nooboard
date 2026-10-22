@@ -1,10 +1,14 @@
 use super::runtime::Command;
-use crate::{connection::client::Connection, runtime::Context, *};
+use crate::{
+    connection::{channel::request_reply, client::Connection},
+    runtime::Context,
+    *,
+};
 use russh::{Channel, ChannelMsg, client::Msg};
 use tokio::{sync::mpsc, time::timeout};
 
 async fn accepted(channel: &mut Channel<Msg>) -> Result<()> {
-    match channel.wait().await {
+    match request_reply(channel).await {
         Some(ChannelMsg::Success) => Ok(()),
         _ => Err(Error::Connection(
             "PTY or interactive shell request was rejected".into(),
