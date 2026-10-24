@@ -82,10 +82,10 @@ impl Diagnostics {
             _ => Err(crate::ipc::errors::ui("generic")),
         }
     }
-    pub async fn shutdown(self) {
-        for peer in self.peers {
-            let _ = peer.shutdown().await;
+    pub async fn shutdown(&mut self) -> nooboard_core::Result<()> {
+        for peer in &mut self.peers {
+            peer.shutdown().await?;
         }
-        let _ = self.local.shutdown().await;
+        self.local.shutdown().await
     }
 }

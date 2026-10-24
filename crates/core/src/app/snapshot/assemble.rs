@@ -1,0 +1,248 @@
+use crate::features::clipboard::domain::model::{content_stage, transfer_key};
+use crate::{
+    configuration::domain::model::Configuration,
+    features::clipboard::application::state::SyncState,
+    features::devices::application::state::DeviceState,
+    features::history::application::state::HistoryState, *,
+};
+use nooboard_network::{NetworkStatus, TransferStage};
+fn delivery(stage: TransferStage) -> DeliveryState {
+    match stage {
+        TransferStage::Preparing | TransferStage::Queued | TransferStage::WaitingForAcceptance => {
+            DeliveryState::Queued
+        }
+        TransferStage::Sending | TransferStage::Receiving => DeliveryState::Sending,
+        TransferStage::WaitingForApplication
+        | TransferStage::AwaitingReceipt
+        | TransferStage::Cancelling => DeliveryState::AwaitingReceipt,
+        TransferStage::Applied => DeliveryState::Applied,
+        TransferStage::Saved | TransferStage::Unconfirmed => DeliveryState::Unconfirmed,
+        TransferStage::Rejected => DeliveryState::Rejected,
+        TransferStage::Cancelled => DeliveryState::Cancelled,
+        TransferStage::Superseded => DeliveryState::Superseded,
+        TransferStage::Failed => DeliveryState::Offline,
+    }
+}
+pub(crate) struct Inputs<'a> {
+    pub configuration: &'a Configuration,
+    pub devices: &'a DeviceState,
+    pub sync: &'a SyncState,
+    pub history: &'a HistoryState,
+    pub network: &'a NetworkStatus,
+    pub startup: &'a Settings,
+    pub terminal: &'a crate::terminal::TerminalWorkspaceSnapshot,
+}
+pub(crate) fn assemble(
+    input: Inputs<'_>,
+    session: &str,
+    revision: u64,
+    state: AppState,
+) -> AppSnapshot {
+    let Inputs {
+        configuration: c,
+        devices: d,
+        sync: s,
+        history: h,
+        network: n,
+        startup,
+        terminal,
+    } = input;
+    let name = |id: &str| {
+        c.peers
+            .get(id)
+            .map_or_else(|| id.to_owned(), |p| p.trusted.identity.device_name.clone())
+    };
+    let transfers = s
+        .operations
+        .iter()
+        .filter(|op| op.kind.is_none() && op.incoming_peer.is_none())
+        .filter_map(|op| {
+            let targets = n
+                .transfers
+                .iter()
+                .filter(|r| op.matches(r))
+                .map(|r| Delivery {
+                    noob_id: r.peer.clone(),
+                    device_name: name(&r.peer),
+                    state: delivery(r.stage),
+                })
+                .collect::<Vec<_>>();
+            (!targets.is_empty()).then(|| Transfer {
+                id: op.id.clone(),
+                automatic: op.automatic,
+                bytes: op.bytes,
+                targets,
+            })
+        })
+        .collect::<Vec<_>>();
+    let content_transfers = n
+        .transfers
+        .iter()
+        .filter_map(|row| {
+            let op = s.operations.iter().find(|op| op.matches(row))?;
+            let kind = op.kind?;
+            Some(ContentTransfer {
+                key: transfer_key(row),
+                id: row.id.clone(),
+                peer: row.peer.clone(),
+                device_name: name(&row.peer),
+                incoming: row.incoming,
+                kind,
+                names: op.names.clone(),
+                total_bytes: row.total_bytes,
+                completed_bytes: row.completed_bytes,
+                prepared_bytes: 0,
+                stage: content_stage(row.stage),
+                error: if row.incoming
+                    && s.application_failures
+                        .contains(&(row.id.clone(), row.peer.clone()))
+                {
+                    Some(TransferFailure::Clipboard)
+                } else {
+                    row.error.map(transfer_failure)
+                },
+                saved_paths: row.saved_paths.clone(),
+                at_ms: op.at_ms,
+            })
+        })
+        .collect();
+    let peers = c
+        .peers
+        .iter()
+        .map(|(id, p)| {
+            let live = n.connections.iter().find(|v| &v.peer == id);
+            PeerStatus {
+                noob_id: id.clone(),
+                device_name: p.trusted.identity.device_name.clone(),
+                fingerprint: p.trusted.identity.fingerprint.clone(),
+                settings: p.settings.clone(),
+                online: live.is_some_and(|v| v.connected),
+                connection_address: live
+                    .filter(|v| v.connected)
+                    .and_then(|v| v.peer_address)
+                    .map(|address| address.to_string()),
+                accepting: live.is_some_and(|v| v.accepting),
+                connection_state: peer_connection_state(
+                    live.is_some_and(|v| v.connected),
+                    c.settings.paused || live.is_some_and(|v| v.paused),
+                    n.nearby.iter().any(|v| &v.noob_id == id),
+                    live.is_some_and(|v| v.unpaired_notice.is_some()),
+                ),
+                paused: live.is_some_and(|v| v.paused),
+                unpaired_notice: live.and_then(|v| v.unpaired_notice),
+            }
+        })
+        .collect();
+    let fault = s
+        .fault
+        .as_ref()
+        .or(d.fault.as_ref())
+        .or(h.error.as_ref())
+        .map(|message| Fault {
+            sequence: revision,
+            peer: None,
+            message: message.clone(),
+        });
+    AppSnapshot {
+        terminal: terminal.clone(),
+        session: session.into(),
+        revision,
+        history_revision: h.revision,
+        status: Status {
+            state,
+            restart_required: c.settings.device_name != startup.device_name
+                || c.settings.listen_address != startup.listen_address
+                || c.settings.pairing_listen_address != startup.pairing_listen_address,
+            configuration_revision: c.revision,
+            effective_revision: s.effective_revision.min(d.effective_revision),
+            noob_id: n.identity.id.clone(),
+            fingerprint: n.identity.fingerprint.clone(),
+            listen_address: n.listen_address.to_string(),
+            settings: c.settings.clone(),
+            peers,
+            manual_targets: c.manual_targets.clone(),
+            transfers,
+        },
+        content_transfers,
+        local_network: d.local.clone(),
+        onboarding: d.onboarding.clone(),
+        current: s.current.clone(),
+        activities: s.activities.iter().cloned().collect(),
+        fault,
+    }
+}
+
+fn transfer_failure(error: nooboard_network::ErrorKind) -> TransferFailure {
+    use nooboard_network::ErrorKind;
+    match error {
+        ErrorKind::TooLarge => TransferFailure::TooLarge,
+        ErrorKind::SourceChanged => TransferFailure::SourceChanged,
+        ErrorKind::Integrity => TransferFailure::Integrity,
+        ErrorKind::Unavailable | ErrorKind::Stopped => TransferFailure::Offline,
+        ErrorKind::Timeout => TransferFailure::Timeout,
+        ErrorKind::Busy => TransferFailure::Busy,
+        ErrorKind::Cancelled => TransferFailure::Cancelled,
+        ErrorKind::InvalidInput => TransferFailure::Unsupported,
+        _ => TransferFailure::Protocol,
+    }
+}
+
+fn peer_connection_state(
+    connected: bool,
+    paused: bool,
+    discovered: bool,
+    unpaired: bool,
+) -> PeerConnectionState {
+    if connected {
+        if paused {
+            PeerConnectionState::Paused
+        } else {
+            PeerConnectionState::Connected
+        }
+    } else if !discovered {
+        PeerConnectionState::Offline
+    } else if unpaired {
+        PeerConnectionState::Unpaired
+    } else {
+        PeerConnectionState::Unconnected
+    }
+}
+
+#[cfg(test)]
+mod peer_state_tests {
+    use super::*;
+    #[test]
+    fn discovery_and_pause_do_not_override_a_live_connection_or_hide_disconnection() {
+        assert_eq!(
+            peer_connection_state(true, false, false, false),
+            PeerConnectionState::Connected
+        );
+        assert_eq!(
+            peer_connection_state(true, true, false, false),
+            PeerConnectionState::Paused
+        );
+        assert_eq!(
+            peer_connection_state(false, true, false, false),
+            PeerConnectionState::Offline
+        );
+        assert_eq!(
+            peer_connection_state(false, true, true, false),
+            PeerConnectionState::Unconnected
+        );
+    }
+    #[test]
+    fn unpaired_devices_become_offline_when_discovery_disappears() {
+        assert_eq!(
+            peer_connection_state(false, false, true, true),
+            PeerConnectionState::Unpaired
+        );
+        assert_eq!(
+            peer_connection_state(false, false, false, true),
+            PeerConnectionState::Offline
+        );
+        assert_eq!(
+            peer_connection_state(false, false, true, false),
+            PeerConnectionState::Unconnected
+        );
+    }
+}

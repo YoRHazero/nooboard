@@ -2,7 +2,7 @@ use super::*;
 #[tokio::test]
 async fn owner_shutdown_is_independent_of_live_handles_and_subscribers() {
     let clipboard = Clipboard::new();
-    let (service, app) = start(&clipboard).await;
+    let (mut service, app) = start(&clipboard).await;
     let clone = app.clone();
     let status = app.subscribe();
     let address = app.status().listen_address;
@@ -41,8 +41,8 @@ async fn dropping_handles_keeps_service_alive_but_dropping_owner_stops_it() {
 async fn shutdown_waits_for_application_and_history_without_blocking_unrelated_queries() {
     let a = Clipboard::new();
     let b = Clipboard::new();
-    let (sa, app_a) = start(&a).await;
-    let (sb, app_b) = start(&b).await;
+    let (mut sa, app_a) = start(&a).await;
+    let (mut sb, app_b) = start(&b).await;
     pair(&app_a, &app_b).await;
     b.block.store(true, Ordering::SeqCst);
     a.copy(Payload::Text("complete during shutdown".into()));
@@ -54,7 +54,7 @@ async fn shutdown_waits_for_application_and_history_without_blocking_unrelated_q
             .unwrap()
             .is_empty()
     );
-    let close = tokio::spawn(sb.shutdown());
+    let close = tokio::spawn(async move { sb.shutdown().await });
     tokio::time::sleep(Duration::from_millis(30)).await;
     assert!(!close.is_finished());
     b.release.notify_one();
@@ -83,6 +83,6 @@ async fn failing_start_releases_already_opened_services() {
         .is_err()
     );
     drop(listener);
-    let (s, _) = start(&clipboard).await;
+    let (mut s, _) = start(&clipboard).await;
     bounded(s.shutdown()).await.unwrap();
 }

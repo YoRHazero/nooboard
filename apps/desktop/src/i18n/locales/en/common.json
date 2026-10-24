@@ -1,4 +1,5 @@
 {
+  "quitFailedMessage": "Some background resources could not be stopped. Nooboard is still open. Check their status and try quitting again.",
   "trayOpen": "Open Nooboard",
   "trayPaused": "Sync paused",
   "trayStatus": "Connected: {{connected}} · Transfers: {{transfers}}",

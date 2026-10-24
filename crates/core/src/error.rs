@@ -1,6 +1,17 @@
 pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("terminal operation failed: {0}")]
+    Terminal(#[from] nooboard_terminal::TerminalError),
+    #[error("terminal shutdown is incomplete: {0}")]
+    TerminalShutdown(#[from] nooboard_terminal::TerminalShutdownError),
+    #[error("configuration is still referenced or in use")]
+    ConfigurationInUse {
+        configuration: nooboard_terminal::TerminalConfigReference,
+        referenced_by: Vec<nooboard_terminal::TerminalConfigReference>,
+        active_runs: Vec<nooboard_terminal::RunId>,
+        pending: bool,
+    },
     #[error("identity operation failed: {0}")]
     Identity(#[from] nooboard_identity::Error),
     #[error("clipboard operation failed: {0}")]

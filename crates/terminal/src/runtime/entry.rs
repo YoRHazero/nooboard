@@ -22,6 +22,7 @@ pub(super) enum Kind {
     },
 }
 pub(super) struct Entry {
+    pub _config_lease: Option<Box<dyn RunLease>>,
     pub id: RunId,
     pub order: u64,
     pub name: String,

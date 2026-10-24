@@ -3255,13 +3255,19 @@ dependencies = [
  "nooboard-identity",
  "nooboard-network",
  "nooboard-storage",
+ "nooboard-terminal",
+ "rand 0.10.3",
+ "russh",
+ "russh-sftp",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
+ "tokio-util",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

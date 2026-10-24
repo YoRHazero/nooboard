@@ -74,3 +74,5 @@ src-tauri/src/
 先修改 Rust DTO，再从 `apps/desktop` 运行 `npm run ipc:generate`，提交 schema 与 TypeScript 生成物。Rust schema 测试和 `npm run ipc:check` 检查漂移，`npm run architecture:check` 约束模块导入。
 
 协议变化同时更新原生分发及预览场景，利用 TypeScript 穷尽检查暴露遗漏。打包默认启用 `custom-protocol` 以加载内嵌资源；Tauri dev 关闭该默认 feature 并使用本机 Vite。生成协议也关闭默认 feature，因此无需已有前端构建。
+
+Core 已装配 Terminal Service，但新终端页面与 IPC 尚未接入。桌面退出持有后端所有者直到 `shutdown(&mut self)` 成功；失败保留订阅和状态、恢复退出入口并提示用户重试。关闭到托盘只隐藏窗口。

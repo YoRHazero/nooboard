@@ -11,7 +11,7 @@ pub struct Session {
     pub app: App,
     service: AppService,
     input: Clipboard,
-    input_service: ClipboardService,
+    input_service: Option<ClipboardService>,
 }
 impl Session {
     pub async fn start() -> Result<Self> {
@@ -48,7 +48,7 @@ impl Session {
                 return Err(e.into());
             }
         };
-        let result = crate::runtime::startup::launch(crate::runtime::startup::Launch {
+        let result = crate::app::startup::launch(crate::app::startup::Launch {
             options: Options {
                 storage: BackendConfig::Sqlite(SqliteOptions::in_memory()),
                 profile: "diagnostics".into(),
@@ -66,7 +66,7 @@ impl Session {
                 app,
                 service,
                 input,
-                input_service,
+                input_service: Some(input_service),
             }),
             Err(e) => {
                 let _ = input_service.shutdown().await;
@@ -84,11 +84,11 @@ impl Session {
             _ => None,
         })
     }
-    pub async fn shutdown(self) -> Result<()> {
-        let app = self.service.shutdown().await;
-        let input = self.input_service.shutdown().await;
-        app?;
-        input?;
+    pub async fn shutdown(&mut self) -> Result<()> {
+        self.service.shutdown().await?;
+        if let Some(input) = self.input_service.take() {
+            input.shutdown().await?;
+        }
         Ok(())
     }
 }
@@ -105,8 +105,8 @@ mod tests {
     #[tokio::test]
     #[ignore = "two private macOS pasteboards and real localhost TLS; not cross-device GUI validation"]
     async fn native_images_and_files_both_directions() {
-        let a = Session::start().await.unwrap();
-        let b = Session::start().await.unwrap();
+        let mut a = Session::start().await.unwrap();
+        let mut b = Session::start().await.unwrap();
         let root_a = tempfile::tempdir().unwrap();
         let root_b = tempfile::tempdir().unwrap();
         for (session, directory) in [(&a, &root_a), (&b, &root_b)] {

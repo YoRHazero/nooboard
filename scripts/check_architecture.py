@@ -13,7 +13,7 @@ expected = ports | {"nooboard-core", "nooboard-desktop", "nooboard-terminal"}
 assert set(packages) == expected, "unexpected workspace crates"
 for name, package in packages.items():
     local = {dep["name"] for dep in package["dependencies"] if dep.get("path")}
-    allowed = ports if name == "nooboard-core" else {"nooboard-core"} if name == "nooboard-desktop" else set()
+    allowed = ports | {"nooboard-terminal"} if name == "nooboard-core" else {"nooboard-core"} if name == "nooboard-desktop" else set()
     assert local == allowed, (name, local)
     if name != "nooboard-desktop":
         assert not any(dep["name"].startswith("tauri") for dep in package["dependencies"]), name
@@ -103,7 +103,7 @@ for source in identity.rglob("*.rs"):
         assert "crate::runtime" not in code, f"identity backend imports scheduler: {source}"
 identity_deps = packages["nooboard-identity"]["dependencies"]
 assert all(dep["optional"] for dep in identity_deps if dep["name"] == "keyring"), "identity native credentials must be optional"
-# Terminal has its own facade and drivers; Core integration is a later migration.
+# Terminal has its own facade and drivers; Core only composes its public boundary.
 terminal = clipboard.parent.parent / "terminal" / "src"
 terminal_root = (terminal / "lib.rs").read_text(encoding="utf-8")
 assert not re.search(r"^pub(?:\([^)]*\))? mod\b", terminal_root, re.M), "terminal exports an implementation module"
@@ -127,7 +127,7 @@ core = clipboard.parent.parent / "core" / "src"
 core_root = (core / "lib.rs").read_text(encoding="utf-8")
 assert not re.search(r"^pub(?:\([^)]*\))? mod\b", core_root, re.M), "core exports an implementation module"
 assert re.findall(r"^pub use (.*);$", core_root, re.M) == ["api::*"], "core bypasses API facade"
-for obsolete in ("app.rs", "bootstrap.rs", "link", "content_transfer", "transfers.rs"):
+for obsolete in ("app.rs", "bootstrap.rs", "link", "content_transfer", "transfers.rs", "runtime", "devices", "sync", "history", "snapshot", "identity.rs", "ports.rs"):
     assert not any((core / obsolete).rglob("*.rs")) if (core / obsolete).is_dir() else not (core / obsolete).exists(), f"obsolete core implementation: {obsolete}"
 for source in core.rglob("*.rs"):
     relative = source.relative_to(core)
@@ -139,5 +139,37 @@ for source in core.rglob("*.rs"):
     if source.name == "model.rs":
         assert not re.search(r"\b(?:mpsc|oneshot|watch)::|crate::runtime", code), f"model owns runtime channels: {source}"
     if "self.clipboard.write_content(" in code:
-        assert relative.as_posix() == "sync/runtime/apply.rs", f"clipboard write outside application queue: {source}"
+        assert relative.as_posix() == "features/clipboard/application/apply.rs", f"clipboard write outside application queue: {source}"
+
+# Core's feature policy/application layers depend on ports and value contracts only.
+for source in (core / "features").rglob("*.rs"):
+    relative = source.relative_to(core / "features")
+    production = source.read_text(encoding="utf-8").split("#[cfg(test)]", 1)[0]
+    if len(relative.parts) > 1 and relative.parts[1] in {"domain", "application", "ports"}:
+        assert not re.search(r"\bnooboard_\w+::", production), f"service dependency outside Core adapter: {source}"
+        assert not re.search(r"\badapters::|crate::app::|(?:std|tokio)::fs::|tokio::net::|std::net::(?:Tcp|Udp|ToSocketAddrs)", production), f"outer-layer operation in Core feature: {source}"
+    if len(relative.parts) > 1 and relative.parts[1] == "domain":
+        assert not re.search(r"\b(?:mpsc|oneshot|watch)::|\bapplication::|\bports::", production), f"runtime dependency in Core domain: {source}"
+# Configuration follows the same dependency direction as the features.
+for source in (core / "configuration").rglob("*.rs"):
+    relative = source.relative_to(core / "configuration")
+    production = source.read_text(encoding="utf-8").split("#[cfg(test)]", 1)[0]
+    if relative.parts[0] in {"domain", "application", "ports"}:
+        assert not re.search(r"\bnooboard_\w+::|\badapters::|crate::app::|(?:std|tokio)::fs::|tokio::net::|std::net::(?:Tcp|Udp|ToSocketAddrs)", production), f"outer dependency in configuration: {source}"
+    if relative.parts[0] == "domain":
+        assert not re.search(r"\b(?:mpsc|oneshot|watch)::|\bapplication::|\bports::", production), f"runtime dependency in configuration domain: {source}"
+# Core may parse imported SSH keys, but never implement an SSH transport.
+for source in core.rglob("*.rs"):
+    relative = source.relative_to(core).as_posix()
+    if relative.startswith("tests/"):
+        continue
+    code = source.read_text(encoding="utf-8")
+    if "russh::" in code:
+        assert relative == "features/terminal/adapters/keys.rs", f"SSH library outside key import adapter: {source}"
+        assert not re.search(r"russh::(?:client|server)::", code), f"Core implements SSH transport: {source}"
+
+for source in (core / "contracts").rglob("*.rs"):
+    code = source.read_text(encoding="utf-8")
+    assert not re.search(r"\b(?:Network|Clipboard|Storage|Identity|Terminal)(?:Service)?\b", code), f"service handle in value contracts: {source}"
+
 print("Architecture constraints passed.")

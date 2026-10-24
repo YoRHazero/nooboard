@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn retired_feature_document_survives_unrelated_configuration_changes() {
-    use crate::configuration::model::Configuration;
+    use crate::configuration::domain::model::Configuration;
     let mut document = serde_json::to_value(Configuration::new(settings())).unwrap();
     let retired = serde_json::json!({
         "profiles": {"saved": {"credential": "opaque-reference"}},
@@ -23,7 +23,7 @@ fn retired_feature_document_survives_unrelated_configuration_changes() {
 async fn rejected_persistence_does_not_publish_unsaved_settings_and_restart_requirement_is_honest()
 {
     let clipboard = Clipboard::new();
-    let (service, app) = start(&clipboard).await;
+    let (mut service, app) = start(&clipboard).await;
     let original = app.status().settings;
     let directory = tempfile::tempdir().unwrap();
     let mut oversized = original.clone();
@@ -55,7 +55,7 @@ async fn configuration_and_history_persist_through_service_restart() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("app.sqlite");
     let clipboard = Clipboard::new();
-    let (service, app) = start_with(
+    let (mut service, app) = start_with(
         &clipboard,
         BackendConfig::Sqlite(SqliteOptions::file(&path)),
         settings(),
@@ -72,7 +72,7 @@ async fn configuration_and_history_persist_through_service_restart() {
     clipboard.copy(Payload::Text("stored history".into()));
     wait(&app, |s| s.history_revision > 0).await;
     service.shutdown().await.unwrap();
-    let (service, app) = start_with(
+    let (mut service, app) = start_with(
         &clipboard,
         BackendConfig::Sqlite(SqliteOptions::file(&path)),
         settings(),
@@ -92,9 +92,9 @@ async fn concurrent_device_configuration_changes_merge_against_latest_document()
     let a = Clipboard::new();
     let b = Clipboard::new();
     let c = Clipboard::new();
-    let (sa, aa) = start(&a).await;
-    let (sb, ab) = start(&b).await;
-    let (sc, ac) = start(&c).await;
+    let (mut sa, aa) = start(&a).await;
+    let (mut sb, ab) = start(&b).await;
+    let (mut sc, ac) = start(&c).await;
     let (x, y) = tokio::join!(aa.trust_peer(fixture(&ab)), aa.trust_peer(fixture(&ac)));
     x.unwrap();
     y.unwrap();
@@ -120,7 +120,7 @@ async fn concurrent_device_configuration_changes_merge_against_latest_document()
 async fn legacy_registry_migrates_public_trust_atomically_and_corrupt_documents_are_preserved() {
     use nooboard_storage::{Setting, SettingsChanges, StorageService};
     let clipboard = Clipboard::new();
-    let (service, app) = start(&clipboard).await;
+    let (mut service, app) = start(&clipboard).await;
     let peer = fixture(&app);
     let (owner, storage) = StorageService::start(
         BackendConfig::Sqlite(SqliteOptions::in_memory()),
@@ -146,7 +146,7 @@ async fn legacy_registry_migrates_public_trust_atomically_and_corrupt_documents_
         })
         .await
         .unwrap();
-    let config = crate::configuration::document::load(&storage, settings())
+    let config = crate::configuration::adapters::document::load(&storage, settings())
         .await
         .unwrap();
     assert_eq!(config.version, 4);
@@ -167,7 +167,7 @@ async fn legacy_registry_migrates_public_trust_atomically_and_corrupt_documents_
     assert!(
         storage
             .settings()
-            .get(crate::configuration::document::KEY)
+            .get(crate::configuration::adapters::document::KEY)
             .await
             .unwrap()
             .is_some()
@@ -182,12 +182,12 @@ async fn legacy_registry_migrates_public_trust_atomically_and_corrupt_documents_
                 key: "configuration_v2".into(),
                 value: corrupt.clone(),
             }],
-            delete: vec![crate::configuration::document::KEY.into()],
+            delete: vec![crate::configuration::adapters::document::KEY.into()],
         })
         .await
         .unwrap();
     assert!(
-        crate::configuration::document::load(&storage, settings())
+        crate::configuration::adapters::document::load(&storage, settings())
             .await
             .is_err()
     );
@@ -198,7 +198,7 @@ async fn legacy_registry_migrates_public_trust_atomically_and_corrupt_documents_
     assert!(
         storage
             .settings()
-            .get(crate::configuration::document::KEY)
+            .get(crate::configuration::adapters::document::KEY)
             .await
             .unwrap()
             .is_none()
@@ -213,14 +213,14 @@ async fn authenticated_peer_name_is_saved_without_changing_trust_or_device_prefe
     let path = directory.path().join("app.sqlite");
     let a = Clipboard::new();
     let b = Clipboard::new();
-    let (sa, aa) = start_with(
+    let (mut sa, aa) = start_with(
         &a,
         BackendConfig::Sqlite(SqliteOptions::file(&path)),
         settings(),
     )
     .await
     .unwrap();
-    let (sb, ab) = start_with(
+    let (mut sb, ab) = start_with(
         &b,
         BackendConfig::Sqlite(SqliteOptions::in_memory()),
         Settings {
@@ -269,7 +269,7 @@ async fn authenticated_peer_name_is_saved_without_changing_trust_or_device_prefe
     wait(&aa, |s| s.status.peers.iter().all(|p| !p.online)).await;
     assert_eq!(aa.status().peers[0].device_name, expected);
     sa.shutdown().await.unwrap();
-    let (sa, aa) = start_with(
+    let (mut sa, aa) = start_with(
         &a,
         BackendConfig::Sqlite(SqliteOptions::file(&path)),
         settings(),
@@ -280,10 +280,12 @@ async fn authenticated_peer_name_is_saved_without_changing_trust_or_device_prefe
     // A delayed metadata update never restores a removed trust record.
     aa.unpair(id.clone()).await.unwrap();
     aa.configuration
-        .change(crate::configuration::runtime::Change::PeerNames(vec![(
-            id,
-            "late name".into(),
-        )]))
+        .change(
+            crate::configuration::application::runtime::Change::PeerNames(vec![(
+                id,
+                "late name".into(),
+            )]),
+        )
         .await
         .unwrap();
     assert!(aa.configuration.current().peers.is_empty());
@@ -292,7 +294,7 @@ async fn authenticated_peer_name_is_saved_without_changing_trust_or_device_prefe
 
 #[tokio::test]
 async fn every_document_format_fills_only_a_missing_receive_directory_and_persists_it() {
-    use crate::configuration::{document, model::Configuration};
+    use crate::configuration::{adapters::document, domain::model::Configuration};
     use nooboard_storage::{Setting, SettingsChanges, StorageService};
     let directory = tempfile::tempdir().unwrap();
     let fallback = directory.path().join("host-default");
@@ -371,7 +373,7 @@ async fn existing_configuration_can_receive_files_in_the_host_default_directory(
     let path = directory.path().join("app.sqlite");
     let receive = directory.path().join("received");
     let b = Clipboard::new();
-    let (sb, _) = start_with(
+    let (mut sb, _) = start_with(
         &b,
         BackendConfig::Sqlite(SqliteOptions::file(&path)),
         settings(),
@@ -379,7 +381,7 @@ async fn existing_configuration_can_receive_files_in_the_host_default_directory(
     .await
     .unwrap();
     sb.shutdown().await.unwrap();
-    let (sb, ab) = start_with(
+    let (mut sb, ab) = start_with(
         &b,
         BackendConfig::Sqlite(SqliteOptions::file(&path)),
         Settings {
@@ -394,7 +396,7 @@ async fn existing_configuration_can_receive_files_in_the_host_default_directory(
         Some(receive.clone())
     );
     let a = Clipboard::new();
-    let (sa, aa) = start(&a).await;
+    let (mut sa, aa) = start(&a).await;
     pair(&aa, &ab).await;
     let source = directory.path().join("payload.txt");
     std::fs::write(&source, b"uses host default").unwrap();

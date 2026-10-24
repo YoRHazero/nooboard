@@ -13,11 +13,16 @@ name = "link_probe"
 required-features = ["diagnostics"]
 
 [dependencies]
+nooboard-terminal = { path = "../terminal" }
+zeroize = "1"
+sha2 = "0.10"
+russh = { version = "0.64.1", default-features = false, features = ["ring", "rsa"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 nooboard-identity = { path = "../identity" }
 nooboard-clipboard = { path = "../clipboard" }
 nooboard-network = { path = "../network" }
 nooboard-storage = { path = "../storage" }
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 tokio.workspace = true
 thiserror.workspace = true
 serde = { workspace = true, features = ["rc"] }
@@ -26,8 +31,9 @@ base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 [dev-dependencies]
+russh-sftp = "3.0.1"
 tempfile.workspace = true
-sha2 = "0.10"
+rand = "0.10"
 
 [lints]
 workspace = true

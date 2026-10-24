@@ -117,7 +117,7 @@ pub trait SshHostVerifier: Send + Sync {
     ) -> BoxFuture<'_, Result<()>>;
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SshPublicKey {
     pub algorithm: String,
     /// SSH wire-format public key bytes, not a fingerprint or a private key.

@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         );
         return Ok(());
     }
-    let (service, app) = AppService::start(Options {
+    let (mut service, app) = AppService::start(Options {
         storage: BackendConfig::Sqlite(SqliteOptions::file(PathBuf::from(&args[0]))),
         profile: args[1].clone(),
         default_receive_directory: None,

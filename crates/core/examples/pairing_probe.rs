@@ -5,7 +5,7 @@
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use nooboard_core::{PairingStage, Settings, diagnostics::Session};
     use std::time::Duration;
-    let session = Session::with_settings(Settings {
+    let mut session = Session::with_settings(Settings {
         device_name: "配对验证肥啾".into(),
         discoverable: true,
         listen_address: "0.0.0.0:0".into(),

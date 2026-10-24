@@ -141,7 +141,7 @@ async fn execute(
 }
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let session = Session::with_settings(Settings {
+    let mut session = Session::with_settings(Settings {
         listen_address: std::env::args()
             .nth(1)
             .unwrap_or_else(|| "127.0.0.1:0".into()),

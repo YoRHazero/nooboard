@@ -33,7 +33,8 @@ pub fn core(error: nooboard_core::Error) -> UiError {
         Error::AlreadyPaired => "identityChanged",
         Error::Fingerprint => "fingerprint",
         Error::NotFound => "historyMissing",
-        Error::Internal => "serviceFault",
+        Error::Internal | Error::Terminal(_) | Error::TerminalShutdown(_) => "serviceFault",
+        Error::ConfigurationInUse { .. } => "busy",
     })
 }
 pub fn pairing(error: &PairingFailure) -> UiError {

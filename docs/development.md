@@ -63,11 +63,11 @@ crates/identity     APP 身份、签名与用途隔离的本地加解密
 crates/clipboard    原生剪贴板
 crates/network      nooboard 配对、发现与内容传输
 crates/storage      文字历史和文本配置
-crates/terminal     独立终端、命令依赖、SSH 转发和 SFTP（尚未接入 Core）
+crates/terminal     独立终端、命令依赖、SSH 转发和 SFTP（由 Core 装配）
 scripts             架构检查、测试工具与发布工具
 ```
 
-桌面宿主只依赖 core；core 目前使用 clipboard、network、storage、identity 的公开接口，terminal 仍处于独立开发阶段。Core 将 Identity 的签名能力适配注入 Network，底层库不直接互相依赖。独占服务所有者管理生命周期，可克隆句柄提交请求、读取或订阅状态。释放界面或句柄不等于停止服务。
+桌面宿主只依赖 core；Core 按 feature 的 domain/application/ports/adapters 分层，由 app 装配 clipboard、network、storage、identity、terminal。Core 将 Identity 的签名能力适配注入 Network，将加解密能力适配到 Terminal 配置，底层库不直接互相依赖。独占服务所有者管理生命周期，可克隆句柄提交请求、读取或订阅状态。释放界面或句柄不等于停止服务。
 
 | 修改内容                     | 首先阅读                                                                       |
 | ---------------------------- | ------------------------------------------------------------------------------ |

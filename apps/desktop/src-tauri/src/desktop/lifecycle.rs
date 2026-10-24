@@ -103,11 +103,27 @@ pub fn shutdown(handle: &AppHandle) {
     handle.state::<Host>().closing.store(true, Ordering::SeqCst);
     let handle = handle.clone();
     tauri::async_runtime::spawn(async move {
-        let _ = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            handle.state::<Host>().shutdown(),
-        )
-        .await;
+        if handle.state::<Host>().shutdown().await.is_err() {
+            // Native cleanup owns its configured deadlines. Never detach it and
+            // exit while a resource is still unconfirmed.
+            handle
+                .state::<Host>()
+                .closing
+                .store(false, Ordering::SeqCst);
+            handle
+                .state::<Desktop>()
+                .exit
+                .0
+                .store(IDLE, Ordering::SeqCst);
+            show(&handle, None);
+            rfd::AsyncMessageDialog::new()
+                .set_title("Nooboard")
+                .set_description(handle.state::<Desktop>().text("quitFailedMessage"))
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show()
+                .await;
+            return;
+        }
         handle
             .state::<Desktop>()
             .exit

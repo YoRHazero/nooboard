@@ -22,6 +22,7 @@ async fn unconfirmed_stop_keeps_occupancy_and_fails_existing_and_new_shared_wait
         Arc::new(NoSsh),
         inbox,
         CancellationToken::new(),
+        None,
     );
     let command = CommandStartSpec {
         config_id: CommandConfigId::new(),

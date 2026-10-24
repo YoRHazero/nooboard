@@ -1,19 +1,19 @@
 //! The public application boundary. Handles never own a service lifetime.
 pub use crate::{
-    configuration::model::{Mode, PeerSettings, Settings},
-    devices::model::{
-        LocalNetwork, OnboardingSnapshot, PairingError, PairingFailure, PairingSession,
-    },
-    error::{Error, Result},
-    history::model::HistoryEntry,
-    options::Options,
-    snapshot::model::{
+    app::options::Options,
+    app::snapshot::model::{
         ActivityKind, ActivityRecord, AppSnapshot, AppState, ClipboardKind, CurrentClipboard,
         Event, Fault, PeerConnectionState, PeerStatus, Status,
     },
-    sync::model::{
+    configuration::domain::model::{Mode, PeerSettings, Settings},
+    error::{Error, Result},
+    features::clipboard::domain::model::{
         ContentStage, ContentTransfer, Delivery, DeliveryState, Transfer, TransferFailure,
     },
+    features::devices::domain::model::{
+        LocalNetwork, OnboardingSnapshot, PairingError, PairingFailure, PairingSession,
+    },
+    features::history::domain::model::HistoryEntry,
 };
 pub use nooboard_network::{
     ContentKind, LocalAddress, NearbyDevice, PairingStage, TransferId as MessageId,
@@ -26,13 +26,13 @@ pub mod diagnostics {
     pub use crate::diagnostic_support::{Session, trust_peer};
 }
 #[cfg(any(test, feature = "diagnostics"))]
-pub use crate::devices::model::PeerFixture;
+pub use crate::features::devices::domain::model::PeerFixture;
 use crate::{
-    configuration::runtime::{self as configuration, Change},
-    devices::runtime as devices,
-    history::runtime as history,
-    runtime::message::request,
-    sync::runtime as sync,
+    configuration::application::runtime::{self as configuration, Change},
+    features::clipboard::application::runtime as sync,
+    features::devices::application::runtime as devices,
+    features::history::application::runtime as history,
+    message::request,
 };
 use tokio::{
     sync::{broadcast, mpsc, watch},
@@ -40,28 +40,58 @@ use tokio::{
 };
 /// Sole lifetime owner. Drop requests cleanup; shutdown waits for all owned services.
 pub struct AppService {
+    pub(crate) terminal_owner: std::sync::Arc<
+        tokio::sync::Mutex<crate::features::terminal::application::service::TerminalFeatureService>,
+    >,
     pub(crate) stop: watch::Sender<bool>,
     pub(crate) task: Option<JoinHandle<Result<()>>>,
 }
 impl AppService {
     pub async fn start(options: Options) -> Result<(Self, App)> {
-        crate::runtime::startup::start(options).await
+        crate::app::startup::start(options).await
     }
-    pub async fn shutdown(mut self) -> Result<()> {
+    /// Failure retains ownership and dependencies; callers may retry.
+    pub async fn shutdown(&mut self) -> Result<()> {
+        // The supervisor may already be draining after a backend failure.
+        // Do not wait behind its potentially unconfirmed native cleanup forever.
+        self.terminal_owner
+            .try_lock()
+            .map_err(|_| Error::Busy)?
+            .shutdown()
+            .await?;
         self.stop.send_replace(true);
-        match self.task.take() {
-            Some(task) => task.await.map_err(|_| Error::Internal)?,
+        let result = match self.task.as_mut() {
+            Some(task) => task
+                .await
+                .map_err(|_| Error::Internal)
+                .and_then(|result| result),
             None => Ok(()),
-        }
+        };
+        self.task.take();
+        result
     }
 }
 impl Drop for AppService {
     fn drop(&mut self) {
-        self.stop.send_replace(true);
+        let owner = self.terminal_owner.clone();
+        let stop = self.stop.clone();
+        let task = self.task.take();
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                owner.lock().await.drain().await;
+                stop.send_replace(true);
+                if let Some(task) = task {
+                    let _ = task.await;
+                }
+            });
+        } else {
+            stop.send_replace(true);
+        }
     }
 }
 #[derive(Clone)]
 pub struct App {
+    pub(crate) terminal: terminal::TerminalWorkspace,
     pub(crate) configuration: configuration::Handle,
     pub(crate) devices: mpsc::Sender<devices::Request>,
     pub(crate) sync: mpsc::Sender<sync::Request>,
@@ -73,6 +103,9 @@ pub struct App {
     pub(crate) certificate: Vec<u8>,
 }
 impl App {
+    pub fn terminal(&self) -> terminal::TerminalWorkspace {
+        self.terminal.clone()
+    }
     async fn configuration_visible(&self) -> Result<()> {
         let revision = self.configuration.current().revision;
         let mut snapshots = self.snapshots.clone();
@@ -253,4 +286,38 @@ impl App {
         })
         .await
     }
+}
+
+/// Terminal workspace use cases and the value contracts needed by consumers.
+pub mod terminal {
+    pub use crate::features::terminal::{
+        application::api::TerminalWorkspace,
+        domain::{
+            config::{
+                CommandConfig, CommandTarget, DependencyConfig, TerminalConfig, TerminalTarget,
+                TunnelConfig,
+            },
+            inputs::*,
+            views::*,
+        },
+    };
+    pub use nooboard_terminal::StartFileOperationRequest;
+    pub use nooboard_terminal::{
+        CancellationToken, CommandConfigId, CommandLifetimePolicy, CommandReusePolicy, CommandRun,
+        CommandRunId, CommandRunResult, CommandRunState, DependencyGateState, DependencyOwnerRunId,
+        DependencyReleaseReason, DependencyRun, DependencyRunId, DeviceId, FileCleanupIssue,
+        FileConflictPolicy, FileOperationPath, FileOperationProgress, FileOperationRun,
+        FileOperationRunId, FileOperationRunResult, FileOperationRunState, FileOperationSpec,
+        FileTransferItem, RemoteDirectoryEntry, RemoteDirectoryListing, RemoteEntryKind,
+        RemotePath, RunId, RunTarget, SshAddressSource, SshAuthKind, SshConnectOptions,
+        SshConnectionOwnerRunId, SshPublicKey, SshRunTarget, SshTargetConfigId, SshTargetSummary,
+        StopMethod, TerminalConfigId, TerminalConfigReference, TerminalError, TerminalErrorKind,
+        TerminalEvent, TerminalEventStream, TerminalIoOptions, TerminalIoTarget,
+        TerminalOutputChunk, TerminalOutputError, TerminalOutputStream, TerminalOutputSubscription,
+        TerminalRun, TerminalRunId, TerminalRunResult, TerminalRunState, TerminalServiceOptions,
+        TerminalShutdownError, TerminalSize, TerminalSnapshot, TerminalSnapshotStream,
+        TerminalStopOptions, TerminalSubscription, TerminalSubscriptionError, TunnelConfigId,
+        TunnelEndpoint, TunnelForwardConfig, TunnelRun, TunnelRunId, TunnelRunResult,
+        TunnelRunState,
+    };
 }

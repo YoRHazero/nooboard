@@ -3,8 +3,8 @@ use super::*;
 async fn manual_text_preserves_bytes_and_reports_real_application_failure() {
     let a = Clipboard::new();
     let b = Clipboard::new();
-    let (sa, aa) = start(&a).await;
-    let (sb, ab) = start(&b).await;
+    let (mut sa, aa) = start(&a).await;
+    let (mut sb, ab) = start(&b).await;
     pair(&aa, &ab).await;
     let text = "  中文🦀\r\n exact text ";
     a.copy(Payload::Text(text.into()));
@@ -27,8 +27,8 @@ async fn manual_text_preserves_bytes_and_reports_real_application_failure() {
 async fn automatic_routing_never_echoes_remote_or_history_writes_and_resume_does_not_replay() {
     let a = Clipboard::new();
     let b = Clipboard::new();
-    let (sa, aa) = start(&a).await;
-    let (sb, ab) = start(&b).await;
+    let (mut sa, aa) = start(&a).await;
+    let (mut sb, ab) = start(&b).await;
     pair(&aa, &ab).await;
     for (app, other) in [(&aa, &ab), (&ab, &aa)] {
         app.configure_peer(
@@ -92,8 +92,8 @@ async fn automatic_routing_never_echoes_remote_or_history_writes_and_resume_does
 async fn images_and_files_share_application_path_and_saved_files_survive_clipboard_failure() {
     let a = Clipboard::new();
     let b = Clipboard::new();
-    let (sa, aa) = start(&a).await;
-    let (sb, ab) = start(&b).await;
+    let (mut sa, aa) = start(&a).await;
+    let (mut sb, ab) = start(&b).await;
     pair(&aa, &ab).await;
     let directory = tempfile::tempdir().unwrap();
     ab.set_settings(Settings {
@@ -155,8 +155,8 @@ async fn images_and_files_share_application_path_and_saved_files_survive_clipboa
 async fn real_pairing_persists_verified_identity_and_dismiss_does_not_revoke_success() {
     let a = Clipboard::new();
     let b = Clipboard::new();
-    let (sa, aa) = start(&a).await;
-    let (sb, ab) = start(&b).await;
+    let (mut sa, aa) = start(&a).await;
+    let (mut sb, ab) = start(&b).await;
     wait(&ab, |s| !s.onboarding.pairing_address.is_empty()).await;
     aa.begin_pairing(
         ab.snapshot().onboarding.pairing_address,
@@ -211,8 +211,8 @@ async fn real_pairing_persists_verified_identity_and_dismiss_does_not_revoke_suc
 
 #[tokio::test]
 async fn pause_state_is_shared_while_connections_remain_available_for_unpairing() {
-    let (sa, a) = start(&Clipboard::new()).await;
-    let (sb, b) = start(&Clipboard::new()).await;
+    let (mut sa, a) = start(&Clipboard::new()).await;
+    let (mut sb, b) = start(&Clipboard::new()).await;
     pair(&a, &b).await;
     a.set_settings(Settings {
         paused: true,

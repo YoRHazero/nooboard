@@ -2,7 +2,7 @@
 
 独立的后台 Terminal Service：本地与 SSH 终端、可共享的固定命令、SSH 隧道及终端所属的 SFTP 文件操作。使用 `russh 0.64.1`、`russh-sftp 3.0.1`、`portable-pty 0.9.0`，不启动系统 `ssh`。
 
-本 crate 已实现运行后端与调度；尚未接入 Core、桌面 IPC 或前端。它不依赖其他 nooboard crate，也不读取应用配置、保存密码或维护主机信任数据库。[Identity Service](../identity/README.md) 已独立，后续由 Core 使用其加解密能力向 Terminal 提供认证材料。完整行为约定见 [Terminal Service 设计](../../docs/terminal-service-design.md)。
+本 crate 已实现运行后端与调度，并通过 Core 的 `app.terminal()` 接入应用；新桌面 IPC 和终端页面尚待实现。它不依赖其他 nooboard crate，也不读取应用配置、保存密码或维护主机信任数据库。[Identity Service](../identity/README.md) 已独立，由 Core 使用其加解密能力向 Terminal 提供认证材料。完整行为约定见 [Terminal Service 设计](../../docs/terminal-service-design.md)。
 
 ## 快速运行
 
@@ -38,6 +38,8 @@ cargo run -p nooboard-terminal --example command -- 'echo hello'
 启动返回 ID 表示请求已接纳，不表示连接或依赖已经成功。Shared 等待旧实例停止时，`start_command` 保持等待；其 cancellation token 只取消尚未取得实例的请求。取得 ID 后使用 stop 接口。
 
 `subscribe()` 在同一个临界区取得初始快照并注册后续流。快照只保留活动资源，结束结果通过事件发送。事件或输出订阅者落后时明确返回 `Lagged`，不能用于必须可靠执行的业务副作用。调用方应在启动前订阅结束事件；短命令的输出使用 `*_with_output`，避免先启动后订阅之间的空隙。输出包含字节偏移，前端自行增量解码和处理终端控制序列。
+
+Core 使用 `TerminalService::start_with_leases` 注入 `RunLeaseProvider`。管理器同步登记每个 Run 的配置引用并持有返回的 guard，包含主配置、SSH 目标及尚未执行的依赖；只有实际 Run 移除才释放。Shared 复用不会替换已有 guard。提供者必须快速返回、不能阻塞或 panic；持久化不在该钩子内执行。独立调用方可以继续使用无钩子的 `start`。
 
 ## 依赖与停止
 

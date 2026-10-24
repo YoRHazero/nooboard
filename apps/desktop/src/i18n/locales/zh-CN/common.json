@@ -1,4 +1,5 @@
 {
+  "quitFailedMessage": "部分后台资源尚未确认停止，Nooboard 已保留运行状态。请检查状态后再次尝试退出。",
   "trayOpen": "打开 Nooboard",
   "trayPaused": "同步已暂停",
   "trayStatus": "已连接：{{connected}} · 传输中：{{transfers}}",

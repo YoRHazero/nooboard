@@ -35,6 +35,21 @@ impl TerminalService {
         options: TerminalServiceOptions,
         dependencies: TerminalServiceDependencies,
     ) -> Result<Self> {
+        Self::start_inner(options, dependencies, None)
+    }
+    /// Compose reliable configuration occupancy without consuming advisory UI events.
+    pub fn start_with_leases(
+        options: TerminalServiceOptions,
+        dependencies: TerminalServiceDependencies,
+        leases: Arc<dyn RunLeaseProvider>,
+    ) -> Result<Self> {
+        Self::start_inner(options, dependencies, Some(leases))
+    }
+    fn start_inner(
+        options: TerminalServiceOptions,
+        dependencies: TerminalServiceDependencies,
+        leases: Option<Arc<dyn RunLeaseProvider>>,
+    ) -> Result<Self> {
         options.validate()?;
         let runtime = tokio::runtime::Handle::try_current()
             .map_err(|_| TerminalError::invalid("TerminalService requires a Tokio runtime"))?;
@@ -47,6 +62,7 @@ impl TerminalService {
             dependencies.host_verifier,
             inbox,
             owner_stop.clone(),
+            leases,
         );
         let task = runtime.spawn(manager.run());
         Ok(Self {
@@ -132,6 +148,9 @@ impl Drop for TerminalService {
     }
 }
 impl Terminal {
+    pub fn is_available(&self) -> bool {
+        !self.requests.is_closed()
+    }
     async fn call<T>(&self, make: impl FnOnce(oneshot::Sender<Result<T>>) -> Request) -> Result<T> {
         let (reply, receive) = oneshot::channel();
         self.requests

@@ -1,14 +1,14 @@
 # Terminal Service 重构设计
 
-本设计定义新的 Terminal Service 的行为、数据结构和服务接口，作为 SSH 模块重构的依据。terminal 分支已先移除旧 SSH 实现与 Core/桌面调用，再实现独立的新 crate。随后已完成 [Identity Service 拆分迁移](../crates/identity/README.md)，并由 Core 向 Network 注入签名能力；Terminal 的 Core 与界面集成仍待后续。
+本设计定义新的 Terminal Service 的行为、数据结构和服务接口，作为 SSH 模块重构的依据。terminal 分支已先移除旧 SSH 实现与 Core/桌面调用，再实现独立的新 crate。随后已完成 [Identity Service 拆分迁移](../crates/identity/README.md)，并由 Core 向 Network 注入签名能力；目前 Core 已按方案 C 重构并接入 Terminal；新终端界面及 IPC 仍待后续。
 
 Terminal 管理三类运行资源：交互终端 `TerminalRun`、可独立存在或作为前置依赖的固定命令 `CommandRun`、SSH 转发 `TunnelRun`。SSH 终端附带文件浏览和文件操作能力。本地命令、SSH 连接与转发通过统一的依赖调度协作，但保留各自的资源类型和生命周期。
 
-本文中的 Rust 代码表达接口和类型契约，省略 import、derive、序列化适配和方法体。运行接口已由 [nooboard-terminal](../crates/terminal/README.md) 提供；持久化配置与装配部分仍是后续 Core 集成契约。
+本文中的 Rust 代码表达接口和类型契约，省略 import、derive、序列化适配和方法体。运行接口已由 [nooboard-terminal](../crates/terminal/README.md) 提供；持久化配置与装配已由 [Core](../crates/core/README.md) 实现。下方“独立 crate 阶段”保留原始阶段边界。
 
 主要入口：[配置](#持久化配置)、[依赖调度](#依赖执行与实例复用)、[启动输入](#启动输入与-ssh-能力)、[运行数据](#运行数据与状态)、[服务接口](#外部服务接口)、[停止与退出](#停止与完全退出)。
 
-## 本轮实现范围
+## 独立 crate 阶段的实现范围
 
 本轮开发独立的 `nooboard-terminal` crate，实现本文约定的运行资源、依赖协调、本地终端、SSH、SFTP、转发、输入输出和停止流程，并提供公开接口、示例与独立测试。crate 可以由测试或示例调用方直接创建和使用，不依赖 Core 才能工作。
 
@@ -1173,7 +1173,7 @@ Core 的配置删除错误属于配置管理接口，应返回阻止删除的配
 
 以下是后续实现必须满足的可观察契约，用于组织测试与验收；本次文档整理不运行旧模块测试来证明新设计已经实现。
 
-其中配置持久化、删除占用、真实设备解析及 APP 退出交互属于后续 Core 集成验收。本轮通过独立 provider 和调用方验证 Terminal 的冻结输入、调用顺序、取消和关闭结果，不把集成工作混入 crate 交付。
+Core 集成现已增加配置持久化、可靠引用占用、Network 地址解析、Identity 加密和退出失败保留。独立 crate 测试继续验证协议与运行资源，Core 集成测试验证装配与应用用例；新终端界面与实际设备操作仍待验收。
 
 | 检查项 | 预期 |
 | --- | --- |
@@ -1241,13 +1241,12 @@ OpenSSH 的 `-L`、`-R`、`-D` 提供现成转发功能。`ExitOnForwardFailure`
 
 进程监督使用 macOS / Linux PTY session 与 Windows Job Object，不仅等待启动 shell。当前实际运行测试的平台是 macOS；Linux、Windows 的原生生命周期和实际设备互操作仍需分别验收。Windows 启动后加入 Job 的归属空隙仍需解决，不能把现有实现或回环测试等同于全平台验收。该问题属于 Terminal 后端的后续工作，不转移给 Core 或 Identity。
 
-## 后续集成事项
+## Core 集成状态与后续事项
 
-产品层的资源分类、依赖规则、配置变更、密码保存时点和停止行为按本文执行。以下工作属于后续 APP 集成：
+Core 已按 `app + configuration + features/{domain,application,ports,adapters}` 重构，`app.terminal()` 提供配置 CRUD、启动、交互、运行 I/O、SFTP 和停止操作。配置使用 Storage 的 `core.terminal.configuration` 文档（版本 1），旧 `remote` 数据继续原样保留，未做自动迁移。
 
-- Core 的配置引用占用与 Terminal 生命周期如何在内部衔接。需要保证启动登记、Shared 等待、复用和结束均能准确释放占用，不能依赖可落后的 UI 事件流；具体可以使用运行期占用对象或可靠的内部生命周期协议。
-- Core 实现地址解析、认证输入、主机信任和认证成功后的密码加密保存适配，以及相应的界面反馈。
-- Identity Service 已独立并兼容原系统凭据。后续由 Core 定义 SSH 配置中的 EncryptedSecret，使用 Identity 的 seal/open 和用途绑定；Terminal 只接收本次认证材料。
-- 桌面宿主与新的终端页面接入；旧 SSH 功能及其调用已在 terminal 分支第一个提交中移除。
+配置占用通过 Core 待处理请求预留和 Terminal RunLease 衔接，不依赖 UI 事件。配置修改不影响已启动/等待的快照，删除则检查静态引用与运行占用。已接入 Network 当前地址查询、主机公钥信任、取消交互、成功认证后保存密码及认证版本校验。SSH 密码和导入私钥由 Identity 按用途、配置 UUID 和字段加密；复制目标重新加密，信任不复制。
 
-后续迁移不能改变已经确认的运行行为或自动删除现有配置与身份材料。本轮独立 crate 的验收不以完成这些迁移为条件。
+AppService 关闭改为可重试的 `shutdown(&mut self)`。Terminal 清理失败时保留其所有者及 Network、Storage、Identity；桌面宿主不会再因固定 5 秒外层超时而直接退出。
+
+后续工作为新的桌面 Terminal 页面、IPC、终端组件和文件面板，以及各平台和实际设备互操作验收。既有 Windows 进程加入 Job 的启动窗口仍是 Terminal 后端待解决事项。后续迁移不能自动删除原配置或身份材料。

@@ -1,7 +1,8 @@
 mod configuration;
 mod lifecycle;
+mod terminal;
 mod workflows;
-use crate::ports::{ClipboardFuture, ClipboardPort};
+use crate::features::clipboard::ports::clipboard::{ClipboardFuture, ClipboardPort};
 use crate::*;
 use nooboard_clipboard::{Origin, Payload, ReadState, Snapshot};
 use std::{
@@ -97,7 +98,7 @@ async fn start_with(
     storage: BackendConfig,
     defaults: Settings,
 ) -> Result<(AppService, App)> {
-    crate::runtime::startup::launch(crate::runtime::startup::Launch {
+    crate::app::startup::launch(crate::app::startup::Launch {
         options: Options {
             storage,
             profile: "tests".into(),
@@ -206,7 +207,8 @@ pub(crate) async fn start_network(
     )
     .await
     .unwrap();
-    let dependencies = crate::identity::network_dependencies(handle).unwrap();
+    let dependencies =
+        crate::app::adapters::network_identity::network_dependencies(handle).unwrap();
     let (network, handle, events) = nooboard_network::NetworkService::start(options, dependencies)
         .await
         .unwrap();

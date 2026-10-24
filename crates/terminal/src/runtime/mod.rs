@@ -50,6 +50,7 @@ pub(crate) enum Request {
     Rename(TerminalRunId, RemotePath, RemotePath, Reply<()>),
 }
 pub(crate) struct Manager {
+    leases: Option<Arc<dyn RunLeaseProvider>>,
     shared: Arc<Shared>,
     options: TerminalServiceOptions,
     verifier: Arc<dyn SshHostVerifier>,
@@ -77,9 +78,11 @@ impl Manager {
         verifier: Arc<dyn SshHostVerifier>,
         inbox: mpsc::Receiver<Request>,
         owner_stop: CancellationToken,
+        leases: Option<Arc<dyn RunLeaseProvider>>,
     ) -> Self {
         let (tx, events) = mpsc::unbounded_channel();
         Self {
+            leases,
             shared,
             options,
             verifier,
@@ -187,6 +190,28 @@ impl Manager {
         driver: DriverSpec,
         deps: Vec<DependencyStartSpec>,
     ) {
+        let mut references = vec![match &kind {
+            Kind::Terminal(id) => TerminalConfigReference::Terminal(*id),
+            Kind::Command { config_id, .. } => TerminalConfigReference::Command(*config_id),
+            Kind::Tunnel { config_id, .. } => TerminalConfigReference::Tunnel(*config_id),
+        }];
+        if let RunTarget::Ssh(target) = &target {
+            references.push(TerminalConfigReference::SshTarget(target.config_id));
+        }
+        for dependency in &deps {
+            references.push(TerminalConfigReference::Command(
+                dependency.command.config_id,
+            ));
+            if let CommandStartTarget::Ssh(target) = &dependency.command.target {
+                references.push(TerminalConfigReference::SshTarget(target.config_id));
+            }
+        }
+        references.sort();
+        references.dedup();
+        let config_lease = self
+            .leases
+            .as_ref()
+            .map(|leases| leases.acquire(id, &references));
         self.sequence += 1;
         let (input, input_rx) = mpsc::channel(self.options.input_queue_capacity);
         let output = (!matches!(id, RunId::Tunnel(_))).then(|| {
@@ -198,6 +223,7 @@ impl Manager {
             )
         });
         let mut entry = Entry {
+            _config_lease: config_lease,
             id,
             order: self.sequence,
             name,

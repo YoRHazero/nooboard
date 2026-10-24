@@ -30,11 +30,9 @@ impl Running {
     pub fn diagnostic(&self) -> bool {
         !matches!(self, Self::Native { .. })
     }
-    async fn shutdown(self) {
+    async fn shutdown(&mut self) -> nooboard_core::Result<()> {
         match self {
-            Self::Native { service, .. } => {
-                let _ = service.shutdown().await;
-            }
+            Self::Native { service, .. } => service.shutdown().await,
             #[cfg(all(debug_assertions, feature = "diagnostics", target_os = "macos"))]
             Self::Diagnostic(diagnostic) => diagnostic.shutdown().await,
         }
@@ -66,16 +64,21 @@ impl Host {
             return Err(errors::ui("closing"));
         }
         if running.as_ref().is_some_and(|r| !r.app().is_running())
-            && let Some(old) = running.take()
+            && let Some(old) = running.as_mut()
         {
-            old.shutdown().await;
+            old.shutdown().await.map_err(errors::core)?;
+            running.take();
         }
         if running.is_none() {
-            let backend = Self::start(handle)
+            let mut backend = Self::start(handle)
                 .await
                 .inspect_err(|_| tray::update(handle, None))?;
             if self.closing.load(Ordering::SeqCst) {
-                backend.shutdown().await;
+                let result = backend.shutdown().await;
+                if let Err(error) = result {
+                    *running = Some(backend);
+                    return Err(errors::core(error));
+                }
                 return Err(errors::ui("closing"));
             }
             // Tray state lives independently of the WebView's subscription.
@@ -161,7 +164,12 @@ impl Host {
         .map(|(service, app)| Running::Native { service, app })
         .map_err(errors::core)
     }
-    pub async fn shutdown(&self) {
+    pub async fn shutdown(&self) -> nooboard_core::Result<()> {
+        let mut running = self.running.write().await;
+        if let Some(backend) = running.as_mut() {
+            backend.shutdown().await?;
+        }
+        running.take();
         if let Ok(mut pump) = self.tray_pump.lock()
             && let Some(task) = pump.take()
         {
@@ -172,8 +180,6 @@ impl Host {
         {
             drop(task);
         }
-        if let Some(backend) = self.running.write().await.take() {
-            backend.shutdown().await;
-        }
+        Ok(())
     }
 }
