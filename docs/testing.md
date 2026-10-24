@@ -31,7 +31,9 @@ Tauri 的 `custom-protocol` 构建需要 `apps/desktop/dist`，所以完整 Rust
 
 ## 库级检查
 
-各库 README 列出具体覆盖范围与命令：[core](../crates/core/README.md)、[clipboard](../crates/clipboard/README.md)、[network](../crates/network/README.md)、[storage](../crates/storage/README.md)。
+各库 README 列出具体覆盖范围与命令：[core](../crates/core/README.md)、[clipboard](../crates/clipboard/README.md)、[network](../crates/network/README.md)、[storage](../crates/storage/README.md)、[terminal](../crates/terminal/README.md)。
+
+Terminal 的独立测试使用本地 PTY、自建回环 SSH/SFTP 服务和临时文件，不启动真实 VPN、不连接实际设备。可单独执行 `cargo test -p nooboard-terminal --all-targets --locked`；实际服务器互操作与各平台进程清理仍需原生验收。
 
 涉及可选后端或系统凭据时，另验证无默认 feature 的接口：
 

@@ -1,0 +1,18 @@
+{
+  "stop": {
+    "stop_grace_timeout_ms": 10000,
+    "force_stop_timeout_ms": 5000,
+    "shutdown_timeout_ms": 30000
+  },
+  "io": {
+    "connect_timeout_ms": 20000,
+    "request_timeout_ms": 15000
+  },
+  "output_buffer_bytes": 1048576,
+  "event_buffer_capacity": 256,
+  "control_queue_capacity": 128,
+  "input_queue_capacity": 32,
+  "transfer_buffer_bytes": 65536,
+  "process_poll_interval_ms": 25,
+  "progress_interval_ms": 100
+}

@@ -1,4 +1,4 @@
-"""Check crate boundaries and the clipboard/storage/network/core implementation constraints."""
+"""Check crate boundaries and service implementation constraints."""
 import json
 from pathlib import Path
 import re
@@ -9,7 +9,7 @@ metadata = json.loads(subprocess.check_output(
 ))
 packages = {package["name"]: package for package in metadata["packages"]}
 ports = {"nooboard-clipboard", "nooboard-network", "nooboard-storage"}
-expected = ports | {"nooboard-core", "nooboard-desktop"}
+expected = ports | {"nooboard-core", "nooboard-desktop", "nooboard-terminal"}
 assert set(packages) == expected, "unexpected workspace crates"
 for name, package in packages.items():
     local = {dep["name"] for dep in package["dependencies"] if dep.get("path")}
@@ -83,6 +83,25 @@ for source in network.rglob("*.rs"):
         assert not re.search(r"\b(?:mpsc|oneshot|watch)::|crate::(?:runtime|connections)", code), f"file operations own network scheduling: {source}"
 network_deps = packages["nooboard-network"]["dependencies"]
 assert all(dep["optional"] for dep in network_deps if dep["name"] == "keyring"), "native credentials must be optional"
+# Terminal has its own facade and drivers; Core integration is a later migration.
+terminal = clipboard.parent.parent / "terminal" / "src"
+terminal_root = (terminal / "lib.rs").read_text(encoding="utf-8")
+assert not re.search(r"^pub(?:\([^)]*\))? mod\b", terminal_root, re.M), "terminal exports an implementation module"
+assert re.findall(r"^pub use (.*);$", terminal_root, re.M) == ["api::*"], "terminal bypasses its API facade"
+terminal_api = (terminal / "api.rs").read_text(encoding="utf-8")
+for public_type in ("TerminalService", "Terminal"):
+    assert re.search(rf"^pub struct {public_type}\s*\{{", terminal_api, re.M), f"{public_type} must be defined at the public boundary"
+assert not re.search(r"\b(?:russh|russh_sftp|portable_pty|libc|windows_sys)::|(?:std|tokio)::fs", terminal_api), "terminal API performs driver work"
+for source in terminal.rglob("*.rs"):
+    relative = source.relative_to(terminal)
+    code = source.read_text(encoding="utf-8")
+    if relative.parts[0] != "backend":
+        assert not re.search(r"\b(?:russh|russh_sftp|portable_pty|libc|windows_sys)::", code), f"terminal driver outside backend: {source}"
+    if relative.parts[0] == "model":
+        assert not re.search(r"\b(?:mpsc|oneshot|watch)::|crate::(?:backend|runtime)", code), f"terminal model owns implementation: {source}"
+    if relative.parts[0] == "backend":
+        assert "crate::runtime" not in code, f"terminal backend imports scheduler: {source}"
+assert not any(dep["name"] == "keyring" for dep in packages["nooboard-terminal"]["dependencies"]), "terminal owns credential storage"
 # Core owns application workflows, never a second transport or database implementation.
 core = clipboard.parent.parent / "core" / "src"
 core_root = (core / "lib.rs").read_text(encoding="utf-8")

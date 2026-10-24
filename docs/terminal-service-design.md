@@ -1,10 +1,10 @@
 # Terminal Service 重构设计
 
-本设计定义新的 Terminal Service 的行为、数据结构和服务接口，作为 SSH 模块重构的依据。当前为设计稿；terminal 分支首先移除旧 SSH 实现，然后开发独立的新 crate。
+本设计定义新的 Terminal Service 的行为、数据结构和服务接口，作为 SSH 模块重构的依据。terminal 分支已先移除旧 SSH 实现与 Core/桌面调用，再实现独立的新 crate；Core、Identity 和界面集成留待后续。
 
 Terminal 管理三类运行资源：交互终端 `TerminalRun`、可独立存在或作为前置依赖的固定命令 `CommandRun`、SSH 转发 `TunnelRun`。SSH 终端附带文件浏览和文件操作能力。本地命令、SSH 连接与转发通过统一的依赖调度协作，但保留各自的资源类型和生命周期。
 
-本文中的 Rust 代码表达接口和类型契约，省略 import、derive、序列化适配和方法体；不代表当前 crate 已提供这些接口。`BoxFuture`、`CancellationToken`、秘密类型和流类型描述所需能力，具体库选型在实现时核验。
+本文中的 Rust 代码表达接口和类型契约，省略 import、derive、序列化适配和方法体。运行接口已由 [nooboard-terminal](../crates/terminal/README.md) 提供；持久化配置与装配部分仍是后续 Core 集成契约。
 
 主要入口：[配置](#持久化配置)、[依赖调度](#依赖执行与实例复用)、[启动输入](#启动输入与-ssh-能力)、[运行数据](#运行数据与状态)、[服务接口](#外部服务接口)、[停止与退出](#停止与完全退出)。
 
@@ -20,7 +20,7 @@ Terminal 管理三类运行资源：交互终端 `TerminalRun`、可独立存在
 | 地址准备、认证材料、认证成功回报、主机信任验证的能力接口 | Core 对这些接口的正式适配、设备发现查询、密码和信任 UI |
 | 接收调用方注入的服务参数，并提供默认配置示例 | Core 与 Storage 持久化配置、密文和主机信任记录 |
 | 使用测试或示例 provider 验证连接与交互协议 | Identity 拆分、身份数据迁移、加解密装配 |
-| 终端与文件操作的实际后端、状态与生命周期测试 | 桌面 IPC、前端页面与旧 SSH 模块切换 |
+| 终端与文件操作的实际后端、状态与生命周期测试 | 桌面 IPC 与新终端页面接入 |
 
 下文保留 Core、Identity 与前端的最终职责，以说明接口为什么这样设计；这些职责不因此进入本轮实现。新 crate 不引入对 Core、Network、Identity 或 Storage Service 的依赖。配置与凭据持久化不会为独立运行而临时搬进 Terminal。
 
@@ -898,6 +898,11 @@ struct TerminalServiceOptions {
     io: TerminalIoOptions,
     output_buffer_bytes: usize,
     event_buffer_capacity: usize,
+    control_queue_capacity: usize,
+    input_queue_capacity: usize,
+    transfer_buffer_bytes: usize,
+    process_poll_interval: Duration,
+    progress_interval: Duration,
 }
 
 struct TerminalStopOptions {
@@ -945,10 +950,15 @@ Core 读取、校验和持久化服务级配置，再生成运行时 options 注
 | request_timeout_ms | 15000 | 单次网络协议请求，不是整项传输或命令的运行时限 |
 | output_buffer_bytes | 1048576 | 每个活动终端或命令的最近输出缓冲 |
 | event_buffer_capacity | 256 | 每个状态订阅者的结束事件队列 |
+| control_queue_capacity | 128 | Service 控制请求队列，创建时固定 |
+| input_queue_capacity | 32 | 每个终端或命令的输入队列 |
+| transfer_buffer_bytes | 65536 | 本地输出读取与文件传输缓冲 |
+| process_poll_interval_ms | 25 | 本地进程清理确认的轮询间隔 |
+| progress_interval_ms | 100 | 文件任务进度推送的最小间隔 |
 
 I/O 和容量默认值是本次整理补齐的初始工程取值，可通过同一配置通道调整。用户输入、主机信任确认和依赖手动放行不受连接超时倒计时限制，始终可取消。
 
-各项时限与容量必须为正。一次停止或整体关闭开始时固定一份参数；后续修改影响之后的操作。I/O 请求在开始时取当时参数，活动输出缓冲调整不得静默破坏既有订阅，落后者按 Lagged 处理。
+各项时限与容量必须为正。一次停止或整体关闭开始时固定管理任务的预算；本地 worker 的兜底清理保留启动时参数。网络 I/O 参数在对应 worker 启动时固定，共享 SFTP 会话的请求时限在首次初始化时固定。修改不重建已有连接。输入队列在 Run 登记时固定，事件容量作用于新订阅；运行中改变控制队列容量会被拒绝。活动输出缓冲调整立即生效，落后者按 Lagged 处理。默认值的唯一来源为 [defaults.json](../crates/terminal/config/defaults.json)。
 
 ### 运行资源
 
@@ -956,6 +966,8 @@ I/O 和容量默认值是本次整理补齐的初始工程取值，可通过同�
 impl Terminal {
     async fn start_terminal(&self, request: StartTerminalRequest)
         -> Result<TerminalRunId>;
+    async fn start_terminal_with_output(&self, request: StartTerminalRequest)
+        -> Result<(TerminalRunId, TerminalOutputSubscription)>;
     async fn stop_terminal(&self, id: TerminalRunId) -> Result<()>;
 
     async fn start_tunnel(&self, request: StartTunnelRequest)
@@ -967,6 +979,11 @@ impl Terminal {
         request: StartCommandRequest,
         cancellation: CancellationToken,
     ) -> Result<CommandRunId>;
+    async fn start_command_with_output(
+        &self,
+        request: StartCommandRequest,
+        cancellation: CancellationToken,
+    ) -> Result<(CommandRunId, TerminalOutputSubscription)>;
     async fn stop_command(&self, id: CommandRunId) -> Result<()>;
     async fn set_command_lifetime_policy(
         &self,
@@ -979,6 +996,8 @@ impl Terminal {
 ```
 
 start_terminal 和 start_tunnel 接纳请求并登记主 Run 后立即返回 ID，不等待依赖或 SSH 连接成功。基本参数无效等接纳前错误直接返回 Err；登记后的运行失败通过状态和结束事件表达。
+
+`*_with_output` 把接纳启动与输出订阅合为一个原子操作，避免立即退出的短命令在调用方订阅前已经被移除。它们不改变资源分类、Shared 或生命周期规则，也不增加结束历史；仍须在启动前订阅结束事件。
 
 独立 start_command 默认由 Core 选择 Shared，用户可以显式 AlwaysNew。取得或新登记实例后返回 ID，不等待命令就绪。若 Shared 正在等旧实例停止，此时没有可返回的新实例 ID，因此保持等待；CancellationToken 取消的是这个尚未取得实例的请求。请求一旦取得实例，后续停止使用 stop_command，取消 token 不再停止该实例。
 
@@ -1206,19 +1225,21 @@ OpenSSH 的 `-L`、`-R`、`-D` 提供现成转发功能。`ExitOnForwardFailure`
 
 系统 ssh 后端也可以搭配 SFTP 库：由 ssh 提供子系统数据流，库处理 SFTP 协议，不必解析系统 sftp 的交互文字。若采用连接复用来满足同一个 TerminalRun 共用 SSH 连接，控制连接必须归属于该 Run，不能借此引入跨 Run 的全局连接池。
 
-已选择以下库组合，具体版本与平台能力在实现中核验：
+已实现以下库组合，依赖解析版本由 Cargo.lock 固定：
 
 | 能力 | 已选库 | 提供的基础能力 |
 | --- | --- | --- |
-| SSH 登录、远端终端与转发通道 | russh | SSH 客户端、认证结果、PTY 请求、命令与 TCP 转发通道 |
-| 远端文件操作 | russh-sftp | SFTP 请求、目录与文件操作、原始协议扩展入口 |
-| 本地交互终端与命令 | portable-pty | 跨平台 PTY、终端输入输出、尺寸与子进程句柄 |
+| SSH 登录、远端终端与转发通道 | russh 0.64.1 | SSH 客户端、认证结果、PTY 请求、命令与 TCP 转发通道 |
+| 远端文件操作 | russh-sftp 3.0.1 | SFTP 请求、目录与文件操作、原始协议扩展入口 |
+| 本地交互终端与命令 | portable-pty 0.9.0 | 跨平台 PTY、终端输入输出、尺寸与子进程句柄 |
 
 能力依据见 [russh 客户端文档](https://docs.rs/russh/latest/russh/client/index.html)、[russh-sftp 原始协议接口](https://docs.rs/russh-sftp/latest/russh_sftp/client/rawsession/struct.RawSftpSession.html)、[portable-pty 文档](https://docs.rs/portable-pty/latest/portable_pty/)。
 
 选择库接口有利于直接处理结构化认证结果、主机密钥验证和 SSH 通道归属，是针对本设计的工程判断。系统 ssh 同样可以作为后端，但要额外设计外部进程、交互与控制接口的适配。候选库本身不会实现我们的依赖调度、Shared 复用、生命周期或文件冲突策略。
 
-本轮实现前需要核验交互式命令、认证取消、转发建立确认、SFTP 扩展、符号链接识别和各平台进程清理。Dynamic 转发还需要在客户端实现 SOCKS 接入并映射到 SSH 转发通道；不能把 SSH 通道 API 等同于一个已经实现的完整动态代理。portable-pty 的子进程句柄也不能代替对整个受管理进程集合的停止验证。
+独立测试核验了本地 PTY 生命周期、依赖协调、认证时序、真实 TCP 转发、SFTP 扩展与符号链接处理。Dynamic 已实现 SOCKS5 无认证 TCP CONNECT，不支持 SOCKS4、UDP 或 BIND。本地固定命令通过 Unix `/bin/sh -c` 或 Windows `cmd.exe /C` 执行，普通终端使用平台默认 shell。
+
+进程监督使用 macOS / Linux PTY session 与 Windows Job Object，不仅等待启动 shell。当前实际运行测试的平台是 macOS；Linux、Windows 的原生生命周期和实际设备互操作仍需分别验收。Windows 启动后加入 Job 的归属空隙仍需解决，不能把现有实现或回环测试等同于全平台验收。该问题属于 Terminal 后端的后续工作，不转移给 Core 或 Identity。
 
 ## 后续集成事项
 
@@ -1227,6 +1248,6 @@ OpenSSH 的 `-L`、`-R`、`-D` 提供现成转发功能。`ExitOnForwardFailure`
 - Core 的配置引用占用与 Terminal 生命周期如何在内部衔接。需要保证启动登记、Shared 等待、复用和结束均能准确释放占用，不能依赖可落后的 UI 事件流；具体可以使用运行期占用对象或可靠的内部生命周期协议。
 - Core 实现地址解析、认证输入、主机信任和认证成功后的密码加密保存适配，以及相应的界面反馈。
 - Identity 的独立 crate 公共接口与旧身份数据迁移。本稿确定服务归属和窄能力边界，不在 Terminal 设计中假定现有身份已经完成拆分。
-- 桌面宿主与前端接入，并在集成验收后切换旧 SSH 功能入口。
+- 桌面宿主与新的终端页面接入；旧 SSH 功能及其调用已在 terminal 分支第一个提交中移除。
 
 后续迁移不能改变已经确认的运行行为或自动删除现有配置与身份材料。本轮独立 crate 的验收不以完成这些迁移为条件。
