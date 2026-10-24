@@ -31,25 +31,62 @@ src/
   ui/                        通用显示组件
 
 src-tauri/src/
-  main.rs                    宿主装配及三个 IPC 入口
-  host/                      core 服务所有者与可取消 WebView 订阅
+  main.rs                    进入桌面装配入口
+  app/
+    bootstrap.rs             构建服务、注入端口、注册 Tauri 入口
+    runtime.rs               持有服务与投影/托盘订阅任务
+    events.rs                原生事件入口，转换为窗口或退出意图
+    snapshot.rs              桌面状态聚合类型
+    adapters/core.rs         Core 所有者、关闭端口、配置修改串行化
+  features/
+    lifecycle/               退出状态、确认、清理、失败后恢复
+    window/                  可见性、窗口显示/隐藏、导航确认
+    preferences/             语言和关闭到托盘偏好
+    tray/                    状态摘要、菜单展示与意图
+    file_selection/          原生选择后发送文件或修改接收目录
   ipc/
-    dto.rs                   请求、回复与帧契约
-    snapshot.rs              core 到 IPC 的显式转换
-    commands/                分发、原生对话框与配置补丁
-    errors.rs                稳定错误代码
-  desktop/                   托盘、窗口、导航与偏好
+    entry.rs                 connect / disconnect / request
+    router.rs                请求分发与回复
+    contracts/               按设备、剪贴板、传输、历史等拆分协议值类型
+    mapping/                 Core/桌面状态转换与纯设置补丁转换
+    routes/                  设置和历史的 IPC 参数适配
+    subscription.rs          WebView 订阅所有权、取消、恢复
+    errors.rs                内部错误 → 稳定 IPC 错误代码
+  localization.rs            原生菜单/对话框使用的双语文案
+  diagnostics.rs             开发环境验证入口
 ```
 
 ## 边界与生命周期
 
 - 页面及应用装配只导入 `desktop/api.ts`。只有 bootstrap 选择实际适配器；features 不导入 Tauri、具体 runtime 或 preview。
 - `createDesktop` 返回 runtime 所有者和稳定 desktop 句柄。bootstrap 负责启动、释放；React StrictMode 不负责停止服务。
-- `Host` 拥有 `AppService`，与 WebView 订阅独立。关闭订阅只终止对应事件泵，完整应用退出才停止底层服务。
+- `app::Runtime` 持有各功能及后台任务，Core 所有者封装在 `app/adapters/core.rs`。IPC 的 `Subscriptions` 只拥有 WebView 事件泵，取消订阅不会关闭 Core。
 - 重连使旧回调与订阅 token 失效；迟到连接会被关闭。请求不能把旧连接结果应用到新会话。
 - 快照使用会话与字符串版本号排序，保留后端活动 ID；未变化分支复用引用，恢复不重播旧动画。
 - 同步配置属于业务；宿主偏好管理语言与关闭到托盘；外观管理主题和减少动态效果。保存版本、生效版本和重启提示只读。
 - 历史记录由功能查询管理，不建立第二份全局历史缓存。筛选、后端历史版本或连接变化使旧查询失效，同一查询只允许一个分页请求进行。
+
+## Rust 宿主分层
+
+各桌面 feature 使用 `domain.rs / application.rs / ports.rs / adapters.rs`：纯规则与值类型、用例及状态、所需能力、具体实现。文件选择复用标准路径值类型，只有 application/ports/adapters。平台操作位于适配器，内层不依赖 Tauri、IPC 或 Core 服务。跨层错误在 IPC 出口统一转换。
+
+`app` 是装配根。Tauri 的全局状态只保存一个组合后的 Runtime；原生事件在 `app/events.rs` 获取它，IPC 在 `entry.rs` 注入它。功能模块通过构造器获得依赖，托盘原生回调通过 Action 通道提交意图。
+
+| 状态                     | 唯一管理位置                           |
+| ------------------------ | -------------------------------------- |
+| Core 实例及配置修改锁    | app 的 Core 适配器                     |
+| 退出阶段和确认代次       | lifecycle；Core 启动读取同一份退出状态 |
+| 窗口可见性和待确认导航   | window                                 |
+| 已保存偏好和解析后的语言 | preferences                            |
+| 托盘摘要与当前显示语言   | tray                                   |
+| WebView 订阅代次和任务   | ipc/subscription                       |
+| 聚合快照版本             | app 的投影任务及同步发布入口           |
+
+退出分为确认、关闭中和完成。原生退出可以取代尚未完成的用户确认；确认结果携带代次，失败恢复后的旧结果不能再次触发退出或取消新确认。Core 关闭失败时保留所有者，退出阶段恢复为可重试状态。
+
+偏好先持久化，再发布状态；系统语言经端口注入，查询不写入配置文件。导航确认只清除对应 ID，窗口操作失败不会伪造可见性。聚合快照读取最新功能状态，延迟的订阅回调不会覆盖较新的同步结果。
+
+IPC 的请求、回复和快照 JSON 保持兼容，拆分文件不生成新的前端协议。尚未实现的 Terminal 桌面接口不创建占位文件。
 
 ## 请求与订阅
 

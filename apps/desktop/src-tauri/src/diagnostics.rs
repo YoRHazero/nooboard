@@ -54,7 +54,7 @@ impl Diagnostics {
             sequence: 0,
         })
     }
-    pub async fn action(&mut self, action: &str) -> Result<(), crate::ipc::errors::UiError> {
+    pub async fn action(&mut self, action: &str) -> crate::error::Result<()> {
         self.sequence += 1;
         match action {
             "copy" => self
@@ -64,7 +64,7 @@ impl Diagnostics {
                     self.sequence
                 ))
                 .await
-                .map_err(crate::ipc::errors::core),
+                .map_err(crate::error::Error::from),
             "receive" => {
                 let peer = &self.peers[0];
                 peer.copy(format!(
@@ -72,14 +72,14 @@ impl Diagnostics {
                     self.sequence
                 ))
                 .await
-                .map_err(crate::ipc::errors::core)?;
+                .map_err(crate::error::Error::from)?;
                 peer.app
                     .send_to(vec![self.local.app.status().noob_id])
                     .await
-                    .map_err(crate::ipc::errors::core)?;
+                    .map_err(crate::error::Error::from)?;
                 Ok(())
             }
-            _ => Err(crate::ipc::errors::ui("generic")),
+            _ => Err(crate::error::Error::DiagnosticsDisabled),
         }
     }
     pub async fn shutdown(&mut self) -> nooboard_core::Result<()> {

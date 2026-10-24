@@ -172,4 +172,24 @@ for source in (core / "contracts").rglob("*.rs"):
     code = source.read_text(encoding="utf-8")
     assert not re.search(r"\b(?:Network|Clipboard|Storage|Identity|Terminal)(?:Service)?\b", code), f"service handle in value contracts: {source}"
 
+# Desktop composition, IPC and native feature implementation have explicit boundaries.
+desktop = core.parent.parent.parent / "apps" / "desktop" / "src-tauri" / "src"
+for obsolete in ("host", "desktop", "ipc/dto.rs", "ipc/snapshot.rs", "ipc/commands"):
+    assert not (desktop / obsolete).exists(), f"obsolete desktop implementation: {obsolete}"
+for source in desktop.rglob("*.rs"):
+    relative = source.relative_to(desktop)
+    production = source.read_text(encoding="utf-8").split("#[cfg(test)]", 1)[0]
+    if relative.parts[0] == "features" and source.name in {"domain.rs", "application.rs", "ports.rs"}:
+        assert not re.search(r"\b(?:tauri|tauri_plugin_os|rfd|nooboard_core)::|crate::(?:app|ipc)::|\badapters::|(?:std|tokio)::fs::", production), f"outer dependency in desktop feature: {source}"
+    if relative.parts[0] == "features" and source.name == "domain.rs":
+        assert not re.search(r"\b(?:mpsc|oneshot|watch)::|\bapplication::|\bports::", production), f"runtime in desktop domain: {source}"
+    if relative.parts[:2] == ("ipc", "contracts"):
+        assert not re.search(r"\b(?:tauri|nooboard_core)::|\bapplication::|\badapters::", production), f"implementation in IPC contract: {source}"
+    if relative.parts[:2] in {("ipc", "mapping"), ("ipc", "routes")} or relative.as_posix() == "ipc/router.rs":
+        assert not re.search(r"\b(?:tauri|rfd)::|(?:std|tokio)::fs::", production), f"native work inside IPC conversion/dispatch: {source}"
+    if re.search(r"\.(?:try_)?state::<", production):
+        assert relative.as_posix() == "app/events.rs", f"global Tauri state lookup outside event ingress: {source}"
+    if re.search(r"\b(?:AppService|diagnostics::Diagnostics)::start", production):
+        assert relative.as_posix() == "app/adapters/core.rs", f"Core startup outside composition adapter: {source}"
+
 print("Architecture constraints passed.")

@@ -90,3 +90,5 @@ python3 scripts/test_two_hosts.py --help
 ## 已有验证的边界
 
 已有测试记录不代表 Windows/Linux 原生应用、系统凭据弹窗、外部 OpenSSH 服务、跨机网络或原生拖拽已经完成实机验收。CI 的具体结果以相应提交的 [GitHub Actions](https://github.com/YoRHazero/nooboard/actions) 为准，runner 测试也不能替代用户实际桌面环境。
+
+桌面 Rust 宿主的分层回归使用测试端口，不启动真实窗口、剪贴板或生产 Core 实例。`cargo test -p nooboard-desktop --all-features --locked` 覆盖退出重试及过期确认、窗口导航、偏好原子保存、文件选择取消、订阅代次和 IPC schema 兼容；`scripts/check_architecture.py` 检查内层不依赖 Tauri、IPC 与服务实现。

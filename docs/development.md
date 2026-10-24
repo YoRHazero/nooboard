@@ -57,7 +57,7 @@ APPLE_SIGNING_IDENTITY=- npm run desktop:build -- --bundles app
 ## 工程职责
 
 ```text
-apps/desktop        React 页面、桌面运行时、Tauri 宿主
+apps/desktop        React 页面、桌面运行时、按功能分层的 Tauri 宿主
 crates/core         用户配置、设备策略、同步与跨库流程
 crates/identity     APP 身份、签名与用途隔离的本地加解密
 crates/clipboard    原生剪贴板

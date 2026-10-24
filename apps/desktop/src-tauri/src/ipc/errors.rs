@@ -63,6 +63,20 @@ pub fn pairing(error: &PairingFailure) -> UiError {
     ui(code)
 }
 
+pub fn desktop(error: crate::error::Error) -> UiError {
+    use crate::error::Error;
+    match error {
+        Error::Core(error) => core(error),
+        Error::BackendUnavailable => ui("backendNotConnected"),
+        Error::Closing => ui("closing"),
+        Error::Preferences => ui("desktopPreferences"),
+        Error::TrayUnsupported => ui("trayUnsupported"),
+        Error::Subscription => ui("subscription"),
+        Error::AppDirectory => ui("appDirectory"),
+        Error::DiagnosticsDisabled => ui("diagnosticsDisabled"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

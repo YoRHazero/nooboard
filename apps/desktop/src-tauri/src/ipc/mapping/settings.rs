@@ -1,7 +1,4 @@
-use crate::ipc::{
-    dto::{LocalDevicePatch, SendMode, SyncSettingsPatch},
-    errors::{self, UiError},
-};
+use crate::ipc::contracts::{LocalDevicePatch, SendMode, SyncSettingsPatch};
 use nooboard_core::{Mode, Settings};
 pub fn sync(mut settings: Settings, patch: SyncSettingsPatch) -> Settings {
     if let Some(v) = patch.discoverable {
@@ -30,7 +27,7 @@ pub fn sync(mut settings: Settings, patch: SyncSettingsPatch) -> Settings {
     }
     settings
 }
-pub fn local(mut settings: Settings, patch: LocalDevicePatch) -> Result<Settings, UiError> {
+pub fn local(mut settings: Settings, patch: LocalDevicePatch) -> crate::error::Result<Settings> {
     if let Some(v) = patch.device_name {
         settings.device_name = v;
     }
@@ -38,12 +35,32 @@ pub fn local(mut settings: Settings, patch: LocalDevicePatch) -> Result<Settings
         let mut address: std::net::SocketAddr = settings
             .pairing_listen_address
             .parse()
-            .map_err(|_| errors::ui("configuration"))?;
+            .map_err(|_| crate::error::Error::Core(nooboard_core::Error::Configuration))?;
         address.set_port(port.get());
         settings.pairing_listen_address = address.to_string();
     }
     Ok(settings)
 }
+
+use crate::ipc::contracts::*;
+pub fn view(settings: nooboard_core::Settings) -> SyncSettings {
+    SyncSettings {
+        receive_directory: settings
+            .receive_directory
+            .map(|p| p.to_string_lossy().into_owned()),
+        discoverable: settings.discoverable,
+        mode: match settings.mode {
+            nooboard_core::Mode::Manual => SendMode::Manual,
+            nooboard_core::Mode::Automatic => SendMode::Automatic,
+        },
+        receive: settings.receive,
+        paused: settings.paused,
+        history: settings.history,
+        max_history_entries: settings.max_history_entries,
+        history_days: settings.history_days,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

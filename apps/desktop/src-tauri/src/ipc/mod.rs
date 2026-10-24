@@ -1,40 +1,15 @@
-mod commands;
-pub mod dto;
+pub mod contracts;
+pub mod entry;
 pub mod errors;
-pub mod snapshot;
-use crate::host::Host;
-use tauri::{AppHandle, State, ipc::Channel};
-
-#[tauri::command]
-pub async fn connect(
-    handle: AppHandle,
-    host: State<'_, Host>,
-    subscription: String,
-    on_frame: Channel<dto::Frame>,
-) -> Result<dto::Connection, errors::UiError> {
-    if subscription.is_empty() || subscription.len() > 128 {
-        return Err(errors::ui("subscription"));
-    }
-    host.connect(&handle, subscription, on_frame).await
-}
-#[tauri::command]
-pub fn disconnect(host: State<'_, Host>, subscription: String) {
-    host.disconnect(&subscription);
-}
-#[tauri::command]
-pub async fn request(
-    handle: AppHandle,
-    host: State<'_, Host>,
-    request: dto::Request,
-) -> Result<dto::Reply, errors::UiError> {
-    commands::run(&handle, &host, request).await
-}
-
+pub mod mapping;
+mod router;
+mod routes;
+pub mod subscription;
 #[cfg(test)]
 mod tests {
     #[test]
     fn ipc_schema_matches_rust_contract() {
-        let schema = schemars::schema_for!(super::dto::Contract);
+        let schema = schemars::schema_for!(super::contracts::Contract);
         let generated = serde_json::to_string_pretty(&schema).unwrap() + "\n";
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ipc/schema.json");
         if std::env::var("NOOBOARD_UPDATE_IPC").as_deref() == Ok("1") {
@@ -50,7 +25,7 @@ mod tests {
     }
     #[test]
     fn write_requests_reject_read_only_fields_and_keep_wide_ids_as_strings() {
-        use super::dto::Request;
+        use super::contracts::Request;
         assert!(
             serde_json::from_str::<Request>(
                 r#"{"type":"updateSyncSettings","data":{"patch":{"restartRequired":true}}}"#
@@ -67,7 +42,7 @@ mod tests {
             serde_json::from_str(r#"{"type":"copyHistory","data":{"id":"9223372036854775807"}}"#)
                 .unwrap();
         assert!(matches!(request, Request::CopyHistory { id } if id == i64::MAX.to_string()));
-        let id = super::dto::MessageId {
+        let id = super::contracts::MessageId {
             session: "session".into(),
             sequence: u64::MAX.to_string(),
         };
