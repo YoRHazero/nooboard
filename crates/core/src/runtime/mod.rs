@@ -18,8 +18,6 @@ use tokio::{
     task::JoinSet,
 };
 pub(crate) struct Running {
-    remote: crate::remote::runtime::Remote,
-    ssh_events: nooboard_ssh::SshEvents,
     services: shutdown::Services,
     stop: watch::Sender<bool>,
     stopped: watch::Receiver<bool>,
@@ -45,8 +43,6 @@ impl Running {
     pub async fn run(self) -> Result<()> {
         let Self {
             mut services,
-            remote,
-            ssh_events,
             stop,
             mut stopped,
             persist_stop,
@@ -86,7 +82,6 @@ impl Running {
         let mut persistence = JoinSet::new();
         persistence.spawn(config_runtime.run(storage.clone(), persist_stopped.clone()));
         persistence.spawn(history_runtime.run(storage, config.clone(), persist_stopped));
-        work.spawn(remote.run(ssh_events));
         work.spawn(device_runtime.run(stopped.clone()));
         work.spawn(sync_runtime.run(stopped.clone()));
         work.spawn(routing::run(

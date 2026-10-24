@@ -1,6 +1,6 @@
 [workspace]
-members = ["crates/core", "crates/clipboard", "crates/network", "crates/storage", "crates/ssh", "apps/desktop/src-tauri"]
-default-members = ["crates/core", "crates/clipboard", "crates/network", "crates/storage", "crates/ssh"]
+members = ["crates/core", "crates/clipboard", "crates/network", "crates/storage", "apps/desktop/src-tauri"]
+default-members = ["crates/core", "crates/clipboard", "crates/network", "crates/storage"]
 resolver = "3"
 
 [workspace.package]

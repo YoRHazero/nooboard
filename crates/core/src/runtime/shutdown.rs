@@ -4,21 +4,16 @@ use nooboard_network::NetworkService;
 use nooboard_storage::StorageService;
 #[derive(Default)]
 pub(crate) struct Services {
-    pub ssh: Option<nooboard_ssh::SshService>,
     pub storage: Option<StorageService>,
     pub clipboard: Option<ClipboardService>,
     pub network: Option<NetworkService>,
 }
 impl Services {
     pub async fn network(&mut self) -> Result<()> {
-        let ssh = match self.ssh.take() {
-            Some(service) => service.shutdown().await.map_err(Error::from),
-            None => Ok(()),
-        };
         if let Some(service) = self.network.take() {
             service.shutdown().await?;
         }
-        ssh
+        Ok(())
     }
     pub async fn remaining(&mut self) -> Result<()> {
         let clipboard = match self.clipboard.take() {

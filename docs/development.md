@@ -34,7 +34,7 @@ Tauri 会启动 Vite 和原生宿主。宿主使用真实剪贴板、配对配�
 npm run dev
 ```
 
-打开控制台提供的本机地址。普通浏览器使用脚本化示例，不连接真实设备，不写系统剪贴板，也不保存 SSH 密码。预览与原生应用使用同一前端公共接口；预览通过不等于业务或跨平台验收通过。
+打开控制台提供的本机地址。普通浏览器使用脚本化示例，不连接真实设备，不写系统剪贴板。预览与原生应用使用同一前端公共接口；预览通过不等于业务或跨平台验收通过。
 
 ## 本地打包
 
@@ -62,7 +62,6 @@ crates/core         用户配置、设备策略、同步与跨库流程
 crates/clipboard    原生剪贴板
 crates/network      nooboard 配对、发现与内容传输
 crates/storage      文字历史和文本配置
-crates/ssh          SSH 终端、SFTP 目录和文件传输
 scripts             架构检查、测试工具与发布工具
 ```
 
@@ -74,7 +73,6 @@ scripts             架构检查、测试工具与发布工具
 | 系统剪贴板                   | [clipboard 接口与平台实现](../crates/clipboard/README.md)                      |
 | 配对、设备发现、普通文件传输 | [network 接口与协议](../crates/network/README.md)                              |
 | 数据库与迁移                 | [storage 接口](../crates/storage/README.md)                                    |
-| SSH/SFTP                     | [SSH 工作区设计](ssh-workspace-design.md)、[ssh 接口](../crates/ssh/README.md) |
 | 页面、IPC、宿主集成          | [桌面架构](../apps/desktop/ARCHITECTURE.md)                                    |
 | 品牌、图标和 3D 动画         | [资源维护文档](../apps/desktop/public/mascot/README.md)                        |
 
@@ -120,7 +118,7 @@ cargo run -p nooboard-core --example backend -- /path/to/private/nooboard.db my-
 
 ## 数据兼容性
 
-应用配置文档由 core 管理，目前为 v4，支持从 v3 补入 SSH 配置，也处理受支持的更早格式。SQLite 数据库 schema 由 storage 独立迁移；两者版本号含义不同。
+应用配置文档由 core 管理，目前为 v4，兼容 v3，原样保留退役功能配置，也处理受支持的更早格式。SQLite 数据库 schema 由 storage 独立迁移；两者版本号含义不同。
 
 未知版本或损坏数据应明确报错并保留原文，不通过重置掩盖问题。迁移及旧格式支持边界见 [core](../crates/core/README.md#持久化与兼容范围) 和 [storage](../crates/storage/README.md)。修改持久化格式需要覆盖保存、重启、迁移与失败回滚。
 

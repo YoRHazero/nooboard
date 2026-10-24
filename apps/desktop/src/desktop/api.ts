@@ -1,12 +1,5 @@
-import type {
-  RemoteSnapshot,
-  RemoteRequest,
-  RemoteReply,
-  TerminalFrame,
-  FileDrop,
-} from './remote/model';
-export type * from './remote/model';
-export { fileTarget } from './remote/model';
+import type { FileDrop } from './bridge/port';
+export type { FileDrop } from './bridge/port';
 import type { DesktopBridge } from './bridge/port';
 import type { PreferenceStorage } from './preferences/runtime';
 import type { Appearance, Preferences, LanguagePreference } from './preferences/model';
@@ -29,7 +22,6 @@ export {
   DesktopProvider,
   useDesktop,
   useSnapshot,
-  useRemote,
   useConnection,
   usePreferences,
   useCommand,
@@ -45,10 +37,6 @@ export {
 /** Components receive this handle; it does not expose its lifecycle owner. */
 export interface Desktop {
   readonly mode: 'native' | 'preview';
-  getRemote(): RemoteSnapshot;
-  subscribeRemote(listener: () => void): () => void;
-  remote(request: RemoteRequest): Promise<RemoteReply>;
-  onTerminal(listener: (frame: TerminalFrame | null) => void): () => void;
   onFileDrop(listener: (event: FileDrop) => void): Promise<() => void>;
   getSnapshot(): DesktopSnapshot;
   subscribe(listener: () => void): () => void;

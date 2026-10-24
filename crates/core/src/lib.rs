@@ -10,7 +10,6 @@ mod error;
 mod history;
 mod options;
 mod ports;
-mod remote;
 mod runtime;
 mod snapshot;
 mod sync;

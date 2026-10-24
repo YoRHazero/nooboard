@@ -54,22 +54,5 @@
   "discovery": "Nearby discovery is unavailable. Try adding a device by address.",
   "localAddress": "Unable to get local addresses.",
   "serviceFault": "The local service encountered a problem. Try again or reconnect.",
-  "nativeOnly": "Open the desktop app to use the native file picker.",
-  "sshAuthentication": "SSH login failed. Enter your username and password again.",
-  "sshHostKeyChanged": "The SSH host key changed. Connection stopped before sending a password. Verify the change with the remote device.",
-  "sshHostKeyRejected": "The SSH host key was not approved.",
-  "sshTimeout": "The SSH operation timed out.",
-  "sshConnection": "The SSH connection failed. Check the remote SSH service, port and network.",
-  "sshSftpUnavailable": "This server does not provide SFTP. The terminal can still be used.",
-  "sshInvalidPath": "Enter a valid remote path. Shell variables and ~ are not expanded.",
-  "sshNotFound": "The requested remote file or directory does not exist.",
-  "sshNotDirectory": "The selected path is not a directory.",
-  "sshNotFile": "Only ordinary files are supported. Folders and symbolic links cannot be transferred.",
-  "sshPermission": "The SSH account does not have permission for this operation.",
-  "sshStaleCursor": "This directory listing expired. Refresh it to continue.",
-  "sshCredentials": "The saved login is unavailable or could not be saved. Enter the password again; it is never stored in app settings.",
-  "sshUnconfirmed": "The final save could not be confirmed. Check the target file before retrying.",
-  "sshSourceChanged": "The source file changed during transfer.",
-  "sshIo": "The file operation failed. Check permissions, disk space and the target filesystem.",
-  "sshCancelled": "The operation was cancelled."
+  "nativeOnly": "Open the desktop app to use the native file picker."
 }

@@ -1,4 +1,3 @@
-mod remote;
 mod settings;
 use super::{
     dto::*,
@@ -45,9 +44,6 @@ pub async fn run(handle: &AppHandle, host: &Host, request: Request) -> Result<Re
     }
     let app = host.app().await?;
     match request {
-        Request::Remote(request) => {
-            return remote::run(app.remote(), request).await.map(Reply::Remote);
-        }
         Request::Discover => app.refresh_discovery().await,
         Request::BeginPairing { address, expected } => app.begin_pairing(address, expected).await,
         Request::AcceptPairing { id } => app.accept_pairing(id).await,

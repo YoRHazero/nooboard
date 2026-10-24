@@ -1,7 +1,7 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import type { FileDrop } from '../remote/model';
+import type { FileDrop } from './port';
 import { locale } from '@tauri-apps/plugin-os';
 import type { DesktopBridge, Session } from './port';
 import type { Connection, Frame, Request, Reply } from './generated';

@@ -1,6 +1,5 @@
 mod configuration;
 mod lifecycle;
-mod remote;
 mod workflows;
 use crate::ports::{ClipboardFuture, ClipboardPort};
 use crate::*;

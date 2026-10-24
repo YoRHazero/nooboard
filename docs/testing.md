@@ -31,14 +31,13 @@ Tauri 的 `custom-protocol` 构建需要 `apps/desktop/dist`，所以完整 Rust
 
 ## 库级检查
 
-各库 README 列出具体覆盖范围与命令：[core](../crates/core/README.md)、[clipboard](../crates/clipboard/README.md)、[network](../crates/network/README.md)、[storage](../crates/storage/README.md)、[ssh](../crates/ssh/README.md)。
+各库 README 列出具体覆盖范围与命令：[core](../crates/core/README.md)、[clipboard](../crates/clipboard/README.md)、[network](../crates/network/README.md)、[storage](../crates/storage/README.md)。
 
 涉及可选后端或系统凭据时，另验证无默认 feature 的接口：
 
 ```sh
 cargo test -p nooboard-storage --no-default-features --locked
 cargo test -p nooboard-network --no-default-features --locked
-cargo test -p nooboard-ssh --no-default-features --locked
 ```
 
 修改影响哪个边界，就运行对应检查；只有存在新的失败或未解决风险时才扩大或重复验证。
@@ -84,31 +83,8 @@ python3 -B scripts/test_three_instances.py
 python3 scripts/test_two_hosts.py --help
 ```
 
-该脚本的 SSH 用于控制测试进程及交换公开证书；被测同步通过 LAN/VPN 上的双向 TLS 连接进行，与应用的 SSH 工作区测试不同。日志只保留测试数据长度与摘要。`--listener local` 可改变连接发起方向，不改变内容的双向同步能力。Windows/Linux 原生剪贴板测试需在隔离桌面运行。
-
-## SSH 与 SFTP
-
-`crates/ssh/tests/support` 提供本机真实 SSH/SFTP 测试服务器。crate 测试检查主机核验先于密码发送、独立连接、目录请求计数、游标、文件发布及关闭；core 测试检查凭据策略、地址端口替换、配置迁移、陈旧请求拒绝和任务目标固定。
-
-浏览器预览只验证界面与接口集成：它的终端是输入回显，文件列表和传输由内存场景模拟，不执行远端 shell，也不操作本机文件。
-
-实机验收应使用获准访问的测试设备与专用文件，覆盖：
-
-| 场景                          | 观察结果                                         |
-| ----------------------------- | ------------------------------------------------ |
-| 首次连接与主机密钥变化        | 核验前不提交密码；不匹配时停止                   |
-| 勾选或不勾选记住密码          | 成功后才保存；失败后回到空密码表单               |
-| Bash、Zsh、fish 或 PowerShell | 目录操作不修改 shell 配置、不注入命令            |
-| 大目录                        | 只在展开或继续加载时请求对应目录批次             |
-| 无效目录、无权目录与快速导航  | 错误清楚，原有效路径或较新的结果不会被旧请求覆盖 |
-| 关闭终端或标签                | 健康 SFTP 连接上的任务继续                       |
-| 单独断开 SFTP                 | 终端可继续；文件任务如实报告结果                 |
-| 改变下载目录或切换会话        | 已提交任务的源、目标和设备不变                   |
-| 重名、取消和保存时断线        | 不覆盖既有文件；不确定结果不会误报为未保存       |
-| 原生文件选择与拖入            | 多选普通文件、目录落点和 DPI 坐标正确            |
+该脚本的 SSH 用于控制测试进程及交换公开证书；被测同步通过 LAN/VPN 上的双向 TLS 连接进行。日志只保留测试数据长度与摘要。`--listener local` 可改变连接发起方向，不改变内容的双向同步能力。Windows/Linux 原生剪贴板测试需在隔离桌面运行。
 
 ## 已有验证的边界
 
-SSH 接入阶段已在本机通过协议测试、core 策略测试、前端测试与生产构建，并对脚本化浏览器中的登录、目录、传输队列和关闭标签流程进行了交互检查。macOS 原生 app 已成功打包并校验临时签名。
-
-这些记录不代表 Windows/Linux 原生应用、系统凭据弹窗、外部 OpenSSH 服务、跨机网络或原生拖拽已经完成实机验收。CI 的具体结果以相应提交的 [GitHub Actions](https://github.com/YoRHazero/nooboard/actions) 为准，runner 测试也不能替代用户实际桌面环境。
+已有测试记录不代表 Windows/Linux 原生应用、系统凭据弹窗、外部 OpenSSH 服务、跨机网络或原生拖拽已经完成实机验收。CI 的具体结果以相应提交的 [GitHub Actions](https://github.com/YoRHazero/nooboard/actions) 为准，runner 测试也不能替代用户实际桌面环境。

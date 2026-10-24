@@ -369,7 +369,6 @@ pub enum ProbeAction {
     deny_unknown_fields
 )]
 pub enum Request {
-    Remote(super::remote::RemoteRequest),
     Discover,
     BeginPairing {
         address: String,
@@ -437,7 +436,6 @@ pub enum Request {
 #[derive(Serialize, JsonSchema)]
 #[serde(tag = "type", content = "data", rename_all = "camelCase")]
 pub enum Reply {
-    Remote(super::remote::RemoteReply),
     Done,
     Sent(MessageId),
     Saved { revision: String },
@@ -447,9 +445,6 @@ pub enum Reply {
 #[derive(Clone, Serialize, JsonSchema)]
 #[serde(tag = "type", content = "data", rename_all = "camelCase")]
 pub enum Frame {
-    Remote(super::remote::RemoteSnapshot),
-    Terminal(super::remote::TerminalFrame),
-    TerminalReset,
     Snapshot(BackendSnapshot),
     Recovered(BackendSnapshot),
     Host(crate::desktop::Snapshot),
@@ -457,7 +452,6 @@ pub enum Frame {
 }
 #[derive(Serialize, JsonSchema)]
 pub struct Connection {
-    pub remote: super::remote::RemoteSnapshot,
     pub snapshot: BackendSnapshot,
     pub diagnostic: bool,
     pub host: crate::desktop::Snapshot,

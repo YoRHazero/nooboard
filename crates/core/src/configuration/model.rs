@@ -103,8 +103,9 @@ pub(crate) struct Configuration {
     pub settings: Settings,
     pub peers: BTreeMap<String, Peer>,
     pub manual_targets: Vec<String>,
-    #[serde(default)]
-    pub remote: crate::remote::model::Configuration,
+    /// Preserve the retired feature document for a future explicit migration.
+    #[serde(default, rename = "remote", skip_serializing_if = "Option::is_none")]
+    pub retired_remote: Option<serde_json::Value>,
     #[serde(skip)]
     pub revision: u64,
     /// Last activation revision per target, retained across coalesced watch updates.
@@ -118,7 +119,7 @@ impl Configuration {
             settings,
             peers: BTreeMap::new(),
             manual_targets: vec![],
-            remote: Default::default(),
+            retired_remote: None,
             revision: 0,
             automatic_revisions: BTreeMap::new(),
         }
@@ -128,7 +129,6 @@ impl Configuration {
             return Err(Error::Configuration);
         }
         self.settings.validate()?;
-        self.remote.validate()?;
         for (id, peer) in &self.peers {
             if id != &peer.trusted.identity.id {
                 return Err(Error::Configuration);

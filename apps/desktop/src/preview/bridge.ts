@@ -1,4 +1,3 @@
-import { RemotePreview } from './remote';
 import type { DesktopBridge, Session } from '../desktop/bridge/port';
 import type { Frame, Reply, Request, PeerConnectionState } from '../desktop/bridge/generated';
 import { fail } from '../i18n/errors';
@@ -21,9 +20,6 @@ export class PreviewBridge implements DesktopBridge {
   private listeners = new Set<(frame: Frame) => void>();
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private disposed = false;
-  private remote = new RemotePreview((frame) => {
-    for (const receive of this.listeners) receive(frame);
-  });
   private sequence = 1;
   private initializedPreferences = false;
   async locale() {
@@ -43,7 +39,6 @@ export class PreviewBridge implements DesktopBridge {
     return {
       initial: structuredClone({
         snapshot: this.snapshot,
-        remote: this.remote.state,
         host: this.host,
         diagnostic: false,
       }),
@@ -97,8 +92,6 @@ export class PreviewBridge implements DesktopBridge {
   async request(request: Request): Promise<Reply> {
     this.ensureOpen();
     switch (request.type) {
-      case 'remote':
-        return { type: 'remote', data: await this.remote.request(request.data) };
       case 'hostPreferences':
         if (!this.initializedPreferences && request.data.legacyLanguage)
           this.host.language = request.data.legacyLanguage;
@@ -436,7 +429,6 @@ export class PreviewBridge implements DesktopBridge {
   }
   dispose() {
     this.disposed = true;
-    this.remote.dispose();
     this.clearTimers();
     this.listeners.clear();
   }

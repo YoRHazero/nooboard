@@ -1,6 +1,6 @@
 # Terminal Service 重构设计
 
-本设计定义新的 Terminal Service 的行为、数据结构和服务接口，作为 SSH 模块重构的依据。当前为设计稿，尚未实现；当前 SSH 工作区的实现契约仍见 [SSH 工作区设计](ssh-workspace-design.md)。
+本设计定义新的 Terminal Service 的行为、数据结构和服务接口，作为 SSH 模块重构的依据。当前为设计稿；terminal 分支首先移除旧 SSH 实现，然后开发独立的新 crate。
 
 Terminal 管理三类运行资源：交互终端 `TerminalRun`、可独立存在或作为前置依赖的固定命令 `CommandRun`、SSH 转发 `TunnelRun`。SSH 终端附带文件浏览和文件操作能力。本地命令、SSH 连接与转发通过统一的依赖调度协作，但保留各自的资源类型和生命周期。
 

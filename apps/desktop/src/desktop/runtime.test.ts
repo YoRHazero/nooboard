@@ -1,4 +1,3 @@
-import { emptyRemote } from './remote/model';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createDesktop } from './api';
 import type { DesktopBridge, Session } from './bridge/port';
@@ -39,7 +38,7 @@ class Bridge implements DesktopBridge {
   }
   ready(index: number, snapshot = snapshotFixture()) {
     const session = {
-      initial: { snapshot, remote: emptyRemote(), host: hostFixture(), diagnostic: false },
+      initial: { snapshot, host: hostFixture(), diagnostic: false },
       close: vi.fn(async () => {}),
     };
     this.opens[index].pending.resolve(session);

@@ -1,7 +1,6 @@
 mod commands;
 pub mod dto;
 pub mod errors;
-pub mod remote;
 pub mod snapshot;
 use crate::host::Host;
 use tauri::{AppHandle, State, ipc::Channel};

@@ -16,7 +16,6 @@ pub(crate) enum Change {
     ConfigurePeer(String, PeerSettings),
     PeerNames(Vec<(String, String)>),
     Targets(Vec<String>),
-    Remote(crate::remote::model::ConfigurationChange),
 }
 pub(crate) struct Request {
     pub change: Change,
@@ -121,7 +120,6 @@ impl Runtime {
                 }
             }
             Change::Targets(targets) => next.manual_targets = targets,
-            Change::Remote(change) => next.remote.apply(change),
         }
         next.validate()?;
         document::save(storage, &next).await?;

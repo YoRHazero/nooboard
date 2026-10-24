@@ -1,10 +1,9 @@
 import { errorText } from '../i18n/errors';
 import { useI18n } from '../i18n/react';
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MotionConfig, motion } from 'motion/react';
 import {
   House,
-  TerminalSquare,
   History,
   Laptop,
   Monitor,
@@ -26,11 +25,7 @@ import { appVersion } from './version';
 import { UnpairedPrompt } from '../features/devices/UnpairedPrompt';
 import { PairingPrompt } from '../features/devices/PairingPrompt';
 
-const SshPage = lazy(() =>
-  import('../features/ssh/SshPage').then((module) => ({ default: module.SshPage })),
-);
-
-type Page = 'ssh' | 'home' | 'history' | 'transfers' | 'devices' | 'settings';
+type Page = 'home' | 'history' | 'transfers' | 'devices' | 'settings';
 
 export function App({ footer, motionPreview }: { footer?: ReactNode; motionPreview?: boolean }) {
   const { t } = useI18n();
@@ -38,7 +33,6 @@ export function App({ footer, motionPreview }: { footer?: ReactNode; motionPrevi
     home: { title: t('common:home'), icon: House },
     history: { title: t('common:history'), icon: History },
     transfers: { title: t('common:transfers'), icon: ArrowLeftRight },
-    ssh: { title: t('ssh:title'), icon: TerminalSquare },
     devices: { title: t('common:devices'), icon: Monitor },
     settings: { title: t('common:settings'), icon: Settings2 },
   };
@@ -120,14 +114,11 @@ export function App({ footer, motionPreview }: { footer?: ReactNode; motionPrevi
           </div>
           <span className="sidebar-version">nooboard / {host.version ?? appVersion}</span>
         </aside>
-        <main
-          className={`app-main ${page === 'home' ? 'app-main--home' : page === 'ssh' ? 'app-main--ssh' : ''}`}
-          ref={main}
-        >
+        <main className={`app-main ${page === 'home' ? 'app-main--home' : ''}`} ref={main}>
           <div className="main-inner">
             <header className="page-header">
               <h1>{pages[page].title}</h1>
-              {page !== 'home' && page !== 'ssh' && (
+              {page !== 'home' && (
                 <Button
                   variant="quiet"
                   disabled={!!connectionError}
@@ -178,11 +169,6 @@ export function App({ footer, motionPreview }: { footer?: ReactNode; motionPrevi
                     navigate('transfers');
                   }}
                 />
-              )}
-              {page === 'ssh' && (
-                <Suspense fallback={<p className="muted">{t('ssh:loading')}</p>}>
-                  <SshPage />
-                </Suspense>
               )}
               {page === 'history' && <HistoryPage />}
               {page === 'transfers' && <TransfersPage focusKey={transferKey} />}

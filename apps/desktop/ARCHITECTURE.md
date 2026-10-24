@@ -15,7 +15,6 @@ src/
     react.tsx                provider、selector 与命令反馈
     bridge/                  传输接口、Tauri 适配与生成的协议类型
     snapshot/                解码、版本排序与结构共享
-    remote/                  SSH 状态规范化与目录增量合并
     preferences/             外观持久化与宿主语言
     activity/                从业务状态投影界面活动
   features/
@@ -23,7 +22,6 @@ src/
     history/                 查询、筛选、分页
     home/                    首页与剪贴板内容
     transfers/               普通内容传输
-    ssh/                     SSH 登录、终端、目录树与 SFTP 队列
     settings/                设置表单
     activity/                活动摘要
     mailbox/                 信箱会话与分组
@@ -37,7 +35,6 @@ src-tauri/src/
   host/                      core 服务所有者与可取消 WebView 订阅
   ipc/
     dto.rs                   请求、回复与帧契约
-    remote.rs                SSH 专用类型投影
     snapshot.rs              core 到 IPC 的显式转换
     commands/                分发、原生对话框与配置补丁
     errors.rs                稳定错误代码
@@ -62,21 +59,11 @@ src-tauri/src/
 4. 类型化 Reply 表示命令结果，权威快照更新页面；界面不自行推断业务成功。
 5. 解码器建立视图，store 拒绝旧版本，活动呈现层消费状态变化。
 
-普通业务快照、SSH 状态与终端字节各有通道语义。大整数 ID、版本和偏移用字符串传递；界面时间戳与有界字节计数用数字。
-
-## SSH 集成
-
-`features/ssh` 只通过 `desktop/api` 访问宿主，xterm 适配限制在终端组件内。密码只随登录请求进入原生 core，不进入快照或日志；记忆、认证及指纹决策由 core 管理。
-
-`RemoteRequest` / `RemoteReply` 嵌入统一命令。宿主负责文件选择、下载目录选择、拖入坐标转换和显示已完成文件。文件操作绑定工作区、文件连接和根目录版本，终端输入、尺寸与回放绑定实际终端 ID。
-
-`Remote` 帧仅在目录内容变化时携带列表；前端只在同一文件连接下复用省略的列表。新连接不继承旧缓存，连接初始化前收到的增量也需要合并。状态推送可以节流，字节输出单独处理。
-
-终端先订阅再回放，以偏移去重；订阅落后或窗口重新显示时，通过 `TerminalReset` 恢复。切换页面、关闭标签或 WebView 不拥有后台传输生命周期。更细的协议与任务语义见 [SSH 工作区设计](../../docs/ssh-workspace-design.md)。
+业务快照与宿主状态分别传递。大整数 ID、版本和偏移用字符串传递；界面时间戳与有界字节计数用数字。
 
 ## 预览与动画
 
-普通浏览器走相同 runtime、解码和订阅接口，使用内存 fixture。预览不是另一套 core，也不能作为业务正确性的依据；SSH 预览不执行 shell 或文件 I/O。
+普通浏览器走相同 runtime、解码和订阅接口，使用内存 fixture。预览不是另一套 core，也不能作为业务正确性的依据。
 
 首页默认加载完整 `bird-business-19.glb` 场景。活动关联实际传输 ID 与结果，动画完成不表示交付成功。`Playback` 协调活动，`ClipPlayer` 管理带道具的过渡，`BirdScene` 处理渲染、隐藏和减少动态效果。
 

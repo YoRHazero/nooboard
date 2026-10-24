@@ -1,4 +1,24 @@
 use super::*;
+
+#[test]
+fn retired_feature_document_survives_unrelated_configuration_changes() {
+    use crate::configuration::model::Configuration;
+    let mut document = serde_json::to_value(Configuration::new(settings())).unwrap();
+    let retired = serde_json::json!({
+        "profiles": {"saved": {"credential": "opaque-reference"}},
+        "hosts": {"device:22": {"key": "public-key"}},
+        "download_directory": "/previous/location"
+    });
+    document["remote"] = retired.clone();
+    let mut configuration: Configuration = serde_json::from_value(document).unwrap();
+    configuration.settings.history_days = 12;
+    configuration.validate().unwrap();
+    assert_eq!(
+        serde_json::to_value(configuration).unwrap()["remote"],
+        retired
+    );
+}
+
 #[tokio::test]
 async fn rejected_persistence_does_not_publish_unsaved_settings_and_restart_requirement_is_honest()
 {

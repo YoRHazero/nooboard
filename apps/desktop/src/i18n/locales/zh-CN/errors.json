@@ -54,22 +54,5 @@
   "discovery": "附近设备发现暂不可用，可以通过地址添加设备。",
   "localAddress": "暂时无法获取本机地址。",
   "serviceFault": "本机服务遇到异常，请重试或重新连接。",
-  "nativeOnly": "请在桌面应用中使用文件选择器。",
-  "sshAuthentication": "SSH 登录失败，请重新填写账号密码。",
-  "sshHostKeyChanged": "SSH 主机密钥已改变，已在发送密码前停止连接。请与对方核实变更。",
-  "sshHostKeyRejected": "未批准 SSH 主机密钥。",
-  "sshTimeout": "SSH 操作超时。",
-  "sshConnection": "SSH 连接失败，请检查对方的 SSH 服务、端口和网络。",
-  "sshSftpUnavailable": "对方未提供 SFTP，终端仍可使用。",
-  "sshInvalidPath": "请输入有效远端路径。不展开 shell 变量或 ~。",
-  "sshNotFound": "远端文件或目录不存在。",
-  "sshNotDirectory": "所选路径不是目录。",
-  "sshNotFile": "仅支持普通文件，暂不传输文件夹和符号链接。",
-  "sshPermission": "当前 SSH 账号无权执行此操作。",
-  "sshStaleCursor": "目录列表已过期，请刷新后继续。",
-  "sshCredentials": "已保存登录不可用或保存失败，请重新输入密码。密码不会存入应用配置。",
-  "sshUnconfirmed": "无法确认最终保存结果，重新传输前请检查目标文件。",
-  "sshSourceChanged": "传输期间源文件发生变化。",
-  "sshIo": "文件操作失败，请检查权限、可用空间和目标文件系统。",
-  "sshCancelled": "操作已取消。"
+  "nativeOnly": "请在桌面应用中使用文件选择器。"
 }

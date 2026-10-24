@@ -1,8 +1,6 @@
 pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("SSH operation failed: {0}")]
-    Ssh(#[from] nooboard_ssh::Error),
     #[error("clipboard operation failed: {0}")]
     Clipboard(#[from] nooboard_clipboard::Error),
     #[error("network operation failed: {0}")]
