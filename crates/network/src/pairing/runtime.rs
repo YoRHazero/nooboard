@@ -5,10 +5,11 @@ use crate::{
     connections,
     error::{ErrorKind, Failure, InternalResult as Result},
     event::NetworkEvent,
-    identity::{
+    peers::{
         PublicIdentity, TrustedPeer,
-        material::{fingerprint, new_session_id, noob_id},
+        certificate::{fingerprint, noob_id},
     },
+    random::new_session_id,
 };
 use std::{collections::BTreeMap, net::SocketAddr};
 use tokio::sync::{mpsc, oneshot, watch};
@@ -406,7 +407,7 @@ fn convert(error: PairError) -> Failure {
         PairError::Busy => Failure::Busy,
         PairError::Code => Failure::InvalidArgument("pairing code"),
         PairError::Connect | PairError::Disconnected => Failure::Disconnected,
-        PairError::Storage => Failure::Credentials,
+        PairError::Storage => Failure::Persistence,
         _ => Failure::Protocol,
     }
 }

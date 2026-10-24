@@ -1,10 +1,10 @@
 use super::*;
-use crate::identity::PublicIdentity;
+use crate::peers::PublicIdentity;
 
 #[tokio::test]
 async fn revocation_blocks_dialing_until_reappearance_and_ignores_repeated_announcements() {
-    let identity = Identity::generate().unwrap();
-    let other = Identity::generate().unwrap();
+    let identity = crate::test_identity::generate();
+    let other = crate::test_identity::generate();
     let id = other.noob_id().unwrap();
     let address = "127.0.0.1:9".parse().unwrap();
     let options = Options {
@@ -70,8 +70,8 @@ async fn connection_state(status: &mut watch::Receiver<Vec<ConnectionStatus>>, c
 
 #[tokio::test]
 async fn late_start_and_new_discovered_address_reconnect_the_same_identity() {
-    let a = Arc::new(Identity::generate().unwrap());
-    let b = Arc::new(Identity::generate().unwrap());
+    let a = Arc::new(crate::test_identity::generate());
+    let b = Arc::new(crate::test_identity::generate());
     let a_options = Options {
         listen: "127.0.0.1:0".parse().unwrap(),
         trusted_peers: vec![TrustedPeer {

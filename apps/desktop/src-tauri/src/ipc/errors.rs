@@ -20,6 +20,7 @@ pub fn core(error: nooboard_core::Error) -> UiError {
     use nooboard_core::Error;
     ui(match error {
         Error::Network(_) => "network",
+        Error::Identity(_) => "serviceFault",
         Error::Storage(_) => "storage",
         Error::Clipboard(_) => "clipboard",
         Error::Stopped => "stopped",

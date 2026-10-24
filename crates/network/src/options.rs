@@ -1,12 +1,11 @@
 use crate::{
     error::{Failure, InternalResult as Result},
-    identity::{IdentityOptions, TrustedPeer, valid_device_name},
+    peers::{TrustedPeer, valid_device_name},
 };
 use std::{net::SocketAddr, time::Duration};
 
 #[derive(Clone, Debug)]
 pub struct Options {
-    pub identity: IdentityOptions,
     pub device_name: String,
     pub listen: SocketAddr,
     pub pairing_listen: SocketAddr,
@@ -20,9 +19,6 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            identity: IdentityOptions::System {
-                profile: "default".into(),
-            },
             device_name: "Nooboard".into(),
             listen: "0.0.0.0:24816".parse().unwrap(),
             pairing_listen: "0.0.0.0:24817".parse().unwrap(),
@@ -46,11 +42,6 @@ impl Options {
             || self.operation_timeout > Duration::from_secs(300)
         {
             return Err(Failure::InvalidArgument("network options"));
-        }
-        if let IdentityOptions::System { profile } = &self.identity
-            && (profile.is_empty() || profile.len() > 256 || profile.chars().any(char::is_control))
-        {
-            return Err(Failure::InvalidArgument("identity profile"));
         }
         Ok(())
     }

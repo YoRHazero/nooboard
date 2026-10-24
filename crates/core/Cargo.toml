@@ -13,6 +13,7 @@ name = "link_probe"
 required-features = ["diagnostics"]
 
 [dependencies]
+nooboard-identity = { path = "../identity" }
 nooboard-clipboard = { path = "../clipboard" }
 nooboard-network = { path = "../network" }
 nooboard-storage = { path = "../storage" }
@@ -26,6 +27,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 
 [dev-dependencies]
 tempfile.workspace = true
+sha2 = "0.10"
 
 [lints]
 workspace = true

@@ -1,0 +1,38 @@
+[package]
+name = "nooboard-identity"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+default = ["native-credentials"]
+native-credentials = ["dep:keyring"]
+
+[dependencies]
+tokio.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rcgen = { version = "0.14", default-features = false, features = ["ring"] }
+sha2 = "0.10"
+hex = "0.4"
+hkdf = "0.12"
+chacha20poly1305 = "0.10"
+zeroize = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+keyring = { version = "3.6.3", features = ["apple-native", "windows-native"], optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6.3", features = ["sync-secret-service", "crypto-rust", "vendored"], optional = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+ring = "0.17"

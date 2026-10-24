@@ -1,9 +1,10 @@
+#[path = "support/identity.rs"]
+mod identity;
 use nooboard_network::{NetworkService, *};
 use std::{future::Future, time::Duration};
 
 fn options(name: &str) -> Options {
     Options {
-        identity: IdentityOptions::Ephemeral,
         device_name: name.into(),
         listen: "127.0.0.1:0".parse().unwrap(),
         pairing_listen: "127.0.0.1:0".parse().unwrap(),
@@ -18,7 +19,9 @@ async fn bounded<T>(future: impl Future<Output = T>) -> T {
         .expect("operation timed out")
 }
 async fn start(name: &str) -> (NetworkService, Network, NetworkEvents) {
-    bounded(NetworkService::start(options(name))).await.unwrap()
+    bounded(NetworkService::start(options(name), dependencies()))
+        .await
+        .unwrap()
 }
 async fn wait(service: &Network, condition: impl Fn(&NetworkStatus) -> bool) -> NetworkStatus {
     let mut status = service.subscribe();
@@ -459,7 +462,7 @@ async fn saturated_application_inbox_rejects_work_and_revocation_closes_the_peer
     let (a_service, a, _a_events) = start("a").await;
     let mut opts = options("b");
     opts.event_capacity = 1;
-    let (b_service, b, mut b_events) = NetworkService::start(opts).await.unwrap();
+    let (b_service, b, mut b_events) = NetworkService::start(opts, dependencies()).await.unwrap();
     link(&a, &b).await;
     let peer = b.status().identity.id;
     let first = a
@@ -557,7 +560,11 @@ async fn invalid_start_and_drop_have_no_live_listener_leak() {
     let mut invalid = options("invalid");
     invalid.queue_capacity = 0;
     assert_eq!(
-        NetworkService::start(invalid).await.err().unwrap().kind(),
+        NetworkService::start(invalid, dependencies())
+            .await
+            .err()
+            .unwrap()
+            .kind(),
         ErrorKind::InvalidInput
     );
     let (service, network, mut events) = start("drop").await;
@@ -1005,4 +1012,10 @@ async fn pause_is_distinct_from_receiving_and_survives_reconnection() {
     assert!(!b.status().connections[0].accepting);
     bounded(sa.shutdown()).await.unwrap();
     bounded(sb.shutdown()).await.unwrap();
+}
+
+fn dependencies() -> NetworkDependencies {
+    NetworkDependencies {
+        identity: identity::generate(),
+    }
 }

@@ -1,11 +1,8 @@
-use crate::{
-    error::{Failure, InternalResult as Result},
-    identity::material::Identity,
-};
+use crate::{Error as Failure, IdentityOptions, Result, backend::Material};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
-pub(super) fn load(profile: &str) -> Result<Identity> {
+pub(super) fn load(profile: &str, options: &IdentityOptions) -> Result<Material> {
     // Coordinate creation across processes using the same profile. No key material enters the lock.
     #[cfg(not(unix))]
     let directory = std::env::temp_dir().join("nooboard-identity-locks");
@@ -18,25 +15,31 @@ pub(super) fn load(profile: &str) -> Result<Identity> {
         match std::fs::DirBuilder::new().mode(0o700).create(&directory) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(e.into()),
+            Err(_) => return Err(Failure::Credentials),
         }
-        let metadata = std::fs::symlink_metadata(&directory)?;
+        let metadata = std::fs::symlink_metadata(&directory).map_err(|_| Failure::Credentials)?;
         if !metadata.is_dir() || metadata.uid() != uid || metadata.mode() & 0o077 != 0 {
             return Err(Failure::Credentials);
         }
         directory
     };
     #[cfg(not(unix))]
-    std::fs::create_dir_all(&directory)?;
-    let mut options = std::fs::OpenOptions::new();
-    options.read(true).write(true).create(true).truncate(false);
+    std::fs::create_dir_all(&directory).map_err(|_| Failure::Credentials)?;
+    let mut file_options = std::fs::OpenOptions::new();
+    file_options
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+        file_options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
     }
-    let lock = options.open(directory.join(hex::encode(Sha256::digest(profile.as_bytes()))))?;
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let lock = file_options
+        .open(directory.join(hex::encode(Sha256::digest(profile.as_bytes()))))
+        .map_err(|_| Failure::Credentials)?;
+    let deadline = std::time::Instant::now() + options.credential_lock_timeout;
     loop {
         match lock.try_lock() {
             Ok(()) => break,
@@ -44,9 +47,9 @@ pub(super) fn load(profile: &str) -> Result<Identity> {
                 if std::time::Instant::now() >= deadline {
                     return Err(Failure::Busy);
                 }
-                std::thread::sleep(std::time::Duration::from_millis(25));
+                std::thread::sleep(options.credential_lock_poll_interval);
             }
-            Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
+            Err(std::fs::TryLockError::Error(_)) => return Err(Failure::Credentials),
         }
     }
     let entry =

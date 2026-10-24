@@ -57,8 +57,7 @@ mod tests {
     };
     use crate::{Mode, PeerSettings, Settings, history::runtime as history};
     use nooboard_network::{
-        ApplicationOutcome, IdentityOptions, NetworkService, Options, ReceivedContent,
-        TransferStage, TrustedPeer,
+        ApplicationOutcome, Options, ReceivedContent, TransferStage, TrustedPeer,
     };
     use nooboard_storage::{BackendConfig, SqliteOptions, StorageService};
     use std::time::Duration;
@@ -66,14 +65,13 @@ mod tests {
     #[tokio::test]
     async fn enabling_automatic_targets_never_replays_pending_copies_even_with_coalesced_updates() {
         let options = || Options {
-            identity: IdentityOptions::Ephemeral,
             listen: "127.0.0.1:0".parse().unwrap(),
             pairing_listen: "127.0.0.1:0".parse().unwrap(),
             discovery: false,
             ..Default::default()
         };
-        let (owner_a, a, _events_a) = NetworkService::start(options()).await.unwrap();
-        let (owner_b, b, mut events_b) = NetworkService::start(options()).await.unwrap();
+        let (owner_a, a, _events_a) = crate::tests::start_network(options()).await;
+        let (owner_b, b, mut events_b) = crate::tests::start_network(options()).await;
         let trusted = |network: &Network| {
             let status = network.status();
             TrustedPeer {

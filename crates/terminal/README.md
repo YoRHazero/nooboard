@@ -2,7 +2,7 @@
 
 独立的后台 Terminal Service：本地与 SSH 终端、可共享的固定命令、SSH 隧道及终端所属的 SFTP 文件操作。使用 `russh 0.64.1`、`russh-sftp 3.0.1`、`portable-pty 0.9.0`，不启动系统 `ssh`。
 
-本 crate 已实现运行后端与调度；尚未接入 Core、Identity、桌面 IPC 或前端。它不依赖其他 nooboard crate，也不读取应用配置、保存密码或维护主机信任数据库。完整行为约定见 [Terminal Service 设计](../../docs/terminal-service-design.md)。
+本 crate 已实现运行后端与调度；尚未接入 Core、桌面 IPC 或前端。它不依赖其他 nooboard crate，也不读取应用配置、保存密码或维护主机信任数据库。[Identity Service](../identity/README.md) 已独立，后续由 Core 使用其加解密能力向 Terminal 提供认证材料。完整行为约定见 [Terminal Service 设计](../../docs/terminal-service-design.md)。
 
 ## 快速运行
 

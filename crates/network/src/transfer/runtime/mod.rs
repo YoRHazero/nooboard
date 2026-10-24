@@ -12,8 +12,8 @@ use crate::{
     connections::{queue::Outbox, runtime::Event as LinkEvent},
     error::{ErrorKind, Failure, InternalResult as Result},
     event::NetworkEvent,
-    identity::material::new_session_id,
     options::Options,
+    random::new_session_id,
 };
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},

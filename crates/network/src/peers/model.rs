@@ -1,19 +1,11 @@
 use super::{
-    material::{Identity, fingerprint, noob_id},
+    certificate::{fingerprint, noob_id},
     valid_device_name,
 };
 use crate::error::{Failure, InternalResult as Result};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 
-#[derive(Clone, Debug)]
-pub enum IdentityOptions {
-    System {
-        profile: String,
-    },
-    /// Explicitly temporary identity; never a fallback for a credential failure.
-    Ephemeral,
-}
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PublicIdentity {
     pub id: String,
@@ -40,7 +32,10 @@ impl PublicIdentity {
         identity.validate()?;
         Ok(identity)
     }
-    pub(crate) fn from_identity(identity: &Identity, device_name: String) -> Result<Self> {
+    pub(crate) fn from_identity(
+        identity: &crate::LocalIdentity,
+        device_name: String,
+    ) -> Result<Self> {
         Ok(Self {
             id: identity.noob_id()?,
             fingerprint: identity.fingerprint(),

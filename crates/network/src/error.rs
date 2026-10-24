@@ -9,7 +9,7 @@ pub enum ErrorKind {
     NotFound,
     Identity,
     Unpaired,
-    Credentials,
+    Persistence,
     Protocol,
     Unavailable,
     Timeout,
@@ -62,8 +62,8 @@ pub(crate) enum Failure {
     Identity,
     #[error("peer no longer authorizes this device")]
     Unpaired,
-    #[error("credential operation failed")]
-    Credentials,
+    #[error("pairing persistence failed")]
+    Persistence,
     #[error("invalid protocol")]
     Protocol,
     #[error("operation timed out")]
@@ -95,7 +95,7 @@ impl Failure {
             Self::Io(_) | Self::Disconnected => ErrorKind::Unavailable,
             Self::Tls(_) | Self::Identity => ErrorKind::Identity,
             Self::Unpaired => ErrorKind::Unpaired,
-            Self::Credentials => ErrorKind::Credentials,
+            Self::Persistence => ErrorKind::Persistence,
             Self::Protocol => ErrorKind::Protocol,
             Self::Timeout => ErrorKind::Timeout,
             Self::Closed => ErrorKind::Stopped,

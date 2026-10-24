@@ -1,6 +1,6 @@
 use crate::{
     connections::ConnectionStatus, discovery::NearbyDevice, error::ErrorKind,
-    identity::PublicIdentity, pairing::PairingStatus, transfer::TransferStatus,
+    pairing::PairingStatus, peers::PublicIdentity, transfer::TransferStatus,
 };
 use std::net::SocketAddr;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

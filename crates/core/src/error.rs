@@ -1,6 +1,8 @@
 pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("identity operation failed: {0}")]
+    Identity(#[from] nooboard_identity::Error),
     #[error("clipboard operation failed: {0}")]
     Clipboard(#[from] nooboard_clipboard::Error),
     #[error("network operation failed: {0}")]

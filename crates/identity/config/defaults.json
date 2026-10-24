@@ -1,0 +1,10 @@
+{
+  "queue_capacity": 32,
+  "signing_timeout_ms": 5000,
+  "shutdown_timeout_ms": 10000,
+  "credential_lock_timeout_ms": 5000,
+  "credential_lock_poll_interval_ms": 25,
+  "max_secret_bytes": 65536,
+  "max_signing_bytes": 65536,
+  "max_context_bytes": 4096
+}

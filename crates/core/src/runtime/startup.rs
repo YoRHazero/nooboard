@@ -8,20 +8,21 @@ use crate::{
     *,
 };
 use nooboard_clipboard::{ClipboardService, Options as ClipboardOptions};
-use nooboard_network::{IdentityOptions, NetworkService};
+use nooboard_identity::{IdentityConfig, IdentityOptions, IdentityService};
+use nooboard_network::NetworkService;
 use nooboard_storage::{Options as StorageOptions, StorageService};
 use std::sync::Arc;
 use tokio::sync::{broadcast, watch};
 pub(crate) struct Launch {
     pub options: Options,
     pub defaults: Settings,
-    pub identity: IdentityOptions,
+    pub identity: IdentityConfig,
     pub clipboard_options: ClipboardOptions,
     pub clipboard: Option<Arc<dyn ClipboardPort>>,
     pub clipboard_service: Option<ClipboardService>,
 }
 pub(crate) async fn start(options: Options) -> Result<(AppService, App)> {
-    let identity = IdentityOptions::System {
+    let identity = IdentityConfig::System {
         profile: options.profile.clone(),
     };
     let defaults = Settings {
@@ -64,9 +65,12 @@ pub(crate) async fn launch(input: Launch) -> Result<(AppService, App)> {
             .values()
             .map(|peer| peer.trusted.clone())
             .collect();
-        let (network_service, network, network_events) =
-            NetworkService::start(nooboard_network::Options {
-                identity: input.identity,
+        let (identity_service, identity) =
+            IdentityService::start(input.identity, IdentityOptions::default()).await?;
+        services.identity = Some(identity_service);
+        let dependencies = crate::identity::network_dependencies(identity)?;
+        let (network_service, network, network_events) = NetworkService::start(
+            nooboard_network::Options {
                 device_name: config.settings.device_name.clone(),
                 listen: config
                     .settings
@@ -81,8 +85,10 @@ pub(crate) async fn launch(input: Launch) -> Result<(AppService, App)> {
                 discovery: config.settings.discoverable,
                 trusted_peers,
                 ..Default::default()
-            })
-            .await?;
+            },
+            dependencies,
+        )
+        .await?;
         services.network = Some(network_service);
         network.set_accepting(config.settings.accepting()).await?;
         network.set_paused(config.settings.paused).await?;

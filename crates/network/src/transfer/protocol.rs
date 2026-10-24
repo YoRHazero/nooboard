@@ -192,7 +192,7 @@ impl std::fmt::Debug for Message {
         }
     }
 }
-use crate::identity::valid_device_name;
+use crate::peers::valid_device_name;
 impl Message {
     fn validate(&self) -> Result<()> {
         match self {

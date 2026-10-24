@@ -2,7 +2,7 @@
 
 库接口参考，面向调用者与维护者。[应用使用](../../README.md) · [开发指南](../../docs/development.md) · [测试与实机验收](../../docs/testing.md)
 
-通过消息通信提供设备发现、身份配对、可信连接和内容传输。`Network` 是统一业务请求句柄，`NetworkService` 管理生命周期，`NetworkEvents` 独占事件接收；三者都由 `api` 提供，内部功能模块不对调用者开放。network 不依赖 clipboard、storage 或 core。
+通过消息通信提供设备发现、身份配对、可信连接和内容传输。`Network` 是统一业务请求句柄，`NetworkService` 管理生命周期，`NetworkEvents` 独占事件接收；三者都由 `api` 提供，内部功能模块不对调用者开放。network 不依赖 clipboard、storage、identity 或 core。
 
 ## 职责边界
 
@@ -12,11 +12,11 @@
 | 顶层 `runtime/`       | 装配子 runtime，连接内部通道，聚合状态，监督退出并等待清理             |
 | 功能模块的 `runtime`  | 拥有该功能的实例、状态和任务，处理请求及内部事件                       |
 | 功能模块的 `model.rs` | 请求、结果、标识符和状态等数据定义；不创建后台任务                     |
-| 功能内部实现          | TLS、配对协议、mDNS、凭据、文件暂存等具体机制                          |
+| 功能内部实现          | TLS、配对协议、mDNS、文件暂存等具体机制                          |
 
-目录本身不会产生实例。`NetworkService::start` 通过顶层 runtime 创建身份、监听器和四个子 runtime。identity 不需要常驻事件循环；它提供身份材料及凭据加载能力。
+`NetworkService::start(options, dependencies)` 接收调用方注入的公开证书与签名能力，再创建监听器和四个子 runtime。APP 身份私钥由独立的 [Identity Service](../identity/README.md) 持有，Core 在两个服务之间适配；Network 不加载、生成或保存 APP 身份私钥。
 
-core 决定发送目标、自动/手动策略、是否接受内容、接收目录，以及如何应用到剪贴板。core 也负责持久化公开的可信设备记录。network 负责执行传输、验证身份和内容、维护连接，以及报告实际结果。文件暂存及私钥凭据属于 network；storage 继续只处理文本历史和文本配置。
+core 决定发送目标、自动/手动策略、是否接受内容、接收目录，以及如何应用到剪贴板。core 也负责持久化公开的可信设备记录。network 负责执行传输、验证身份和内容、维护连接，以及报告实际结果。文件暂存属于 network；身份凭据属于独立 Identity Service，storage 继续只处理文本历史和文本配置。
 
 ## 文件结构
 
@@ -30,11 +30,11 @@ src/
 ├── runtime/
 │   ├── mod.rs              # 装配、监督、关闭
 │   └── model.rs            # NetworkStatus、ServiceState
-├── identity/
-│   ├── mod.rs              # 加载身份
-│   ├── model.rs            # 身份选项、公开身份、可信设备记录
-│   ├── material.rs         # 私钥/证书及稳定设备 ID
-│   └── credentials/        # 凭据创建策略、系统 keyring 适配
+├── local.rs                # 公开证书与调用方签名能力端口
+├── random.rs               # 协议会话的随机命名空间
+├── peers/
+│   ├── model.rs            # 公开身份、可信设备记录
+│   └── certificate.rs      # 公共证书解析、设备 ID 和指纹
 ├── discovery/
 │   ├── runtime.rs          # 发现的启停、刷新和地址查询
 │   ├── model.rs            # 附近设备、本机地址
@@ -78,9 +78,11 @@ src/
 
 ### 启动与关闭
 
-`Options` → `NetworkService::start` → 加载身份 → 绑定监听器 → 启动各子 runtime → 返回 `(NetworkService, Network, NetworkEvents)`。
+`Options + NetworkDependencies` → `NetworkService::start` → 使用调用方身份能力 → 绑定监听器 → 启动各子 runtime → 返回 `(NetworkService, Network, NetworkEvents)`。
 
-服务需要在 Tokio runtime 内运行。默认使用系统凭据和固定监听端口；测试应显式选择 `Ephemeral`、关闭发现并使用回环临时端口。禁用 `native-credentials` 后，临时身份仍可运行，系统身份明确返回凭据错误。凭据丢失以外的读取失败、损坏或写入失败不会静默切换身份。配置中的展示名称及监听地址在启动时确定；更改这些选项需要关闭后重启。
+服务需要在 Tokio runtime 内运行。默认使用固定监听端口；身份必须通过 `NetworkDependencies { identity: LocalIdentity }` 显式提供。`LocalIdentity::new(certificate, signer)` 接收公开证书和 `Arc<dyn IdentitySigner>`；签名接口是同步、有界的能力，不能依赖当前 TLS 任务所在的执行器继续调度。Core 使用 Identity Service 的独立 worker 实现该接口。测试自行生成临时签名器，关闭发现并使用回环临时端口。
+
+Network 不再拥有 `IdentityOptions` 或 `native-credentials` feature。配置中的展示名称及监听地址在启动时确定；更改这些选项需要关闭后重启。关闭顺序为先 Network，后调用方的 Identity Service。
 
 | 对象             | 持有的能力                                      | 共享方式                           |
 | ---------------- | ----------------------------------------------- | ---------------------------------- |
@@ -108,7 +110,7 @@ TLS 先验证客户端持有其证书对应的私钥，业务连接再检查已�
 
 已结束的配对无法取消，接口返回 `NotFound` 并保持原来的完成状态或失败原因。
 
-两端保存不是跨设备数据库事务；一端在另一端失败前已经保存时，其公开记录可能仍存在，后续可重新配对或撤销。私钥只由 identity/credentials 管理，不通过 API 返回。
+两端保存不是跨设备数据库事务；一端在另一端失败前已经保存时，其公开记录可能仍存在，后续可重新配对或撤销。APP 私钥由独立 Identity Service 管理；TLS 通过注入的签名能力使用它，不通过 Network API 传递。
 
 ### 发送与接收
 
@@ -147,18 +149,17 @@ core 应用内容 → complete_incoming → network 回执 → 发送端更新�
 
 ```rust,no_run
 use nooboard_network::{
-    ApplicationOutcome, IdentityOptions, NetworkEvent, NetworkService,
+    ApplicationOutcome, NetworkDependencies, NetworkEvent, NetworkService,
     Options, ReceivedContent, SendRequest,
 };
 
-# async fn example() -> nooboard_network::Result<()> {
+# async fn example(dependencies: NetworkDependencies) -> nooboard_network::Result<()> {
 let (service, network, mut events) = NetworkService::start(Options {
-    identity: IdentityOptions::Ephemeral,
     listen: "127.0.0.1:0".parse().unwrap(),
     pairing_listen: "127.0.0.1:0".parse().unwrap(),
     discovery: false,
     ..Options::default()
-}).await?;
+}, dependencies).await?;
 
 // 请求句柄可克隆；事件接收端整体移动到一个处理任务。
 let requests = network.clone();
@@ -192,13 +193,11 @@ assert_eq!(network.status().state, nooboard_network::ServiceState::Stopped);
 
 ```sh
 cargo test -p nooboard-network --all-features --locked
-cargo test -p nooboard-network --no-default-features --locked
 cargo clippy -p nooboard-network --all-targets --all-features --locked -- -D warnings
-cargo clippy -p nooboard-network --all-targets --no-default-features --locked -- -D warnings
 python3 scripts/check_architecture.py
 ```
 
-普通测试通过公共 API 使用临时身份、临时文件和回环 TCP，覆盖 TLS 信任、配对重试和保存确认、多目标隔离、文本/PNG/文件传输、取消与迟到回执、撤销信任、队列压力，以及句柄仍存活时的关闭、所有者 Drop 和事件接收端释放。凭据创建策略使用替代读写函数测试，普通测试不会访问系统钥匙串。
+普通测试通过公共 API 使用临时身份、临时文件和回环 TCP，覆盖 TLS 信任、配对重试和保存确认、多目标隔离、文本/PNG/文件传输、取消与迟到回执、撤销信任、队列压力，以及句柄仍存活时的关闭、所有者 Drop 和事件接收端释放。本 crate 已无系统凭据访问代码，身份持久化测试位于独立 identity crate。
 
 mDNS 需要支持组播回环的环境，单独执行：
 
@@ -206,4 +205,4 @@ mDNS 需要支持组播回环的环境，单独执行：
 cargo test -p nooboard-network --locked mdns_discovers_updates_and_withdraws_a_peer_without_trusting_it -- --ignored
 ```
 
-系统凭据弹窗、Linux Secret Service 会话以及跨机 LAN/VPN 需在对应环境验收。连接使用 TLS/PAKE 和 v4 内容传输协议；core 持有服务所有者、请求句柄和独占事件接收端。全工作区检查与隔离测试入口见 [测试与实机验收](../../docs/testing.md)。
+跨机 LAN/VPN 需在对应环境验收；系统身份凭据的原生验收见 identity crate。连接使用 TLS/PAKE 和 v4 内容传输协议；core 持有服务所有者、请求句柄和独占事件接收端。全工作区检查与隔离测试入口见 [测试与实机验收](../../docs/testing.md)。

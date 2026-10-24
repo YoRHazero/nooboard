@@ -1,4 +1,4 @@
-use crate::{error::ErrorKind, identity::PublicIdentity};
+use crate::{error::ErrorKind, peers::PublicIdentity};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

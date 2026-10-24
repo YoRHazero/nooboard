@@ -9,9 +9,10 @@ pub use crate::{
     discovery::{LocalAddress, NearbyDevice},
     error::{Error, ErrorKind},
     event::NetworkEvent,
-    identity::{IdentityOptions, PublicIdentity, TrustedPeer},
+    local::{IdentitySignatureScheme, IdentitySigner, IdentitySigningError, LocalIdentity},
     options::Options,
     pairing::{PairingId, PairingStatus, Stage as PairingStage},
+    peers::{PublicIdentity, TrustedPeer},
     runtime::{NetworkStatus, ServiceState},
     transfer::{
         ApplicationOutcome, ContentKind, FileEntry, IncomingId, MAX_TEXT_BYTES, OutgoingContent,
@@ -26,6 +27,10 @@ use tokio::{
 };
 pub type Result<T> = std::result::Result<T, Error>;
 
+pub struct NetworkDependencies {
+    pub identity: LocalIdentity,
+}
+
 /// Owns the service lifetime. Drop signals stop; `shutdown` waits for cleanup.
 /// Request handles and the event receiver may remain alive during shutdown.
 pub struct NetworkService {
@@ -35,8 +40,11 @@ pub struct NetworkService {
 impl NetworkService {
     /// Requires a Tokio runtime. Returns the owner, a cloneable request handle and
     /// the single event receiver after identity, listeners and discovery are ready.
-    pub async fn start(options: Options) -> Result<(Self, Network, NetworkEvents)> {
-        let parts = runtime::start(options).await?;
+    pub async fn start(
+        options: Options,
+        dependencies: NetworkDependencies,
+    ) -> Result<(Self, Network, NetworkEvents)> {
+        let parts = runtime::start(options, dependencies).await?;
         let stopped = parts.stop.subscribe();
         let network = Network {
             connections: parts.connections.requests,

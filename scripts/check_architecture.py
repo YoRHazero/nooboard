@@ -8,7 +8,7 @@ metadata = json.loads(subprocess.check_output(
     ["cargo", "metadata", "--no-deps", "--format-version", "1", "--locked"], text=True
 ))
 packages = {package["name"]: package for package in metadata["packages"]}
-ports = {"nooboard-clipboard", "nooboard-network", "nooboard-storage"}
+ports = {"nooboard-clipboard", "nooboard-network", "nooboard-storage", "nooboard-identity"}
 expected = ports | {"nooboard-core", "nooboard-desktop", "nooboard-terminal"}
 assert set(packages) == expected, "unexpected workspace crates"
 for name, package in packages.items():
@@ -74,15 +74,35 @@ assert not re.search(r"\b(?:Connection|TlsConfig|Message|Endpoint|Control)\b", a
 for source in network.rglob("*.rs"):
     relative = source.relative_to(network)
     code = source.read_text(encoding="utf-8")
-    if "keyring::" in code:
-        assert relative.parts[:2] == ("identity", "credentials"), f"credentials outside identity adapter: {source}"
+    assert "keyring::" not in code, f"network owns credentials: {source}"
     if source.name == "model.rs":
         assert not re.search(r"\b(?:mpsc|oneshot|watch)::|\bruntime::|\bprotocol::", code), f"network model owns runtime/protocol implementation: {source}"
         assert not re.search(r"(?:std|tokio)::fs|\b(?:rustls|keyring|mdns_sd|if_addrs)::", code), f"network model performs driver work: {source}"
     if relative.parts[:2] == ("transfer", "files"):
         assert not re.search(r"\b(?:mpsc|oneshot|watch)::|crate::(?:runtime|connections)", code), f"file operations own network scheduling: {source}"
 network_deps = packages["nooboard-network"]["dependencies"]
-assert all(dep["optional"] for dep in network_deps if dep["name"] == "keyring"), "native credentials must be optional"
+assert not any(dep["name"] in {"keyring", "nooboard-identity"} for dep in network_deps), "network depends on identity storage/service"
+assert not any(dep["name"] == "rcgen" and dep["kind"] != "dev" for dep in network_deps), "network generates private identity keys"
+assert not (network / "identity").exists(), "old network identity implementation remains"
+# The identity facade exports capabilities, while private keys and native credentials stay in its backend.
+identity = clipboard.parent.parent / "identity" / "src"
+identity_root = (identity / "lib.rs").read_text(encoding="utf-8")
+assert not re.search(r"^pub(?:\([^)]*\))? mod\b", identity_root, re.M), "identity exports implementation modules"
+assert re.findall(r"^pub use (.*);$", identity_root, re.M) == ["api::*"], "identity bypasses its API facade"
+identity_api = (identity / "api.rs").read_text(encoding="utf-8")
+for public_type in ("IdentityService", "Identity"):
+    assert re.search(rf"^pub struct {public_type}\s*\{{", identity_api, re.M), f"{public_type} must be at the public boundary"
+for source in identity.rglob("*.rs"):
+    relative = source.relative_to(identity)
+    code = source.read_text(encoding="utf-8")
+    if relative.parts[0] != "backend":
+        assert not re.search(r"\b(?:rustls|rcgen|keyring|hkdf|chacha20poly1305|sha2|libc)::|(?:std|tokio)::fs", code), f"identity driver outside backend: {source}"
+    if "keyring::" in code:
+        assert relative.parts[:2] == ("backend", "credentials"), f"identity credentials outside storage adapter: {source}"
+    if relative.parts[0] == "backend":
+        assert "crate::runtime" not in code, f"identity backend imports scheduler: {source}"
+identity_deps = packages["nooboard-identity"]["dependencies"]
+assert all(dep["optional"] for dep in identity_deps if dep["name"] == "keyring"), "identity native credentials must be optional"
 # Terminal has its own facade and drivers; Core integration is a later migration.
 terminal = clipboard.parent.parent / "terminal" / "src"
 terminal_root = (terminal / "lib.rs").read_text(encoding="utf-8")

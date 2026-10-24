@@ -120,23 +120,20 @@ mod tests {
         runtime as configuration,
     };
     use crate::history::runtime as history;
-    use nooboard_network::{
-        IdentityOptions, NetworkService, Options, SendRequest, TransferStage, TrustedPeer,
-    };
+    use nooboard_network::{Options, SendRequest, TransferStage, TrustedPeer};
     use nooboard_storage::{BackendConfig, SqliteOptions, StorageService};
     use std::time::Duration;
 
     #[tokio::test]
     async fn failed_history_write_cannot_turn_a_successful_application_into_failure() {
         let options = || Options {
-            identity: IdentityOptions::Ephemeral,
             listen: "127.0.0.1:0".parse().unwrap(),
             pairing_listen: "127.0.0.1:0".parse().unwrap(),
             discovery: false,
             ..Default::default()
         };
-        let (owner_a, a, _a_events) = NetworkService::start(options()).await.unwrap();
-        let (owner_b, b, mut events) = NetworkService::start(options()).await.unwrap();
+        let (owner_a, a, _a_events) = crate::tests::start_network(options()).await;
+        let (owner_b, b, mut events) = crate::tests::start_network(options()).await;
         let trusted = |network: &Network| {
             let status = network.status();
             TrustedPeer {

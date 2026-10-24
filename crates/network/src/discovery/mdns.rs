@@ -143,7 +143,7 @@ impl Discovery {
                             info.get_property_val_str("name").unwrap_or_default(),
                             info.get_property_val_str("name2").unwrap_or_default()
                         );
-                        if !crate::identity::valid_device_name(&name) {
+                        if !crate::peers::valid_device_name(&name) {
                             continue;
                         }
                         if info.get_property_val_str("version") != Some("1") {

@@ -1,21 +1,19 @@
-use crate::{
-    error::{Failure, InternalResult as Result},
-    identity::material::Identity,
-};
+use crate::{Error as Failure, IdentityOptions, Result, backend::Material};
 #[cfg(feature = "native-credentials")]
 mod native;
 
-pub(super) fn load(profile: &str) -> Result<Identity> {
+pub(super) fn load(profile: &str, options: &IdentityOptions) -> Result<Material> {
     if profile.is_empty() || profile.len() > 256 || profile.chars().any(char::is_control) {
-        return Err(Failure::InvalidArgument("identity profile"));
+        return Err(Failure::InvalidInput);
     }
     #[cfg(feature = "native-credentials")]
     {
-        native::load(profile)
+        native::load(profile, options)
     }
     #[cfg(not(feature = "native-credentials"))]
     {
-        Err(Failure::Credentials)
+        let _ = options;
+        Err(Failure::UnsupportedStorage)
     }
 }
 
@@ -25,12 +23,12 @@ pub(super) fn load(profile: &str) -> Result<Identity> {
 fn load_or_create(
     read: impl FnOnce() -> Result<Option<zeroize::Zeroizing<Vec<u8>>>>,
     write: impl FnOnce(&[u8]) -> Result<()>,
-) -> Result<Identity> {
+) -> Result<Material> {
     if let Some(secret) = read()? {
-        return Identity::from_secret(&secret);
+        return Material::from_secret(&secret);
     }
-    let identity = Identity::generate()?;
-    let secret = zeroize::Zeroizing::new(identity.export_secret());
+    let identity = Material::generate()?;
+    let secret = identity.export_secret();
     write(&secret)?;
     Ok(identity)
 }
@@ -57,8 +55,11 @@ mod tests {
             |_| panic!("must not rewrite"),
         )
         .unwrap();
-        assert_eq!(first.noob_id().unwrap(), second.noob_id().unwrap());
-        assert_eq!(first.certificate(), second.certificate());
+        assert_eq!(first.public().unwrap().id, second.public().unwrap().id);
+        assert_eq!(
+            first.public().unwrap().certificate,
+            second.public().unwrap().certificate
+        );
     }
     #[test]
     fn denied_corrupt_or_unsaved_credentials_never_fall_back_to_a_new_identity() {

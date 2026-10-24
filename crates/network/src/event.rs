@@ -1,6 +1,6 @@
 use crate::{
-    identity::{PublicIdentity, TrustedPeer},
     pairing::PairingId,
+    peers::{PublicIdentity, TrustedPeer},
     transfer::{ContentKind, FileEntry, IncomingId, ReceivedContent, TransferId},
 };
 

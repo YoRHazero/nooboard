@@ -46,7 +46,7 @@ impl Endpoint {
                             continue;
                         }
                         recent.insert(address.ip(), Instant::now());
-                        let Ok(id) = crate::identity::material::new_session_id() else { continue; };
+                        let Ok(id) = crate::random::new_session_id() else { continue; };
                         let (handle, actions, cancelled) = control();
                         tasks.spawn(session::run(
                             session::Request { id, control: handle, actions, cancelled },

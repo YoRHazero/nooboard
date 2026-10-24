@@ -59,6 +59,7 @@ APPLE_SIGNING_IDENTITY=- npm run desktop:build -- --bundles app
 ```text
 apps/desktop        React 页面、桌面运行时、Tauri 宿主
 crates/core         用户配置、设备策略、同步与跨库流程
+crates/identity     APP 身份、签名与用途隔离的本地加解密
 crates/clipboard    原生剪贴板
 crates/network      nooboard 配对、发现与内容传输
 crates/storage      文字历史和文本配置
@@ -66,7 +67,7 @@ crates/terminal     独立终端、命令依赖、SSH 转发和 SFTP（尚未接
 scripts             架构检查、测试工具与发布工具
 ```
 
-桌面宿主只依赖 core；core 目前使用 clipboard、network、storage 的公开接口，terminal 仍处于独立开发阶段。底层库不直接互相依赖。独占服务所有者管理生命周期，可克隆句柄提交请求、读取或订阅状态。释放界面或句柄不等于停止服务。
+桌面宿主只依赖 core；core 目前使用 clipboard、network、storage、identity 的公开接口，terminal 仍处于独立开发阶段。Core 将 Identity 的签名能力适配注入 Network，底层库不直接互相依赖。独占服务所有者管理生命周期，可克隆句柄提交请求、读取或订阅状态。释放界面或句柄不等于停止服务。
 
 | 修改内容                     | 首先阅读                                                                       |
 | ---------------------------- | ------------------------------------------------------------------------------ |
@@ -74,6 +75,7 @@ scripts             架构检查、测试工具与发布工具
 | 系统剪贴板                   | [clipboard 接口与平台实现](../crates/clipboard/README.md)                      |
 | 配对、设备发现、普通文件传输 | [network 接口与协议](../crates/network/README.md)                              |
 | 数据库与迁移                 | [storage 接口](../crates/storage/README.md)                                    |
+| APP 身份、签名与秘密加密     | [identity 接口与迁移约定](../crates/identity/README.md)                       |
 | 终端、命令依赖、SSH 与 SFTP   | [terminal 接口与运行示例](../crates/terminal/README.md)                        |
 | 页面、IPC、宿主集成          | [桌面架构](../apps/desktop/ARCHITECTURE.md)                                    |
 | 品牌、图标和 3D 动画         | [资源维护文档](../apps/desktop/public/mascot/README.md)                        |

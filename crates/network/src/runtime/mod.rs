@@ -1,12 +1,13 @@
 //! Assemble feature runtimes and supervise their lifetime. No feature state machine lives here.
 mod model;
 use crate::{
-    connections, discovery,
+    NetworkDependencies, connections, discovery,
     error::{Failure, InternalResult as Result},
     event::NetworkEvent,
-    identity::{self, PublicIdentity},
     options::Options,
-    pairing, transfer,
+    pairing,
+    peers::PublicIdentity,
+    transfer,
 };
 pub use model::{NetworkStatus, ServiceState};
 use tokio::{
@@ -24,9 +25,9 @@ pub(crate) struct Started {
     pub stop: watch::Sender<bool>,
     pub task: JoinHandle<Result<()>>,
 }
-pub(crate) async fn start(options: Options) -> Result<Started> {
+pub(crate) async fn start(options: Options, dependencies: NetworkDependencies) -> Result<Started> {
     options.validate()?;
-    let identity = identity::load(options.identity.clone()).await?;
+    let identity = std::sync::Arc::new(dependencies.identity);
     let public = PublicIdentity::from_identity(&identity, options.device_name.clone())?;
     let (stop, stopped) = watch::channel(false);
     let (events, inbox) = mpsc::channel(options.event_capacity);

@@ -63,12 +63,14 @@ jobs:
         run: cargo test -p nooboard-storage --no-default-features --locked
       - name: Network facade and transport tests
         run: cargo test -p nooboard-network --all-features --locked
-      - name: Network without system credentials
-        run: cargo test -p nooboard-network --no-default-features --locked
+      - name: Identity lifecycle and legacy credential tests
+        run: cargo test -p nooboard-identity --all-targets --all-features --locked
+      - name: Identity without system credentials
+        run: cargo test -p nooboard-identity --all-targets --no-default-features --locked
       - name: Network clippy
         run: cargo clippy -p nooboard-network --all-targets --all-features --locked -- -D warnings
-      - name: Network clippy without system credentials
-        run: cargo clippy -p nooboard-network --all-targets --no-default-features --locked -- -D warnings
+      - name: Identity clippy without system credentials
+        run: cargo clippy -p nooboard-identity --all-targets --no-default-features --locked -- -D warnings
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Test

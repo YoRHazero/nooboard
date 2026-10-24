@@ -1,6 +1,6 @@
 use crate::{
+    LocalIdentity,
     error::{Failure as Error, InternalResult as Result},
-    identity::material::Identity,
     transfer::protocol::{self, Message, PROTOCOL_VERSION},
 };
 use rustls::{
@@ -30,18 +30,21 @@ pub struct TlsConfig {
 }
 impl TlsConfig {
     #[cfg(test)]
-    pub fn new(identity: &Identity, trusted_certificate: &[u8]) -> Result<Self> {
+    pub fn new(identity: &LocalIdentity, trusted_certificate: &[u8]) -> Result<Self> {
         Self::with_peers(identity, &[trusted_certificate.to_vec()])
     }
-    pub fn with_peers(identity: &Identity, certificates: &[Vec<u8>]) -> Result<Self> {
+    pub fn with_peers(identity: &LocalIdentity, certificates: &[Vec<u8>]) -> Result<Self> {
         let mut peers = BTreeMap::new();
         for certificate in certificates {
-            let id = crate::identity::material::noob_id(certificate)?;
+            let id = crate::peers::certificate::noob_id(certificate)?;
             if peers.insert(id, certificate.clone()).is_some() {
                 return Err(Error::Identity);
             }
         }
         let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let resolver = Arc::new(rustls::sign::SingleCertAndKey::from(
+            super::signing::certified(identity),
+        ));
         let mut roots = RootCertStore::empty();
         for certificate in certificates {
             roots.add(CertificateDer::from(certificate.clone()))?;
@@ -49,11 +52,11 @@ impl TlsConfig {
         let mut client = ClientConfig::builder_with_provider(provider.clone())
             .with_protocol_versions(&[&rustls::version::TLS13])?
             .with_root_certificates(roots.clone())
-            .with_client_auth_cert(vec![identity.cert.clone()], identity.key.clone_key())?;
+            .with_client_cert_resolver(resolver.clone());
         let mut server = ServerConfig::builder_with_provider(provider)
             .with_protocol_versions(&[&rustls::version::TLS13])?
             .with_client_cert_verifier(Arc::new(super::client_identity::ClientIdentity))
-            .with_single_cert(vec![identity.cert.clone()], identity.key.clone_key())?;
+            .with_cert_resolver(resolver);
         client.alpn_protocols = vec![b"nooboard/4".to_vec()];
         server.alpn_protocols = client.alpn_protocols.clone();
         // Sessions are always freshly authenticated; unpairing cannot leave resumed sessions.
@@ -114,7 +117,7 @@ impl TlsConfig {
             .peer_certificates()
             .and_then(|c| c.first())
             .ok_or(Error::Identity)?;
-        let peer_id = crate::identity::material::noob_id(certificate)?;
+        let peer_id = crate::peers::certificate::noob_id(certificate)?;
         if state.alpn_protocol() != Some(b"nooboard/4".as_slice()) {
             return Err(Error::Identity);
         }
@@ -123,7 +126,7 @@ impl TlsConfig {
         if expected.is_some_and(|id| id != peer_id || !trusted) {
             return Err(Error::Identity);
         }
-        let peer_fingerprint = crate::identity::material::fingerprint(certificate);
+        let peer_fingerprint = crate::peers::certificate::fingerprint(certificate);
         if !trusted {
             if protocol::read_handshake(&mut stream).await?
                 != (Message::Hello {

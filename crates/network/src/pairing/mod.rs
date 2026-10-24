@@ -20,13 +20,13 @@ pub struct Contact {
 }
 impl Contact {
     pub fn validate(&self) -> Result<String> {
-        if !crate::identity::valid_device_name(&self.device_name)
+        if !crate::peers::valid_device_name(&self.device_name)
             || self.certificate.len() > 8192
             || self.sync_port == 0
         {
             return Err(Error::Protocol);
         }
-        crate::identity::material::noob_id(&self.certificate).map_err(|_| Error::Protocol)
+        crate::peers::certificate::noob_id(&self.certificate).map_err(|_| Error::Protocol)
     }
 }
 #[derive(Clone)]
@@ -115,7 +115,7 @@ fn control() -> (Control, mpsc::Receiver<Action>, watch::Receiver<bool>) {
 fn random_code() -> Result<Zeroizing<String>> {
     // Rejection sampling avoids modulo bias; the code never appears on the wire.
     loop {
-        let nonce = crate::identity::material::new_session_id().map_err(|_| Error::Protocol)?;
+        let nonce = crate::random::new_session_id().map_err(|_| Error::Protocol)?;
         let value = u32::from_str_radix(&nonce[..8], 16).map_err(|_| Error::Protocol)?;
         if value < 4_200_000_000 {
             return Ok(Zeroizing::new(format!("{:08}", value % 100_000_000)));

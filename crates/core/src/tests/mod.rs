@@ -104,7 +104,7 @@ async fn start_with(
             default_receive_directory: None,
         },
         defaults,
-        identity: nooboard_network::IdentityOptions::Ephemeral,
+        identity: nooboard_identity::IdentityConfig::Ephemeral,
         clipboard_options: Default::default(),
         clipboard: Some(Arc::new(clipboard.clone())),
         clipboard_service: None,
@@ -180,4 +180,35 @@ pub(crate) async fn wait_for(mut condition: impl FnMut() -> bool) {
         }
     })
     .await;
+}
+
+pub(crate) struct TestNetworkService {
+    network: nooboard_network::NetworkService,
+    identity: nooboard_identity::IdentityService,
+}
+impl TestNetworkService {
+    pub async fn shutdown(mut self) -> Result<()> {
+        self.network.shutdown().await?;
+        self.identity.shutdown().await?;
+        Ok(())
+    }
+}
+pub(crate) async fn start_network(
+    options: nooboard_network::Options,
+) -> (
+    TestNetworkService,
+    nooboard_network::Network,
+    nooboard_network::NetworkEvents,
+) {
+    let (identity, handle) = nooboard_identity::IdentityService::start(
+        nooboard_identity::IdentityConfig::Ephemeral,
+        Default::default(),
+    )
+    .await
+    .unwrap();
+    let dependencies = crate::identity::network_dependencies(handle).unwrap();
+    let (network, handle, events) = nooboard_network::NetworkService::start(options, dependencies)
+        .await
+        .unwrap();
+    (TestNetworkService { network, identity }, handle, events)
 }

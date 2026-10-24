@@ -1,17 +1,14 @@
 use crate::{
     connections::transport::tls_tcp::TlsConfig,
     error::Failure,
-    identity::material::Identity,
     transfer::protocol::{Message, MessageId},
 };
 use tokio::net::TcpListener;
 
 #[tokio::test]
 async fn mutual_authentication_and_text_delivery() {
-    let a = Identity::generate().unwrap();
-    let b = Identity::generate().unwrap();
-    let restored = Identity::from_secret(&a.export_secret()).unwrap();
-    assert_eq!(restored.fingerprint(), a.fingerprint());
+    let a = crate::test_identity::generate();
+    let b = crate::test_identity::generate();
     let ac = TlsConfig::new(&a, b.certificate()).unwrap();
     let bc = TlsConfig::new(&b, a.certificate()).unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -39,9 +36,9 @@ async fn mutual_authentication_and_text_delivery() {
 }
 #[tokio::test]
 async fn untrusted_identity_cannot_establish_a_business_connection() {
-    let a = Identity::generate().unwrap();
-    let b = Identity::generate().unwrap();
-    let stranger = Identity::generate().unwrap();
+    let a = crate::test_identity::generate();
+    let b = crate::test_identity::generate();
+    let stranger = crate::test_identity::generate();
     let ac = TlsConfig::new(&a, b.certificate()).unwrap();
     let bc = TlsConfig::new(&b, stranger.certificate()).unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -53,9 +50,9 @@ async fn untrusted_identity_cannot_establish_a_business_connection() {
 
 #[tokio::test]
 async fn client_rejects_an_unconfirmed_server_certificate() {
-    let a = Identity::generate().unwrap();
-    let b = Identity::generate().unwrap();
-    let expected = Identity::generate().unwrap();
+    let a = crate::test_identity::generate();
+    let b = crate::test_identity::generate();
+    let expected = crate::test_identity::generate();
     let ac = TlsConfig::new(&a, expected.certificate()).unwrap();
     let bc = TlsConfig::new(&b, a.certificate()).unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -66,7 +63,7 @@ async fn client_rejects_an_unconfirmed_server_certificate() {
 }
 
 #[test]
-fn noob_id_survives_certificate_reissue_and_secret_restore() {
+fn noob_id_survives_certificate_reissue() {
     let key = rcgen::KeyPair::generate().unwrap();
     let first = rcgen::CertificateParams::new(vec!["nooboard.local".into()])
         .unwrap()
@@ -77,37 +74,30 @@ fn noob_id_survives_certificate_reissue_and_secret_restore() {
         .self_signed(&key)
         .unwrap();
     assert_ne!(
-        crate::identity::material::fingerprint(first.der()),
-        crate::identity::material::fingerprint(second.der())
+        crate::peers::certificate::fingerprint(first.der()),
+        crate::peers::certificate::fingerprint(second.der())
     );
     assert_eq!(
-        crate::identity::material::noob_id(first.der()).unwrap(),
-        crate::identity::material::noob_id(second.der()).unwrap()
+        crate::peers::certificate::noob_id(first.der()).unwrap(),
+        crate::peers::certificate::noob_id(second.der()).unwrap()
     );
-    let identity = Identity::generate().unwrap();
+    let identity = crate::test_identity::generate();
     assert_eq!(identity.noob_id().unwrap().len(), 64);
-    assert_eq!(
-        identity.noob_id().unwrap(),
-        Identity::from_secret(&identity.export_secret())
-            .unwrap()
-            .noob_id()
-            .unwrap()
-    );
     assert_ne!(
         identity.noob_id().unwrap(),
-        Identity::generate().unwrap().noob_id().unwrap()
+        crate::test_identity::generate().noob_id().unwrap()
     );
     assert_ne!(
-        crate::identity::material::new_session_id().unwrap(),
-        crate::identity::material::new_session_id().unwrap()
+        crate::random::new_session_id().unwrap(),
+        crate::random::new_session_id().unwrap()
     );
-    assert!(crate::identity::material::noob_id(b"not a certificate").is_err());
+    assert!(crate::peers::certificate::noob_id(b"not a certificate").is_err());
 }
 #[tokio::test]
 async fn one_listener_authenticates_two_different_peers_concurrently() {
-    let server = Identity::generate().unwrap();
-    let a = Identity::generate().unwrap();
-    let b = Identity::generate().unwrap();
+    let server = crate::test_identity::generate();
+    let a = crate::test_identity::generate();
+    let b = crate::test_identity::generate();
     let trust = TlsConfig::with_peers(
         &server,
         &[a.certificate().to_vec(), b.certificate().to_vec()],
@@ -141,8 +131,8 @@ async fn one_listener_authenticates_two_different_peers_concurrently() {
 
 #[tokio::test]
 async fn removing_the_last_peer_still_returns_an_authenticated_unpaired_receipt() {
-    let a = Identity::generate().unwrap();
-    let b = Identity::generate().unwrap();
+    let a = crate::test_identity::generate();
+    let b = crate::test_identity::generate();
     let ac = TlsConfig::new(&a, b.certificate()).unwrap();
     let bc = TlsConfig::with_peers(&b, &[]).unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -154,9 +144,9 @@ async fn removing_the_last_peer_still_returns_an_authenticated_unpaired_receipt(
 
 #[tokio::test]
 async fn another_trusted_server_cannot_revoke_the_expected_peer() {
-    let client = Identity::generate().unwrap();
-    let expected = Identity::generate().unwrap();
-    let other = Identity::generate().unwrap();
+    let client = crate::test_identity::generate();
+    let expected = crate::test_identity::generate();
+    let other = crate::test_identity::generate();
     let cc = TlsConfig::with_peers(
         &client,
         &[

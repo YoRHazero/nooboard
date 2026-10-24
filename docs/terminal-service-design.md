@@ -1,6 +1,6 @@
 # Terminal Service 重构设计
 
-本设计定义新的 Terminal Service 的行为、数据结构和服务接口，作为 SSH 模块重构的依据。terminal 分支已先移除旧 SSH 实现与 Core/桌面调用，再实现独立的新 crate；Core、Identity 和界面集成留待后续。
+本设计定义新的 Terminal Service 的行为、数据结构和服务接口，作为 SSH 模块重构的依据。terminal 分支已先移除旧 SSH 实现与 Core/桌面调用，再实现独立的新 crate。随后已完成 [Identity Service 拆分迁移](../crates/identity/README.md)，并由 Core 向 Network 注入签名能力；Terminal 的 Core 与界面集成仍待后续。
 
 Terminal 管理三类运行资源：交互终端 `TerminalRun`、可独立存在或作为前置依赖的固定命令 `CommandRun`、SSH 转发 `TunnelRun`。SSH 终端附带文件浏览和文件操作能力。本地命令、SSH 连接与转发通过统一的依赖调度协作，但保留各自的资源类型和生命周期。
 
@@ -19,7 +19,7 @@ Terminal 管理三类运行资源：交互终端 `TerminalRun`、可独立存在
 | TerminalService、Terminal 句柄、启动请求与运行模型 | Core 的配置 CRUD、配置快照生成与引用占用协调 |
 | 地址准备、认证材料、认证成功回报、主机信任验证的能力接口 | Core 对这些接口的正式适配、设备发现查询、密码和信任 UI |
 | 接收调用方注入的服务参数，并提供默认配置示例 | Core 与 Storage 持久化配置、密文和主机信任记录 |
-| 使用测试或示例 provider 验证连接与交互协议 | Identity 拆分、身份数据迁移、加解密装配 |
+| 使用测试或示例 provider 验证连接与交互协议 | Core 使用已独立的 Identity Service 完成 SSH 配置加解密装配 |
 | 终端与文件操作的实际后端、状态与生命周期测试 | 桌面 IPC 与新终端页面接入 |
 
 下文保留 Core、Identity 与前端的最终职责，以说明接口为什么这样设计；这些职责不因此进入本轮实现。新 crate 不引入对 Core、Network、Identity 或 Storage Service 的依赖。配置与凭据持久化不会为独立运行而临时搬进 Terminal。
@@ -1247,7 +1247,7 @@ OpenSSH 的 `-L`、`-R`、`-D` 提供现成转发功能。`ExitOnForwardFailure`
 
 - Core 的配置引用占用与 Terminal 生命周期如何在内部衔接。需要保证启动登记、Shared 等待、复用和结束均能准确释放占用，不能依赖可落后的 UI 事件流；具体可以使用运行期占用对象或可靠的内部生命周期协议。
 - Core 实现地址解析、认证输入、主机信任和认证成功后的密码加密保存适配，以及相应的界面反馈。
-- Identity 的独立 crate 公共接口与旧身份数据迁移。本稿确定服务归属和窄能力边界，不在 Terminal 设计中假定现有身份已经完成拆分。
+- Identity Service 已独立并兼容原系统凭据。后续由 Core 定义 SSH 配置中的 EncryptedSecret，使用 Identity 的 seal/open 和用途绑定；Terminal 只接收本次认证材料。
 - 桌面宿主与新的终端页面接入；旧 SSH 功能及其调用已在 terminal 分支第一个提交中移除。
 
 后续迁移不能改变已经确认的运行行为或自动删除现有配置与身份材料。本轮独立 crate 的验收不以完成这些迁移为条件。

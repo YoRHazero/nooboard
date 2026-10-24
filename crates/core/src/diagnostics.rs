@@ -55,7 +55,7 @@ impl Session {
                 default_receive_directory: None,
             },
             defaults: settings,
-            identity: nooboard_network::IdentityOptions::Ephemeral,
+            identity: nooboard_identity::IdentityConfig::Ephemeral,
             clipboard_options: options,
             clipboard: Some(Arc::new(clipboard)),
             clipboard_service: Some(clipboard_service),

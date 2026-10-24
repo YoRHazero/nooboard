@@ -8,6 +8,7 @@ mod devices;
 mod diagnostic_support;
 mod error;
 mod history;
+mod identity;
 mod options;
 mod ports;
 mod runtime;

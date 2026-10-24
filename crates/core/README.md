@@ -2,7 +2,7 @@
 
 库接口参考，面向调用者与维护者。[应用使用](../../README.md) · [开发指南](../../docs/development.md) · [测试与实机验收](../../docs/testing.md)
 
-core 负责用户设置、设备使用策略、同步规则和跨库工作流程。它只使用 clipboard、storage、network 的公开句柄，不持有数据库连接、TLS 会话、文件传输 worker 或私钥。desktop 只依赖 core。
+core 负责用户设置、设备使用策略、同步规则和跨库工作流程。它只使用 clipboard、storage、network、identity 的公开句柄，不持有数据库连接、TLS 会话、文件传输 worker 或 APP 身份私钥。desktop 只依赖 core。
 
 ## 公开入口与生命周期
 
@@ -41,6 +41,7 @@ src/
 ├── options.rs              启动配置，数据库选择只在此边界出现
 ├── error.rs                业务错误
 ├── ports.rs                原生剪贴板的窄测试替身边界
+├── identity.rs             将 Identity 签名能力适配为 Network 定义的端口
 ├── runtime/
 │   ├── startup.rs          启动与失败清理
 │   ├── mod.rs              监督任务、聚合快照
@@ -78,6 +79,8 @@ src/
 配置变更通过具体命令合并到最新文档；设备注册、手动目标和应用设置不会互相覆盖。`set_settings` 明确替换整份用户设置，调用者并发编辑该设置对象时应合并补丁；桌面入口对此串行处理。业务模块读取已提交的配置快照。
 
 设备和同步分别维护自己的流程状态，history 管理历史工作与保留策略。snapshot 只做投影。配对密码学、连接重试、消息去重、传输阶段、文件校验与落盘全部由 network 管理，core 不保留第二套状态机。
+
+Core 用原 profile 启动独立 Identity Service，再把公开证书与签名适配器注入 Network。Identity 继续读取原 `nooboard.identity.v1` 系统条目，不重建证书或身份。关闭时先等待 Network 和业务工作完成，最后释放 Identity；启动失败也清理已创建的服务。Terminal 尚未接入 Core，其 SSH 配置密文管理将在后续使用 Identity 的 `seal/open` 能力。
 
 ## 业务流程
 

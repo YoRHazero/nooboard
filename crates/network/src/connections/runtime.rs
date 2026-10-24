@@ -6,11 +6,12 @@ use super::{
     transport::tls_tcp::{Connection, TlsConfig},
 };
 use crate::{
+    LocalIdentity,
     discovery::NearbyDevice,
     error::{Failure, InternalResult as Result},
-    identity::{TrustedPeer, material::Identity},
     options::Options,
     pairing::PairingId,
+    peers::TrustedPeer,
     transfer::protocol::{Message, MessageId},
 };
 use std::{
@@ -120,7 +121,7 @@ enum Completion {
     },
 }
 pub(crate) struct Runtime {
-    identity: Arc<Identity>,
+    identity: Arc<LocalIdentity>,
     own_id: String,
     name: String,
     listener: TcpListener,
@@ -145,7 +146,7 @@ pub(crate) struct Runtime {
 impl Runtime {
     pub async fn bind(
         options: &Options,
-        identity: Arc<Identity>,
+        identity: Arc<LocalIdentity>,
         stop: watch::Receiver<bool>,
     ) -> Result<(Self, Handle, mpsc::Receiver<Event>)> {
         let own_id = identity.noob_id()?;
@@ -590,7 +591,7 @@ impl Runtime {
         result
     }
 }
-fn make_tls(identity: &Identity, peers: &BTreeMap<String, TrustedPeer>) -> Result<TlsConfig> {
+fn make_tls(identity: &LocalIdentity, peers: &BTreeMap<String, TrustedPeer>) -> Result<TlsConfig> {
     TlsConfig::with_peers(
         identity,
         &peers
