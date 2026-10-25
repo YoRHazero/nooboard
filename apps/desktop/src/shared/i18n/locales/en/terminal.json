@@ -138,5 +138,14 @@
   "notDetected": "Not detected",
   "noDevices": "No devices found. Refresh to search again.",
   "expandConfigurations": "Expand configurations",
-  "collapseConfigurations": "Collapse configurations"
+  "collapseConfigurations": "Collapse configurations",
+  "backgroundRuns": "Background runs",
+  "collapsePanel": "Hide panel and keep running",
+  "reopenPanel": "Open panel",
+  "stopNamed": "Stop {{name}}",
+  "backgroundOnly": "Running in the background",
+  "backgroundHint": "Your commands and tunnels are still running. Open a panel from Background runs above.",
+  "successfulExit": "Exited successfully",
+  "readyMarker": "Readiness marker received",
+  "manualContinue": "Manually released"
 }

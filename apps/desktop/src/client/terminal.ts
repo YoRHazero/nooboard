@@ -8,6 +8,7 @@ import type {
   TerminalReuse,
   TerminalRunView,
   TerminalTarget,
+  TerminalWorkspaceView,
 } from './bridge/generated';
 type OpenRequest =
   | { type: 'start'; target: TerminalTarget; reuse: TerminalReuse }
@@ -74,7 +75,7 @@ export class TerminalBuffer {
       }
     }
     if (frame.type === 'closed') this.closed = true;
-    // Native delivery waits for this callback: a mounted xterm renderer resolves
+    // Native delivery waits for this callback: a mounted terminal renderer resolves
     // after parsing the bytes; inactive views retain only the bounded replay window.
     await Promise.all(
       [...this.listeners].map((listener) => Promise.resolve(listener(frame)).catch(() => {})),
@@ -90,16 +91,20 @@ export class TerminalBuffer {
 }
 export interface TerminalClientState {
   selected: TerminalTarget | null;
+  collapsed: readonly string[];
   pending: readonly { subscription: string; target: TerminalTarget | null; name?: string }[];
   notice: TerminalEnded | 'lagged' | null;
 }
 export class TerminalClient {
-  private state: TerminalClientState = { selected: null, pending: [], notice: null };
+  private state: TerminalClientState = { selected: null, collapsed: [], pending: [], notice: null };
   private listeners = new Set<() => void>();
   private buffers = new Map<string, TerminalBuffer>();
   private pending = new Map<string, TerminalBuffer>();
   private endedWhileOpening = new Set<string>();
-  private knownRuns = new Set<string>();
+  private knownRuns = new Map<string, TerminalRunView>();
+  private dependencies: TerminalWorkspaceView['dependencies'] = [];
+  private autoCollapsed = new Set<string>();
+  private panelIntent = 0;
   private generation = 0;
   private attaching = new Map<string, Promise<TerminalTarget | null>>();
   constructor(
@@ -134,7 +139,49 @@ export class TerminalClient {
     return this.buffers.get(terminalKey(target));
   }
   select(target: TerminalTarget | null) {
-    this.publish({ selected: target });
+    this.panelIntent++;
+    this.show(target);
+  }
+  private show(target: TerminalTarget | null) {
+    this.publish({
+      selected: target,
+      collapsed: target
+        ? this.state.collapsed.filter((key) => key !== terminalKey(target))
+        : this.state.collapsed,
+    });
+  }
+  collapse(target: TerminalTarget) {
+    if (target.kind !== 'command' && target.kind !== 'tunnel') return;
+    const key = terminalKey(target);
+    if (!this.knownRuns.has(key)) return;
+    this.panelIntent++;
+    this.updatePanels(new Set([...this.state.collapsed, key]));
+  }
+  private updatePanels(collapsed: Set<string>, selected = this.state.selected) {
+    for (const key of collapsed) {
+      // Closing an output subscription never stops its command or tunnel.
+      this.buffers.get(key)?.dispose();
+      this.buffers.delete(key);
+    }
+    if (selected && collapsed.has(terminalKey(selected))) {
+      const selectedId = selected.id;
+      const owner = this.dependencies.find((d) => d.runId === selectedId)?.owner;
+      selected =
+        owner && this.knownRuns.has(terminalKey(owner)) && !collapsed.has(terminalKey(owner))
+          ? owner
+          : null;
+    }
+    if (!selected)
+      selected =
+        [...this.knownRuns.values()].reverse().find((r) => !collapsed.has(terminalKey(r.target)))
+          ?.target ?? null;
+    if (
+      (selected ? terminalKey(selected) : null) !==
+        (this.state.selected ? terminalKey(this.state.selected) : null) ||
+      collapsed.size !== this.state.collapsed.length ||
+      this.state.collapsed.some((key) => !collapsed.has(key))
+    )
+      this.publish({ selected, collapsed: [...collapsed] });
   }
   clearNotice() {
     this.publish({ notice: null });
@@ -150,7 +197,6 @@ export class TerminalClient {
   }
   async attach(target: TerminalTarget) {
     if (target.kind === 'tunnel' || this.buffer(target)) {
-      this.select(target);
       return target;
     }
     const key = terminalKey(target);
@@ -166,6 +212,8 @@ export class TerminalClient {
     if (!this.online()) throw fail('backendNotConnected');
     if (!this.transport) throw fail('terminalUnavailable');
     const generation = this.generation;
+    const existingRuns = new Set(this.knownRuns.keys());
+    const panelIntent = request.type === 'attach' ? this.panelIntent : ++this.panelIntent;
     const subscription = crypto.randomUUID();
     const buffer = new TerminalBuffer(subscription, new AbortController(), this.limit);
     this.pending.set(subscription, buffer);
@@ -196,12 +244,21 @@ export class TerminalClient {
         buffer.dispose();
         return run;
       }
-      if (run.kind === 'tunnel') buffer.dispose();
-      else {
-        this.buffers.get(key)?.dispose();
-        this.buffers.set(key, buffer);
-      }
-      this.publish({ selected: run });
+      // A new command may become ready before its start reply arrives. Do not
+      // reopen it in that case. Explicitly starting an existing Shared run does
+      // reveal it, just like selecting it in the background list.
+      const revealExisting =
+        request.type === 'start' && existingRuns.has(key) && panelIntent === this.panelIntent;
+      const collapsed = this.state.collapsed.includes(key) && !revealExisting;
+      // A snapshot may mount a view before the atomic start subscription returns.
+      // Keep whichever live buffer the view already uses; replacing it would
+      // strand its output listener, including when reusing a Shared command.
+      if (run.kind === 'tunnel' || collapsed || this.buffers.has(key)) buffer.dispose();
+      else this.buffers.set(key, buffer);
+      // Attaching is an I/O operation, not a request to reveal a panel. A late
+      // attachment must not undo a user collapse or steal another tab's focus.
+      if (request.type !== 'attach' && !collapsed && panelIntent === this.panelIntent)
+        this.show(run);
       return run;
     } catch (error) {
       const cancelled = buffer.abort.signal.aborted;
@@ -221,26 +278,44 @@ export class TerminalClient {
     if (this.pending.size) this.endedWhileOpening.add(key);
     this.buffers.get(key)?.dispose();
     this.buffers.delete(key);
-    this.publish({
-      selected:
-        this.state.selected && terminalKey(this.state.selected) === key
-          ? null
-          : this.state.selected,
-      notice: event,
-    });
+    this.knownRuns.delete(key);
+    this.autoCollapsed.delete(key);
+    this.updatePanels(
+      new Set(this.state.collapsed.filter((item) => item !== key)),
+      this.state.selected && terminalKey(this.state.selected) === key ? null : this.state.selected,
+    );
+    this.publish({ notice: event });
   }
-  reconcile(runs: readonly TerminalRunView[]) {
+  reconcile({ runs, dependencies }: Pick<TerminalWorkspaceView, 'runs' | 'dependencies'>) {
     const current = new Set(runs.map((run) => terminalKey(run.target)));
     let removedSelected = false;
-    for (const key of this.knownRuns)
+    for (const key of this.knownRuns.keys())
       if (!current.has(key)) {
         this.buffers.get(key)?.dispose();
         this.buffers.delete(key);
         if (this.pending.size) this.endedWhileOpening.add(key);
         if (this.state.selected && terminalKey(this.state.selected) === key) removedSelected = true;
       }
-    this.knownRuns = current;
-    if (removedSelected) this.publish({ selected: null });
+    this.knownRuns = new Map(runs.map((run) => [terminalKey(run.target), run]));
+    this.dependencies = dependencies;
+    for (const key of this.autoCollapsed) if (!current.has(key)) this.autoCollapsed.delete(key);
+    const collapsed = new Set(this.state.collapsed.filter((key) => current.has(key)));
+    const released = new Set(
+      dependencies.filter((d) => d.gate === 'released' && d.runId).map((d) => d.runId),
+    );
+    for (const run of runs) {
+      const key = terminalKey(run.target);
+      if (
+        run.target.kind === 'command' &&
+        run.phase === 'running' &&
+        (run.readyMarkerReceived || released.has(run.target.id)) &&
+        !this.autoCollapsed.has(key)
+      ) {
+        this.autoCollapsed.add(key);
+        collapsed.add(key);
+      }
+    }
+    this.updatePanels(collapsed, removedSelected ? null : this.state.selected);
   }
   lagged() {
     this.publish({ notice: 'lagged' });
@@ -249,12 +324,14 @@ export class TerminalClient {
     this.generation++;
     this.attaching.clear();
     this.knownRuns.clear();
+    this.dependencies = [];
+    this.autoCollapsed.clear();
     this.buffers.forEach((buffer) => buffer.dispose());
     this.buffers.clear();
     this.pending.forEach((buffer) => buffer.dispose());
     this.pending.clear();
     this.endedWhileOpening.clear();
-    this.publish({ selected: null, pending: [], notice: null });
+    this.publish({ selected: null, collapsed: [], pending: [], notice: null });
   }
   dispose() {
     this.reset();

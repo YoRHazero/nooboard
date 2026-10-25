@@ -143,6 +143,7 @@ export class PreviewTerminal implements TerminalTransport {
           configId: null,
           name: action.data.name,
           phase: 'running',
+          readyMarkerReceived: false,
         });
         this.changed();
         return { type: 'terminalOpened', data: { target } };
@@ -164,6 +165,7 @@ export class PreviewTerminal implements TerminalTransport {
           sshTarget: config.data.sshTarget,
           command: config.kind === 'command' ? config.data.command : null,
           lifetime: config.kind === 'command' ? 'independent' : null,
+          readyMarkerReceived: false,
           forward: config.kind === 'tunnel' ? config.data.forward : null,
         });
         if ('dependencies' in config.data)

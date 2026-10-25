@@ -157,8 +157,10 @@
   position: absolute;
   inset: 12px 6px 8px 14px;
 }
-.terminal-output .xterm {
+.terminal-emulator {
   height: 100%;
+  overflow: hidden;
+  outline: none;
 }
 .terminal-output-loading {
   position: absolute;

@@ -1,11 +1,12 @@
 import { Select, SelectItem } from '../../shared/ui/Select';
 import { useState, useSyncExternalStore } from 'react';
-import { Cable, FolderOpen, Plus, Square, TerminalSquare, X } from 'lucide-react';
+import { Cable, FolderOpen, Layers, Minus, Plus, Square, TerminalSquare, X } from 'lucide-react';
 import { terminalKey } from '../../client/api';
 import { useCommand, useDesktop, useSnapshot } from '../../client/react';
 import { useI18n } from '../../shared/i18n/react';
 import { Button, IconButton } from '../../shared/ui/controls';
 import { ConfigurationPanel } from './ConfigurationPanel';
+import { BackgroundRuns } from './BackgroundRuns';
 import { TerminalView } from './TerminalView';
 import { RemoteFiles } from './RemoteFiles';
 import { HostKeyChange } from './HostKeyChange';
@@ -19,13 +20,22 @@ export function TerminalPage() {
   const { execute } = useCommand();
   const [hostChange, setHostChange] = useState(false);
   const [files, setFiles] = useState(false);
-  const run = workspace.runs.find(
+  const releaseReasons: Record<string, string> = {
+    SuccessfulExit: t('terminal:successfulExit'),
+    ReadyMarker: t('terminal:readyMarker'),
+    ManualContinue: t('terminal:manualContinue'),
+  };
+  const collapsed = new Set(state.collapsed);
+  const panels = workspace.runs.filter((r) => !collapsed.has(terminalKey(r.target)));
+  const background = workspace.runs.filter((r) => collapsed.has(terminalKey(r.target)));
+  const run = panels.find(
     (r) => state.selected && terminalKey(r.target) === terminalKey(state.selected),
   );
   const local = () => execute(() => terminal.startLocal(t('terminal:localShell')));
   return (
     <div className="terminal-page">
       <ConfigurationPanel />
+      <BackgroundRuns runs={background} />
       {state.notice && (
         <div className="terminal-notice" role="status">
           <span>
@@ -77,7 +87,7 @@ export function TerminalPage() {
       >
         <section className="terminal-stage" aria-label={t('terminal:active')}>
           <div className="terminal-tabs" role="tablist" aria-label={t('terminal:active')}>
-            {workspace.runs.map((item) => (
+            {panels.map((item) => (
               <div
                 className={`terminal-tab ${run?.target.id === item.target.id ? 'is-selected' : ''}`}
                 key={terminalKey(item.target)}
@@ -94,14 +104,18 @@ export function TerminalPage() {
                   label={
                     item.target.kind === 'terminal'
                       ? t('terminal:closeSession')
-                      : t('terminal:stop')
+                      : t('terminal:collapsePanel')
                   }
-                  disabled={item.phase === 'stopping'}
+                  disabled={item.target.kind === 'terminal' && item.phase === 'stopping'}
                   onClick={() =>
-                    execute(() => terminal.request({ type: 'stop', data: { target: item.target } }))
+                    item.target.kind === 'terminal'
+                      ? execute(() =>
+                          terminal.request({ type: 'stop', data: { target: item.target } }),
+                        )
+                      : terminal.collapse(item.target)
                   }
                 >
-                  {item.target.kind === 'terminal' ? <X size={13} /> : <Square size={11} />}
+                  {item.target.kind === 'terminal' ? <X size={13} /> : <Minus size={14} />}
                 </IconButton>
               </div>
             ))}
@@ -118,25 +132,38 @@ export function TerminalPage() {
                 </span>
                 <div>
                   {run.target.kind === 'command' && (
-                    <Select
-                      aria-label={t('terminal:lifetime')}
-                      value={run.lifetime ?? 'independent'}
-                      disabled={run.phase === 'stopping'}
-                      onValueChange={(e) =>
-                        execute(() =>
-                          terminal.request({
-                            type: 'lifetime',
-                            data: {
-                              id: run.target.id,
-                              policy: e as 'independent' | 'dependent',
-                            },
-                          }),
-                        )
-                      }
-                    >
-                      <SelectItem value="independent">{t('terminal:independent')}</SelectItem>
-                      <SelectItem value="dependent">{t('terminal:dependent')}</SelectItem>
-                    </Select>
+                    <>
+                      <Select
+                        aria-label={t('terminal:lifetime')}
+                        value={run.lifetime ?? 'independent'}
+                        disabled={run.phase === 'stopping'}
+                        onValueChange={(e) =>
+                          execute(() =>
+                            terminal.request({
+                              type: 'lifetime',
+                              data: {
+                                id: run.target.id,
+                                policy: e as 'independent' | 'dependent',
+                              },
+                            }),
+                          )
+                        }
+                      >
+                        <SelectItem value="independent">{t('terminal:independent')}</SelectItem>
+                        <SelectItem value="dependent">{t('terminal:dependent')}</SelectItem>
+                      </Select>
+                      <IconButton
+                        label={t('terminal:stopNamed', { name: run.name })}
+                        disabled={run.phase === 'stopping'}
+                        onClick={() =>
+                          execute(() =>
+                            terminal.request({ type: 'stop', data: { target: run.target } }),
+                          )
+                        }
+                      >
+                        <Square size={12} />
+                      </IconButton>
+                    </>
                   )}
                   {run.target.kind === 'terminal' && run.sshTarget && (
                     <IconButton
@@ -155,7 +182,7 @@ export function TerminalPage() {
                     <span>
                       {workspace.configs.find((c) => c.id === dep.commandId)?.data.name} ·{' '}
                       {t(`terminal:${dep.gate}`)}
-                      {dep.reason && ` · ${dep.reason}`}
+                      {dep.reason && ` · ${releaseReasons[dep.reason] ?? dep.reason}`}
                     </span>
                     <div>
                       {dep.runId && (
@@ -212,9 +239,13 @@ export function TerminalPage() {
             </>
           ) : (
             <div className="terminal-empty">
-              <TerminalSquare size={38} strokeWidth={1.2} />
-              <h2>{t('terminal:noRuns')}</h2>
-              <p>{t('terminal:emptyHint')}</p>
+              {background.length ? (
+                <Layers size={38} strokeWidth={1.2} />
+              ) : (
+                <TerminalSquare size={38} strokeWidth={1.2} />
+              )}
+              <h2>{t(background.length ? 'terminal:backgroundOnly' : 'terminal:noRuns')}</h2>
+              <p>{t(background.length ? 'terminal:backgroundHint' : 'terminal:emptyHint')}</p>
               <Button variant="primary" onClick={local}>
                 <Plus size={15} />
                 {t('terminal:newLocal')}

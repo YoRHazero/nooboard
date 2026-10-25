@@ -14,7 +14,7 @@ cargo run -p nooboard-terminal --example command -- 'echo hello'
 
 示例将一个完整字符串作为本地命令运行，读取输出和结束结果，最后显式关闭 Service。Ctrl+C 也进入关闭流程。可通过 `NOOBOARD_TERMINAL_OPTIONS` 环境变量传入 JSON 配置文件路径；默认配置位于 [config/defaults.json](config/defaults.json)。示例不连接 SSH，也不启动 VPN。
 
-本地固定命令使用 Unix `/bin/sh -c` 或 Windows `cmd.exe /C`；普通本地终端使用平台默认交互 shell。命令应是调用方明确授权执行的内容。终端输入可通过 `write_input` 写入；`resize` 是运行期 I/O 操作，不是持久化配置字段。
+本地固定命令使用 Unix `/bin/sh -l -c` 或 Windows `cmd.exe /C`；普通本地终端使用平台默认交互 shell。Unix 固定命令先由登录 shell 读取 `/etc/profile` 和 `~/.profile`，再执行完整命令字符串，使图形界面启动的应用也能使用登录配置中的 PATH 和导出变量。固定命令仍使用 POSIX shell 语法，不直接读取交互 shell 专属的 `~/.zshrc` 或 `~/.bashrc`。登录初始化与命令共用同一个受管理的 PTY 会话，输出和停止沿用同一生命周期。命令应是调用方明确授权执行的内容。终端输入可通过 `write_input` 写入；`resize` 是运行期 I/O 操作，不是持久化配置字段。
 
 ## 公共接口
 

@@ -7,6 +7,9 @@ use std::{
 };
 use tokio::task::JoinSet;
 
+#[cfg(all(test, unix))]
+mod tests;
+
 struct Prepared {
     scope: ProcessScope,
     child: Box<dyn portable_pty::Child + Send + Sync>,
@@ -14,15 +17,15 @@ struct Prepared {
     reader: Box<dyn Read + Send>,
     writer: Box<dyn Write + Send>,
 }
-fn prepare(command: Option<String>, size: Option<TerminalSize>) -> Result<Prepared> {
-    let pair = portable_pty::native_pty_system()
-        .openpty(size.map(pty_size).unwrap_or_default())
-        .map_err(driver_error)?;
+fn command_builder(command: Option<String>) -> CommandBuilder {
     let mut builder = CommandBuilder::new_default_prog();
     if let Some(command) = command {
         #[cfg(unix)]
         {
             builder = CommandBuilder::new("/bin/sh");
+            // Finder-launched apps have a minimal PATH. Load the POSIX login
+            // environment inside the same managed PTY before running the command.
+            builder.arg("-l");
             builder.arg("-c");
             builder.arg(command);
         }
@@ -36,6 +39,14 @@ fn prepare(command: Option<String>, size: Option<TerminalSize>) -> Result<Prepar
         }
     }
     builder.env("TERM", "xterm-256color");
+    builder
+}
+
+fn prepare(command: Option<String>, size: Option<TerminalSize>) -> Result<Prepared> {
+    let pair = portable_pty::native_pty_system()
+        .openpty(size.map(pty_size).unwrap_or_default())
+        .map_err(driver_error)?;
+    let builder = command_builder(command);
     // Acquire all PTY handles before spawning, so allocation errors cannot orphan a child.
     let reader = pair.master.try_clone_reader().map_err(driver_error)?;
     let writer = pair.master.take_writer().map_err(driver_error)?;

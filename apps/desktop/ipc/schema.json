@@ -3641,6 +3641,7 @@
       "required": [
         "name",
         "phase",
+        "readyMarkerReceived",
         "target"
       ],
       "properties": {
@@ -3693,6 +3694,9 @@
         },
         "phase": {
           "$ref": "#/definitions/TerminalPhase"
+        },
+        "readyMarkerReceived": {
+          "type": "boolean"
         },
         "sshTarget": {
           "type": [

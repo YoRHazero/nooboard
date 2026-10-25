@@ -223,7 +223,7 @@ class Runtime implements DesktopRuntime {
         if (stopped) return;
         if (connected && this.host) {
           if (this.store.apply(frame.data, this.host, frame.type === 'recovered'))
-            this.terminal.reconcile(frame.data.terminal.runs);
+            this.terminal.reconcile(frame.data.terminal);
         } else if (
           !pending ||
           pending.session !== frame.data.session ||
@@ -240,7 +240,7 @@ class Runtime implements DesktopRuntime {
       this.acceptHost(session.initial.host);
       this.store.apply(session.initial.snapshot, this.host!, true);
       if (pending) this.store.apply(pending, this.host!, true);
-      this.terminal.reconcile(this.store.getSnapshot().terminal.runs);
+      this.terminal.reconcile(this.store.getSnapshot().terminal);
       connected = true;
       if (stopped) throw new ProblemError(stopped);
       this.store.setError(undefined);

@@ -368,6 +368,7 @@ export type TerminalRunView = {
   lifetime?: TerminalLifetime | null;
   name: string;
   phase: TerminalPhase;
+  readyMarkerReceived: boolean;
   sshTarget?: string | null;
   target: TerminalTarget;
 };

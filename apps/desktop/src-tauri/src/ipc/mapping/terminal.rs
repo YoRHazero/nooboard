@@ -152,6 +152,7 @@ pub fn workspace(value: core::TerminalWorkspaceSnapshot) -> TerminalWorkspaceVie
             address,
             command: None,
             lifetime: None,
+            ready_marker_received: false,
             forward: None,
             error,
         });
@@ -178,6 +179,7 @@ pub fn workspace(value: core::TerminalWorkspaceSnapshot) -> TerminalWorkspaceVie
                 core::CommandLifetimePolicy::Dependent => TerminalLifetime::Dependent,
                 core::CommandLifetimePolicy::Independent => TerminalLifetime::Independent,
             }),
+            ready_marker_received: r.ready_marker_received,
             forward: None,
             error,
         });
@@ -201,6 +203,7 @@ pub fn workspace(value: core::TerminalWorkspaceSnapshot) -> TerminalWorkspaceVie
             address: r.target.resolved_address.map(|a| a.to_string()),
             command: None,
             lifetime: None,
+            ready_marker_received: false,
             forward: Some(forward(r.forward)),
             error,
         });

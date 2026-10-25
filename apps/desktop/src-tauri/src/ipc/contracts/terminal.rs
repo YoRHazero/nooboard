@@ -160,6 +160,7 @@ pub struct TerminalRunView {
     pub address: Option<String>,
     pub command: Option<String>,
     pub lifetime: Option<TerminalLifetime>,
+    pub ready_marker_received: bool,
     pub forward: Option<TerminalForward>,
     pub error: Option<String>,
 }
