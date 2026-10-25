@@ -11,6 +11,10 @@ pub enum Summary {
     Failed,
 }
 #[derive(Clone, Copy)]
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "windows")),
+    allow(dead_code, reason = "unsupported platforms cannot emit tray actions")
+)]
 pub enum Action {
     Show(Option<Page>),
     Quit,
@@ -20,6 +24,13 @@ pub struct State {
     pub supported: bool,
     pub available: bool,
 }
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "windows")),
+    allow(
+        dead_code,
+        reason = "unsupported platforms do not render the tray menu"
+    )
+)]
 pub struct Presentation {
     pub status: String,
     pub open: String,
