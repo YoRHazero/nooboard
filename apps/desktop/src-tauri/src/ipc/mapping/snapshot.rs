@@ -5,6 +5,7 @@ pub fn snapshot(value: nooboard_core::AppSnapshot) -> BackendSnapshot {
     let local_device = super::devices::local_device(&status, value.local_network);
     let settings = status.settings;
     BackendSnapshot {
+        terminal: super::terminal::workspace(value.terminal),
         local_device,
         session: value.session,
         revision: value.revision.to_string(),

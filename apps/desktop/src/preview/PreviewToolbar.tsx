@@ -1,10 +1,11 @@
-import { useI18n } from '../i18n/react';
+import { Select, SelectItem } from '../shared/ui/Select';
+import { useI18n } from '../shared/i18n/react';
 import { useState } from 'react';
 import { ArrowDownLeft, CopyPlus, FlaskConical, RotateCcw } from 'lucide-react';
-import { useCommand, useSnapshot } from '../desktop/api';
-import { shortNoobId } from '../features/devices/selectors';
+import { useCommand, useSnapshot } from '../client/react';
+import { shortNoobId } from '../features/devices/api';
 import type { PreviewControls } from './bridge';
-import type { PeerConnectionState } from '../desktop/bridge/generated';
+import type { PeerConnectionState } from '../client/bridge/generated';
 
 export function PreviewToolbar({
   client,
@@ -36,19 +37,19 @@ export function PreviewToolbar({
         <button onClick={() => execute(() => client.sampleFiles())}>
           {t('preview:fileSamples')}
         </button>
-        <select
+        <Select
           aria-label={t('preview:eventDevice')}
           value={peer?.noobId ?? ''}
           disabled={!peers.length}
-          onChange={(e) => setSelected(e.target.value)}
+          onValueChange={(e) => setSelected(e)}
         >
-          {!peers.length && <option value="">{t('preview:noDevices')}</option>}
+          {!peers.length && <SelectItem value="">{t('preview:noDevices')}</SelectItem>}
           {peers.map((p) => (
-            <option key={p.noobId} value={p.noobId}>
+            <SelectItem key={p.noobId} value={p.noobId}>
               {p.deviceName} · {shortNoobId(p.noobId, peers)}
-            </option>
+            </SelectItem>
           ))}
-        </select>
+        </Select>
         <button
           disabled={!peer?.online || settings.paused || !settings.receive}
           onClick={() => execute(() => client.sampleReceive(peer?.noobId))}
@@ -56,21 +57,20 @@ export function PreviewToolbar({
           <ArrowDownLeft size={14} />
           {t('preview:receiveSample')}
         </button>
-        <select
+        <Select
           aria-label={t('preview:connectionScenario')}
           value={peer?.connectionState ?? 'offline'}
           disabled={!peer}
-          onChange={(e) =>
-            peer &&
-            execute(() => client.setPeerState(peer.noobId, e.target.value as PeerConnectionState))
+          onValueChange={(e) =>
+            peer && execute(() => client.setPeerState(peer.noobId, e as PeerConnectionState))
           }
         >
-          <option value="connected">{t('common:connected')}</option>
-          <option value="paused">{t('devices:pausedState')}</option>
-          <option value="offline">{t('common:offline')}</option>
-          <option value="unconnected">{t('devices:unconnected')}</option>
-          <option value="unpaired">{t('devices:unpairedState')}</option>
-        </select>
+          <SelectItem value="connected">{t('common:connected')}</SelectItem>
+          <SelectItem value="paused">{t('devices:pausedState')}</SelectItem>
+          <SelectItem value="offline">{t('common:offline')}</SelectItem>
+          <SelectItem value="unconnected">{t('devices:unconnected')}</SelectItem>
+          <SelectItem value="unpaired">{t('devices:unpairedState')}</SelectItem>
+        </Select>
         <button
           disabled={!peer?.online}
           onClick={() => peer && execute(() => client.toggleAccepting(peer.noobId))}

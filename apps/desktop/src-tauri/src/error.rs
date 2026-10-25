@@ -20,3 +20,9 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 pub type Future<'a, T> =
     std::pin::Pin<Box<dyn std::future::Future<Output = Result<T>> + Send + 'a>>;
+
+impl From<nooboard_core::terminal::TerminalError> for Error {
+    fn from(error: nooboard_core::terminal::TerminalError) -> Self {
+        Self::Core(nooboard_core::Error::Terminal(error))
+    }
+}

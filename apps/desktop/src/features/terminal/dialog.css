@@ -1,0 +1,95 @@
+.terminal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.terminal-form fieldset {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.terminal-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.terminal-form textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+}
+.terminal-form p {
+  line-height: 1.7;
+}
+.terminal-form h3 {
+  font-size: 12px;
+  font-weight: 600;
+}
+.terminal-prerequisites {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+.terminal-dependency-edit {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+}
+.terminal-dependency-edit .select-control {
+  width: 0;
+  flex: 1;
+  font-size: 11px;
+  padding: 8px;
+}
+.terminal-dependency-edit > span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.terminal-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.terminal-break {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .terminal-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.terminal-address-source {
+  min-height: 40px;
+}
+.terminal-address-source button {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+}
+.terminal-device-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.terminal-device-heading .button {
+  min-height: 24px;
+  padding: 2px 6px;
+  font-size: 11px;
+}

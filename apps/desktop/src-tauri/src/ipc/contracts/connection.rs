@@ -20,6 +20,7 @@ pub struct Fault {
 #[derive(Clone, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BackendSnapshot {
+    pub terminal: TerminalWorkspaceView,
     pub session: String,
     pub revision: String,
     pub history_revision: String,
@@ -44,6 +45,10 @@ pub struct BackendSnapshot {
     deny_unknown_fields
 )]
 pub enum Request {
+    Terminal {
+        owner: String,
+        action: TerminalAction,
+    },
     Discover,
     BeginPairing {
         address: String,
@@ -111,6 +116,9 @@ pub enum Request {
 #[derive(Serialize, JsonSchema)]
 #[serde(tag = "type", content = "data", rename_all = "camelCase")]
 pub enum Reply {
+    TerminalSaved { id: String },
+    TerminalOpened { target: TerminalTarget },
+    TerminalDirectory(TerminalDirectory),
     Done,
     Sent(MessageId),
     Saved { revision: String },
@@ -120,6 +128,8 @@ pub enum Reply {
 #[derive(Clone, Serialize, JsonSchema)]
 #[serde(tag = "type", content = "data", rename_all = "camelCase")]
 pub enum Frame {
+    TerminalEnded(TerminalEnded),
+    TerminalLagged,
     Snapshot(BackendSnapshot),
     Recovered(BackendSnapshot),
     Host(Snapshot),
@@ -139,4 +149,5 @@ pub struct Contract {
     frame: Frame,
     request: Request,
     reply: Reply,
+    terminal_output: TerminalOutputFrame,
 }

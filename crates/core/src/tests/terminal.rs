@@ -755,3 +755,150 @@ async fn successful_authentication_survives_a_failed_password_save() {
     network_owner.shutdown().await.unwrap();
     identity_owner.shutdown().await.unwrap();
 }
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn temporary_local_terminals_do_not_write_or_occupy_saved_configurations() {
+    use crate::features::terminal::adapters::{self, repository::KEY};
+    let (storage_owner, storage) = nooboard_storage::StorageService::start(
+        crate::BackendConfig::Sqlite(crate::SqliteOptions::in_memory()),
+        Default::default(),
+    )
+    .await
+    .unwrap();
+    let (mut identity_owner, identity) = nooboard_identity::IdentityService::start(
+        nooboard_identity::IdentityConfig::Ephemeral,
+        Default::default(),
+    )
+    .await
+    .unwrap();
+    let (network_owner, network, _) = super::start_network(nooboard_network::Options {
+        listen: "127.0.0.1:0".parse().unwrap(),
+        pairing_listen: "127.0.0.1:0".parse().unwrap(),
+        discovery: false,
+        ..Default::default()
+    })
+    .await;
+    let mut owner = adapters::create(storage.clone(), identity, network)
+        .await
+        .unwrap();
+    let workspace = owner.workspace.clone();
+    assert!(workspace.start_local_terminal(" ".into()).await.is_err());
+    let (first, mut output) = workspace
+        .start_local_terminal_with_output("Local shell".into())
+        .await
+        .unwrap();
+    let second = workspace
+        .start_local_terminal("Local shell".into())
+        .await
+        .unwrap();
+    assert_ne!(first, second);
+    state(&workspace, |s| {
+        s.runs.terminal_runs.len() == 2
+            && s.runs
+                .terminal_runs
+                .iter()
+                .all(|r| r.state == TerminalRunState::Running)
+    })
+    .await;
+    let snapshot = workspace.snapshot();
+    assert!(snapshot.terminals.is_empty());
+    assert!(
+        snapshot
+            .runs
+            .terminal_runs
+            .iter()
+            .all(|r| r.config_id.is_none() && r.name == "Local shell")
+    );
+    assert!(storage.settings().get(KEY).await.unwrap().is_none());
+    workspace
+        .write_input(
+            TerminalIoTarget::Terminal(first),
+            b"printf '%s%s\\n' NOOBOARD_ TEMPORARY_OK\r".to_vec(),
+        )
+        .await
+        .unwrap();
+    bounded(async {
+        let mut bytes = output.initial_output.data;
+        while !String::from_utf8_lossy(&bytes).contains("NOOBOARD_TEMPORARY_OK") {
+            bytes.extend(output.stream.next().await.unwrap().unwrap().data);
+        }
+    })
+    .await;
+
+    // A same-named saved configuration remains a separate resource.
+    let config = workspace
+        .create_terminal(TerminalInput {
+            name: "Local shell".into(),
+            target: TerminalTarget::Local,
+            dependencies: vec![],
+        })
+        .await
+        .unwrap();
+    let saved = storage.settings().get(KEY).await.unwrap();
+    let third = workspace
+        .start_local_terminal("Local shell".into())
+        .await
+        .unwrap();
+    assert_ne!(third, first);
+    assert_ne!(third, second);
+    assert_eq!(storage.settings().get(KEY).await.unwrap(), saved);
+    assert_eq!(workspace.snapshot().terminals.len(), 1);
+    assert!(
+        workspace
+            .snapshot()
+            .runs
+            .terminal_runs
+            .iter()
+            .all(|r| r.config_id.is_none())
+    );
+    let configured = workspace.start_terminal(config).await.unwrap();
+    state(&workspace, |s| {
+        s.runs.terminal_runs.iter().any(|r| r.id == configured)
+    })
+    .await;
+    assert_eq!(
+        workspace
+            .snapshot()
+            .runs
+            .terminal_runs
+            .iter()
+            .find(|r| r.id == configured)
+            .unwrap()
+            .config_id,
+        Some(config)
+    );
+    assert!(matches!(
+        workspace
+            .delete_config(TerminalConfigReference::Terminal(config))
+            .await,
+        Err(Error::ConfigurationInUse { .. })
+    ));
+    workspace.stop_terminal(configured).await.unwrap();
+    workspace
+        .delete_config(TerminalConfigReference::Terminal(config))
+        .await
+        .unwrap();
+    workspace.stop_terminal(first).await.unwrap();
+    state(&workspace, |s| s.runs.terminal_runs.len() == 2).await;
+    assert!(
+        workspace
+            .snapshot()
+            .runs
+            .terminal_runs
+            .iter()
+            .all(|r| r.id == second || r.id == third)
+    );
+    bounded(owner.shutdown()).await.unwrap();
+    assert!(workspace.snapshot().runs.is_empty());
+    assert!(
+        workspace
+            .start_local_terminal("after shutdown".into())
+            .await
+            .is_err()
+    );
+    assert!(workspace.snapshot().terminals.is_empty());
+    network_owner.shutdown().await.unwrap();
+    identity_owner.shutdown().await.unwrap();
+    storage_owner.shutdown().await.unwrap();
+}

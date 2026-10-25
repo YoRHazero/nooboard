@@ -1,17 +1,15 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { isTauri } from '@tauri-apps/api/core';
-import {
-  createDesktop,
-  createNativeDesktop,
-  useCommand,
-  type DesktopRuntime,
-} from '../desktop/api';
+import { type DesktopRuntime } from '../client/api';
+import { useCommand } from '../client/react';
+import { createDesktop, createNativeDesktop } from '../client/create';
 import { PreviewBridge } from '../preview/bridge';
 import { PreviewToolbar } from '../preview/PreviewToolbar';
-import { useI18n } from '../i18n/react';
+import { useI18n } from '../shared/i18n/react';
 import { Providers } from './providers';
-import { App } from './App';
+import { RouterProvider } from '@tanstack/react-router';
+import { createAppRouter } from './router';
 export async function bootstrap(element: HTMLElement) {
   const preview = isTauri() ? undefined : new PreviewBridge();
   const motionPreview = ['motion-16', 'business-19'].includes(
@@ -26,20 +24,19 @@ export async function bootstrap(element: HTMLElement) {
   const { runtime, desktop } = preview
     ? createDesktop(preview, storage)
     : await createNativeDesktop(storage);
+  const router = createAppRouter({
+    motionPreview,
+    footer: preview ? (
+      <PreviewToolbar client={preview} motionPreview={motionPreview} />
+    ) : (
+      <DiagnosticToolbar runtime={runtime} />
+    ),
+  });
   const root = createRoot(element);
   root.render(
     <StrictMode>
       <Providers desktop={desktop}>
-        <App
-          motionPreview={motionPreview}
-          footer={
-            preview ? (
-              <PreviewToolbar client={preview} motionPreview={motionPreview} />
-            ) : (
-              <DiagnosticToolbar runtime={runtime} />
-            )
-          }
-        />
+        <RouterProvider router={router} />
       </Providers>
     </StrictMode>,
   );

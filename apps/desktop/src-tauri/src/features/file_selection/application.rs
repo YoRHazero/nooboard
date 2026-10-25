@@ -1,4 +1,4 @@
-use super::ports::{FilePicker, SelectedFiles};
+use super::ports::{FilePicker, SelectedFiles, SelectedTransfers};
 use crate::error::Result;
 use std::sync::Arc;
 pub struct FileSelection {
@@ -7,6 +7,23 @@ pub struct FileSelection {
 impl FileSelection {
     pub fn new(picker: Arc<dyn FilePicker>) -> Self {
         Self { picker }
+    }
+    pub async fn upload(&self, target: &dyn SelectedTransfers, folder: bool) -> Result<()> {
+        let selected = if folder {
+            self.picker.directory().await?.map(|path| vec![path])
+        } else {
+            self.picker.files().await?
+        };
+        if let Some(paths) = selected {
+            target.upload(paths).await?;
+        }
+        Ok(())
+    }
+    pub async fn download(&self, target: &dyn SelectedTransfers) -> Result<()> {
+        if let Some(directory) = self.picker.directory().await? {
+            target.download(directory).await?;
+        }
+        Ok(())
     }
     pub async fn send_files(&self, target: &dyn SelectedFiles) -> Result<()> {
         if let Some(paths) = self.picker.files().await? {

@@ -92,3 +92,7 @@ python3 scripts/test_two_hosts.py --help
 已有测试记录不代表 Windows/Linux 原生应用、系统凭据弹窗、外部 OpenSSH 服务、跨机网络或原生拖拽已经完成实机验收。CI 的具体结果以相应提交的 [GitHub Actions](https://github.com/YoRHazero/nooboard/actions) 为准，runner 测试也不能替代用户实际桌面环境。
 
 桌面 Rust 宿主的分层回归使用测试端口，不启动真实窗口、剪贴板或生产 Core 实例。`cargo test -p nooboard-desktop --all-features --locked` 覆盖退出重试及过期确认、窗口导航、偏好原子保存、文件选择取消、订阅代次和 IPC schema 兼容；`scripts/check_architecture.py` 检查内层不依赖 Tauri、IPC 与服务实现。
+
+Terminal 页面不增加前端测试文件。页面修改使用 TypeScript、构建、IPC 漂移、模块边界与双语文案检查，以及浏览器预览交互验证。预览的命令、主机认证与文件操作都是内存模拟，不执行 VPN、SSH 或本地 shell；真实运行仍通过原生宿主验证。新增 Rust 回归覆盖输出订阅隔离、取消与迟到清理、确认序号、Terminal 请求序列化和文件名边界。
+
+2026-10-25 的本机验收使用独立 bundle 标识的诊断副本，确认本机 PTY 输出、终端输入、关闭会话后子进程结束和诊断副本正常退出。浏览器验证了路由往返后的会话回放、配置编辑、共享前置命令界面、认证提示和文件夹导航；未用真实设备验证 SSH/SFTP。

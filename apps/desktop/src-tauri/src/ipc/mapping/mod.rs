@@ -6,3 +6,5 @@ pub mod settings;
 pub mod snapshot;
 pub mod transfers;
 pub mod types;
+
+pub mod terminal;

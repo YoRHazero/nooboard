@@ -12,7 +12,8 @@ pub enum TerminalConfigReference {
 pub trait RunLease: Send + Sync {}
 impl<T: Send + Sync> RunLease for T {}
 
-/// Optional composer hook. Called once on registration, before spawning any backend.
+/// Optional composer hook for runs referencing saved configurations.
+/// Called once on registration when references are nonempty, before spawning a backend.
 /// The returned guard remains owned until the Run and its cleanup have actually ended.
 /// Implementations must be short, synchronous, and must not call back into Terminal.
 pub trait RunLeaseProvider: Send + Sync {

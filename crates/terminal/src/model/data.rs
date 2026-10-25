@@ -133,8 +133,8 @@ pub enum DependencyGateState {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TerminalRun {
     pub id: TerminalRunId,
-    pub config_id: TerminalConfigId,
-    pub config_name: String,
+    pub config_id: Option<TerminalConfigId>,
+    pub name: String,
     pub target: RunTarget,
     pub dependency_run_ids: Vec<DependencyRunId>,
     pub state: TerminalRunState,

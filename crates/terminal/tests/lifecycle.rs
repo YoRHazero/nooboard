@@ -41,8 +41,8 @@ fn command(text: &str) -> CommandStartSpec {
 }
 fn root(dependencies: Vec<DependencyStartSpec>) -> StartTerminalRequest {
     StartTerminalRequest {
-        config_id: TerminalConfigId::new(),
-        config_name: "test terminal".into(),
+        config_id: Some(TerminalConfigId::new()),
+        name: "test terminal".into(),
         target: TerminalStartTarget::Local,
         dependencies,
     }
@@ -474,4 +474,56 @@ async fn slow_event_subscriber_is_explicitly_disconnected_without_blocking_runs(
     );
     assert!(slow.next().await.unwrap().is_none());
     service.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn temporary_terminals_lease_only_their_real_dependencies() {
+    #[derive(Default)]
+    struct Leases(std::sync::Mutex<Vec<(RunId, Vec<TerminalConfigReference>)>>);
+    impl RunLeaseProvider for Leases {
+        fn acquire(&self, run: RunId, references: &[TerminalConfigReference]) -> Box<dyn RunLease> {
+            self.0.lock().unwrap().push((run, references.to_vec()));
+            Box::new(())
+        }
+    }
+    let leases = Arc::new(Leases::default());
+    let mut service = TerminalService::start_with_leases(
+        TerminalServiceOptions::default(),
+        TerminalServiceDependencies {
+            host_verifier: Arc::new(Reject),
+        },
+        leases.clone(),
+    )
+    .unwrap();
+    let terminal = service.handle();
+    let mut request = root(vec![]);
+    request.config_id = None;
+    let plain = terminal.start_terminal(request).await.unwrap();
+    state(&terminal, |s| s.terminal_runs.iter().any(|r| r.id == plain)).await;
+    assert!(leases.0.lock().unwrap().is_empty());
+    let plain_view = terminal
+        .snapshot()
+        .terminal_runs
+        .into_iter()
+        .find(|r| r.id == plain)
+        .unwrap();
+    assert_eq!(plain_view.config_id, None);
+    assert_eq!(plain_view.name, "test terminal");
+    terminal.stop_terminal(plain).await.unwrap();
+
+    let command = command("exec sleep 30");
+    let command_id = command.config_id;
+    let mut request = root(vec![dependency(command)]);
+    request.config_id = None;
+    let dependent = terminal.start_terminal(request).await.unwrap();
+    assert!(leases.0.lock().unwrap().iter().any(|(run, refs)| {
+        *run == RunId::Terminal(dependent)
+            && refs == &[TerminalConfigReference::Command(command_id)]
+    }));
+    assert!(leases.0.lock().unwrap().iter().all(|(_, refs)| {
+        refs.iter()
+            .all(|reference| *reference == TerminalConfigReference::Command(command_id))
+    }));
+    service.shutdown().await.unwrap();
+    assert!(terminal.snapshot().is_empty());
 }

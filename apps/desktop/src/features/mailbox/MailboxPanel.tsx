@@ -1,4 +1,4 @@
-import { useSnapshot } from '../../desktop/api';
+import { useSnapshot } from '../../client/react';
 import { useMailbox } from './MailboxProvider';
 import { ActivityList } from './ActivityList';
 import { PairedDevices } from './PairedDevices';

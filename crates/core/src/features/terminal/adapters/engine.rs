@@ -17,6 +17,24 @@ impl TerminalEngineOwner for EngineOwner {
         Box::pin(async move { self.0.shutdown().await.map_err(Into::into) })
     }
 }
+impl EngineAdapter {
+    async fn start_terminal(
+        &self,
+        request: StartTerminalRequest,
+        output: bool,
+    ) -> crate::Result<(RunId, Option<TerminalOutputSubscription>)> {
+        if output {
+            let (id, stream) = self.handle.start_terminal_with_output(request).await?;
+            Ok((RunId::Terminal(id), Some(stream)))
+        } else {
+            self.handle
+                .start_terminal(request)
+                .await
+                .map(|id| (RunId::Terminal(id), None))
+                .map_err(Into::into)
+        }
+    }
+}
 impl TerminalEngine for EngineAdapter {
     fn is_available(&self) -> bool {
         self.handle.is_available()
@@ -35,18 +53,21 @@ impl TerminalEngine for EngineAdapter {
     ) -> PortFuture<'_, (RunId, Option<TerminalOutputSubscription>)> {
         Box::pin(async move {
             match plan.root {
+                StartKind::LocalTerminal(name) => {
+                    self.start_terminal(
+                        StartTerminalRequest {
+                            config_id: None,
+                            name,
+                            target: TerminalStartTarget::Local,
+                            dependencies: vec![],
+                        },
+                        output,
+                    )
+                    .await
+                }
                 StartKind::Terminal(id) => {
-                    let request = self.providers.terminal(&plan.catalog, id)?;
-                    if output {
-                        let (id, stream) = self.handle.start_terminal_with_output(request).await?;
-                        Ok((RunId::Terminal(id), Some(stream)))
-                    } else {
-                        self.handle
-                            .start_terminal(request)
-                            .await
-                            .map(|id| (RunId::Terminal(id), None))
-                            .map_err(Into::into)
-                    }
+                    self.start_terminal(self.providers.terminal(&plan.catalog, id)?, output)
+                        .await
                 }
                 StartKind::Command(id, reuse_policy) => {
                     let request = StartCommandRequest {

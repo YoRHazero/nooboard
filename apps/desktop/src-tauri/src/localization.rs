@@ -5,11 +5,15 @@ pub fn text(language: &str, key: &str) -> String {
     static ZH: OnceLock<serde_json::Value> = OnceLock::new();
     let values = if language == "zh-CN" {
         ZH.get_or_init(|| {
-            serde_json::from_str(include_str!("../../src/i18n/locales/zh-CN/common.json")).unwrap()
+            serde_json::from_str(include_str!(
+                "../../src/shared/i18n/locales/zh-CN/common.json"
+            ))
+            .unwrap()
         })
     } else {
         EN.get_or_init(|| {
-            serde_json::from_str(include_str!("../../src/i18n/locales/en/common.json")).unwrap()
+            serde_json::from_str(include_str!("../../src/shared/i18n/locales/en/common.json"))
+                .unwrap()
         })
     };
     values[key].as_str().unwrap_or(key).into()

@@ -40,21 +40,43 @@ pub async fn connect(
         .attach(
             ticket,
             subscription,
-            backend.app.subscribe(),
-            runtime.subscribe(),
-            backend.diagnostic,
+            super::subscription::Sources {
+                backend: backend.app.subscribe(),
+                desktop: runtime.subscribe(),
+                terminal: backend.app.terminal(),
+                diagnostic: backend.diagnostic,
+            },
             on_frame,
+            &runtime.terminal_io,
         )
         .map_err(errors::desktop)
 }
 #[tauri::command]
 pub fn disconnect(runtime: State<'_, Arc<Runtime>>, subscription: String) {
     runtime.subscriptions.disconnect(&subscription);
+    runtime.terminal_io.deactivate(&subscription);
 }
 #[tauri::command]
 pub async fn request(
     runtime: State<'_, Arc<Runtime>>,
     request: contracts::Request,
+    webview: tauri::Webview,
+    on_output: Option<tauri::ipc::JavaScriptChannelId>,
 ) -> Result<contracts::Reply, UiError> {
+    if let contracts::Request::Terminal { owner, action } = request {
+        if !runtime.subscriptions.owns(&owner) {
+            return Err(errors::ui("stopped"));
+        }
+        if runtime.lifecycle.control.exiting() {
+            return Err(errors::ui("closing"));
+        }
+        return super::terminal_requests::run(
+            runtime.inner(),
+            owner,
+            action,
+            on_output.map(|channel| channel.channel_on(webview)),
+        )
+        .await;
+    }
     super::router::run(runtime.inner(), request).await
 }

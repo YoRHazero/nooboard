@@ -6,7 +6,7 @@ impl Manager {
         attach_output: bool,
     ) -> Result<(TerminalRunId, Option<TerminalOutputSubscription>)> {
         self.admit()?;
-        name(&request.config_name)?;
+        name(&request.name)?;
         validate_dependencies(&request.dependencies)?;
         let (target, driver) = match &request.target {
             TerminalStartTarget::Local => (RunTarget::Local, DriverSpec::Local { command: None }),
@@ -25,7 +25,7 @@ impl Manager {
         let run = RunId::Terminal(id);
         self.new_entry(
             run,
-            request.config_name,
+            request.name,
             target,
             Kind::Terminal(request.config_id),
             driver,

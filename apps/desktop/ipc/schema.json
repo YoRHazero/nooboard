@@ -7,7 +7,8 @@
     "connection",
     "frame",
     "reply",
-    "request"
+    "request",
+    "terminal_output"
   ],
   "properties": {
     "connection": {
@@ -21,6 +22,9 @@
     },
     "request": {
       "$ref": "#/definitions/Request"
+    },
+    "terminal_output": {
+      "$ref": "#/definitions/TerminalOutputFrame"
     }
   },
   "definitions": {
@@ -161,6 +165,7 @@
         "session",
         "settings",
         "state",
+        "terminal",
         "transfers"
       ],
       "properties": {
@@ -224,6 +229,9 @@
         },
         "state": {
           "$ref": "#/definitions/AppState"
+        },
+        "terminal": {
+          "$ref": "#/definitions/TerminalWorkspaceView"
         },
         "transfers": {
           "type": "array",
@@ -480,6 +488,18 @@
         "QueueFull"
       ]
     },
+    "ErrorParam": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
     "Fault": {
       "type": "object",
       "required": [
@@ -497,6 +517,38 @@
     },
     "Frame": {
       "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/TerminalEnded"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "terminalEnded"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "terminalLagged"
+              ]
+            }
+          }
+        },
         {
           "type": "object",
           "required": [
@@ -1052,6 +1104,76 @@
         {
           "type": "object",
           "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "terminalSaved"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "target"
+              ],
+              "properties": {
+                "target": {
+                  "$ref": "#/definitions/TerminalTarget"
+                }
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "terminalOpened"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/TerminalDirectory"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "terminalDirectory"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
             "type"
           ],
           "properties": {
@@ -1147,6 +1269,38 @@
     },
     "Request": {
       "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "action",
+                "owner"
+              ],
+              "properties": {
+                "action": {
+                  "$ref": "#/definitions/TerminalAction"
+                },
+                "owner": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "terminal"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
         {
           "type": "object",
           "required": [
@@ -1892,6 +2046,1882 @@
       },
       "additionalProperties": false
     },
+    "TerminalAction": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "config"
+              ],
+              "properties": {
+                "config": {
+                  "$ref": "#/definitions/TerminalConfigInput"
+                },
+                "id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "saveConfig"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "target"
+              ],
+              "properties": {
+                "target": {
+                  "$ref": "#/definitions/TerminalTarget"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "copyConfig"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "target"
+              ],
+              "properties": {
+                "target": {
+                  "$ref": "#/definitions/TerminalTarget"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "deleteConfig"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "name",
+                "subscription"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "subscription": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "startLocal"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "reuse",
+                "subscription",
+                "target"
+              ],
+              "properties": {
+                "reuse": {
+                  "$ref": "#/definitions/TerminalReuse"
+                },
+                "subscription": {
+                  "type": "string"
+                },
+                "target": {
+                  "$ref": "#/definitions/TerminalTarget"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "start"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "subscription",
+                "target"
+              ],
+              "properties": {
+                "subscription": {
+                  "type": "string"
+                },
+                "target": {
+                  "$ref": "#/definitions/TerminalTarget"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "attach"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "sequence",
+                "subscription"
+              ],
+              "properties": {
+                "sequence": {
+                  "type": "string"
+                },
+                "subscription": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "ack"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "subscription"
+              ],
+              "properties": {
+                "subscription": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "detach"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "target"
+              ],
+              "properties": {
+                "target": {
+                  "$ref": "#/definitions/TerminalTarget"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "stop"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "bytes",
+                "target"
+              ],
+              "properties": {
+                "bytes": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "minimum": 0.0
+                  }
+                },
+                "target": {
+                  "$ref": "#/definitions/TerminalTarget"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "input"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "cols",
+                "rows",
+                "target"
+              ],
+              "properties": {
+                "cols": {
+                  "type": "integer",
+                  "format": "uint16",
+                  "minimum": 0.0
+                },
+                "rows": {
+                  "type": "integer",
+                  "format": "uint16",
+                  "minimum": 0.0
+                },
+                "target": {
+                  "$ref": "#/definitions/TerminalTarget"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "resize"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "continue"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id",
+                "policy"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "policy": {
+                  "$ref": "#/definitions/TerminalLifetime"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "lifetime"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "accept",
+                "id"
+              ],
+              "properties": {
+                "accept": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "confirmHost"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id",
+                "password",
+                "remember"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "password": {
+                  "type": "string"
+                },
+                "remember": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "password"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "cancelPrompt"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "replacement",
+                "targetId"
+              ],
+              "properties": {
+                "previous": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/TerminalHostKey"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "replacement": {
+                  "$ref": "#/definitions/TerminalHostKey"
+                },
+                "targetId": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "replaceHost"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "browse"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id",
+                "path"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "mkdir"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "destination",
+                "id",
+                "source"
+              ],
+              "properties": {
+                "destination": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "rename"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "conflict",
+                "directory",
+                "folder",
+                "id"
+              ],
+              "properties": {
+                "conflict": {
+                  "$ref": "#/definitions/TerminalConflict"
+                },
+                "directory": {
+                  "type": "string"
+                },
+                "folder": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "upload"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "conflict",
+                "id",
+                "paths"
+              ],
+              "properties": {
+                "conflict": {
+                  "$ref": "#/definitions/TerminalConflict"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "download"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id",
+                "paths"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "deleteFiles"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "stopFiles"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "options"
+              ],
+              "properties": {
+                "options": {
+                  "$ref": "#/definitions/TerminalOptionsView"
+                }
+              },
+              "additionalProperties": false
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "options"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TerminalAddress": {
+      "type": "object",
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/TerminalAddressKind"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TerminalAddressKind": {
+      "type": "string",
+      "enum": [
+        "host",
+        "device"
+      ]
+    },
+    "TerminalAuthEdit": {
+      "type": "string",
+      "enum": [
+        "keep",
+        "password",
+        "privateKey"
+      ]
+    },
+    "TerminalAuthKind": {
+      "type": "string",
+      "enum": [
+        "password",
+        "privateKey"
+      ]
+    },
+    "TerminalCommandInput": {
+      "type": "object",
+      "required": [
+        "command",
+        "name"
+      ],
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sshTarget": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "TerminalConfigInput": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "kind"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/TerminalSessionInput"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "terminal"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "kind"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/TerminalCommandInput"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "command"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "kind"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/TerminalTunnelInput"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "tunnel"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "kind"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/TerminalSshInput"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "ssh"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "TerminalConfigView": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "kind"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/TerminalSessionInput"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "terminal"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "kind"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/TerminalCommandInput"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "command"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "kind"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/TerminalTunnelInput"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "tunnel"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "kind"
+          ],
+          "properties": {
+            "data": {
+              "$ref": "#/definitions/TerminalSshView"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "ssh"
+              ]
+            }
+          }
+        }
+      ],
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      }
+    },
+    "TerminalConflict": {
+      "type": "string",
+      "enum": [
+        "fail",
+        "skip",
+        "overwrite"
+      ]
+    },
+    "TerminalDependency": {
+      "type": "object",
+      "required": [
+        "commandId",
+        "reuse"
+      ],
+      "properties": {
+        "commandId": {
+          "type": "string"
+        },
+        "reuse": {
+          "$ref": "#/definitions/TerminalReuse"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TerminalDependencyView": {
+      "type": "object",
+      "required": [
+        "commandId",
+        "gate",
+        "id",
+        "owner"
+      ],
+      "properties": {
+        "commandId": {
+          "type": "string"
+        },
+        "gate": {
+          "$ref": "#/definitions/TerminalGate"
+        },
+        "id": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/definitions/TerminalTarget"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "TerminalDirectory": {
+      "type": "object",
+      "required": [
+        "entries",
+        "path"
+      ],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TerminalDirectoryEntry"
+          }
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    "TerminalDirectoryEntry": {
+      "type": "object",
+      "required": [
+        "kind",
+        "name"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "TerminalEnded": {
+      "type": "object",
+      "required": [
+        "cleanup",
+        "id",
+        "kind",
+        "name",
+        "result"
+      ],
+      "properties": {
+        "cleanup": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string"
+        }
+      }
+    },
+    "TerminalFileRun": {
+      "type": "object",
+      "required": [
+        "bytes",
+        "completed",
+        "id",
+        "operation",
+        "phase",
+        "terminalId"
+      ],
+      "properties": {
+        "bytes": {
+          "type": "string"
+        },
+        "completed": {
+          "type": "string"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "phase": {
+          "$ref": "#/definitions/TerminalPhase"
+        },
+        "terminalId": {
+          "type": "string"
+        },
+        "total": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "totalBytes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "TerminalForward": {
+      "type": "object",
+      "required": [
+        "kind",
+        "listenHost",
+        "listenPort"
+      ],
+      "properties": {
+        "destinationHost": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "destinationPort": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "kind": {
+          "$ref": "#/definitions/TerminalForwardKind"
+        },
+        "listenHost": {
+          "type": "string"
+        },
+        "listenPort": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "TerminalForwardKind": {
+      "type": "string",
+      "enum": [
+        "local",
+        "remote",
+        "dynamic"
+      ]
+    },
+    "TerminalGate": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "waitingForInstance",
+        "waitingForRelease",
+        "released",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "TerminalHostKey": {
+      "type": "object",
+      "required": [
+        "algorithm",
+        "bytes"
+      ],
+      "properties": {
+        "algorithm": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "TerminalIssueView": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "previous": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TerminalHostKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "received": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TerminalHostKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "targetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "TerminalLifetime": {
+      "type": "string",
+      "enum": [
+        "dependent",
+        "independent"
+      ]
+    },
+    "TerminalOptionsView": {
+      "type": "object",
+      "required": [
+        "connectMs",
+        "forceStopMs",
+        "gracefulStopMs",
+        "replayBytes",
+        "requestMs",
+        "shutdownMs"
+      ],
+      "properties": {
+        "connectMs": {
+          "type": "string"
+        },
+        "forceStopMs": {
+          "type": "string"
+        },
+        "gracefulStopMs": {
+          "type": "string"
+        },
+        "replayBytes": {
+          "type": "string"
+        },
+        "requestMs": {
+          "type": "string"
+        },
+        "shutdownMs": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TerminalOutputFrame": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "bytes",
+                "offset",
+                "sequence"
+              ],
+              "properties": {
+                "bytes": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "minimum": 0.0
+                  }
+                },
+                "offset": {
+                  "type": "string"
+                },
+                "sequence": {
+                  "type": "string"
+                }
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "data"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "type"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "offset",
+                "sequence"
+              ],
+              "properties": {
+                "offset": {
+                  "type": "string"
+                },
+                "sequence": {
+                  "type": "string"
+                }
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "gap"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "closed"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "TerminalPhase": {
+      "type": "string",
+      "enum": [
+        "waiting",
+        "starting",
+        "running",
+        "stopping"
+      ]
+    },
+    "TerminalPromptData": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "kind"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "address",
+                "fingerprint",
+                "key"
+              ],
+              "properties": {
+                "address": {
+                  "type": "string"
+                },
+                "fingerprint": {
+                  "type": "string"
+                },
+                "key": {
+                  "$ref": "#/definitions/TerminalHostKey"
+                }
+              }
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "host"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "data",
+            "kind"
+          ],
+          "properties": {
+            "data": {
+              "type": "object",
+              "required": [
+                "username"
+              ],
+              "properties": {
+                "username": {
+                  "type": "string"
+                }
+              }
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "password"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "TerminalPromptView": {
+      "type": "object",
+      "required": [
+        "id",
+        "owner",
+        "prompt",
+        "targetId"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/definitions/TerminalTarget"
+        },
+        "prompt": {
+          "$ref": "#/definitions/TerminalPromptData"
+        },
+        "targetId": {
+          "type": "string"
+        }
+      }
+    },
+    "TerminalResourceKind": {
+      "type": "string",
+      "enum": [
+        "terminal",
+        "command",
+        "tunnel",
+        "ssh"
+      ]
+    },
+    "TerminalReuse": {
+      "type": "string",
+      "enum": [
+        "shared",
+        "alwaysNew"
+      ]
+    },
+    "TerminalRunView": {
+      "type": "object",
+      "required": [
+        "name",
+        "phase",
+        "target"
+      ],
+      "properties": {
+        "address": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "command": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "configId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "forward": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TerminalForward"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lifetime": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TerminalLifetime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "phase": {
+          "$ref": "#/definitions/TerminalPhase"
+        },
+        "sshTarget": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "$ref": "#/definitions/TerminalTarget"
+        }
+      }
+    },
+    "TerminalSessionInput": {
+      "type": "object",
+      "required": [
+        "dependencies",
+        "name"
+      ],
+      "properties": {
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TerminalDependency"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "sshTarget": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "TerminalSshInput": {
+      "type": "object",
+      "required": [
+        "address",
+        "auth",
+        "name",
+        "port",
+        "username"
+      ],
+      "properties": {
+        "address": {
+          "$ref": "#/definitions/TerminalAddress"
+        },
+        "auth": {
+          "$ref": "#/definitions/TerminalAuthEdit"
+        },
+        "name": {
+          "type": "string"
+        },
+        "passphrase": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "port": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "privateKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "username": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TerminalSshView": {
+      "type": "object",
+      "required": [
+        "address",
+        "auth",
+        "name",
+        "passwordSaved",
+        "port",
+        "username"
+      ],
+      "properties": {
+        "address": {
+          "$ref": "#/definitions/TerminalAddress"
+        },
+        "auth": {
+          "$ref": "#/definitions/TerminalAuthKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "passwordSaved": {
+          "type": "boolean"
+        },
+        "port": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "trustedKey": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TerminalHostKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "username": {
+          "type": "string"
+        }
+      }
+    },
+    "TerminalTarget": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/TerminalResourceKind"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TerminalTunnelInput": {
+      "type": "object",
+      "required": [
+        "dependencies",
+        "forward",
+        "name",
+        "sshTarget"
+      ],
+      "properties": {
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TerminalDependency"
+          }
+        },
+        "forward": {
+          "$ref": "#/definitions/TerminalForward"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sshTarget": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TerminalWorkspaceView": {
+      "type": "object",
+      "required": [
+        "closing",
+        "configs",
+        "dependencies",
+        "files",
+        "options",
+        "prompts",
+        "revision",
+        "runs"
+      ],
+      "properties": {
+        "closing": {
+          "type": "boolean"
+        },
+        "configs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TerminalConfigView"
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TerminalDependencyView"
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TerminalFileRun"
+          }
+        },
+        "issue": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TerminalIssueView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "options": {
+          "$ref": "#/definitions/TerminalOptionsView"
+        },
+        "prompts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TerminalPromptView"
+          }
+        },
+        "revision": {
+          "type": "string"
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TerminalRunView"
+          }
+        }
+      }
+    },
     "Transfer": {
       "type": "object",
       "required": [
@@ -1950,9 +3980,7 @@
         "params": {
           "type": "object",
           "additionalProperties": {
-            "type": "integer",
-            "format": "uint8",
-            "minimum": 0.0
+            "$ref": "#/definitions/ErrorParam"
           }
         }
       }

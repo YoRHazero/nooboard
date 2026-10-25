@@ -1,11 +1,11 @@
-import { type Problem, errorText, toProblem } from '../../i18n/errors';
-import { useI18n } from '../../i18n/react';
+import { type Problem, errorText, toProblem } from '../../shared/i18n/errors';
+import { useI18n } from '../../shared/i18n/react';
 import { useState } from 'react';
-import { useDesktop, useSnapshot } from '../../desktop/api';
-import { canSend, peerState, shortNoobId } from '../../features/devices/selectors';
-import { DeviceIcon, DeviceName } from '../devices/DeviceName';
-import { Button } from '../../ui/controls';
-import { Dialog } from '../../ui/Dialog';
+import { useDesktop, useSnapshot } from '../../client/react';
+import { canSend, peerState, shortNoobId } from '../devices/api';
+import { DeviceIcon, DeviceName } from '../devices/api';
+import { Button } from '../../shared/ui/controls';
+import { Dialog } from '../../shared/ui/Dialog';
 
 export function TargetPicker({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();

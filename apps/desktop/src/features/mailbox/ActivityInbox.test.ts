@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import type { Activity } from '../../desktop/api';
+import type { Activity } from '../../client/api';
 import { ActivityInbox } from './ActivityInbox';
 
 const copy = (id: number): Activity => ({

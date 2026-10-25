@@ -15,7 +15,7 @@ const files = async (dir) =>
   ).flat();
 const placeholders = (text) =>
   [...text.matchAll(/{{\s*([^}]+)\s*}}/g)].map((match) => match[1].trim()).sort();
-const locales = path.join(root, 'i18n/locales');
+const locales = path.join(root, 'shared/i18n/locales');
 const english = await readdir(path.join(locales, 'en'));
 assert.deepEqual((await readdir(path.join(locales, 'zh-CN'))).sort(), english.sort());
 let count = 0;
@@ -59,7 +59,7 @@ for (const file of await files(root)) {
   if (
     !/\.tsx?$/.test(file) ||
     file.includes('.test.') ||
-    file.startsWith(path.join(root, 'i18n')) ||
+    file.startsWith(path.join(root, 'shared/i18n')) ||
     file === path.join(root, 'preview/scenarios/fixtures.ts')
   )
     continue;

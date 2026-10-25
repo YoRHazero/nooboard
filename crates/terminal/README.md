@@ -91,3 +91,5 @@ cargo clippy -p nooboard-terminal --all-targets --locked -- -D warnings
 测试使用自建回环 SSH/SFTP 服务、临时目录和本地 PTY，不需要生产凭据。覆盖依赖共享与停止、状态/输出流、主机验证与认证时序、真实转发字节、文件冲突、取消、临时文件清理与提交结果不确定。
 
 当前实测平台为 macOS。Linux 与 Windows 的进程监督实现仍需在各自平台验收。Windows 当前在 portable-pty 创建进程后将其加入 Job Object，创建到加入之间可能存在早期子进程的归属空隙；该启动边界需要在 Windows 后端进一步解决，尚不能宣称 Windows 已满足完整进程树清理契约。回环测试也不能替代与实际 SSH 服务器、VPN 命令的最终互操作验收。
+
+终端启动请求 `StartTerminalRequest` 的 `config_id` 为 `Option<TerminalConfigId>`，`name` 是本次会话的显示名称。`None` 表示没有已保存配置的临时会话；仍返回独立 `TerminalRunId`，沿用输出、停止与 shutdown 的统一生命周期。临时会话不登记终端配置占用；如果调用方提供 SSH 目标或前置命令，仍持有这些实际引用的占用。命令和隧道的配置 ID 继续为必填。

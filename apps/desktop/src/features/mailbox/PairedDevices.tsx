@@ -1,8 +1,9 @@
-import { useI18n } from '../../i18n/react';
+import { useI18n } from '../../shared/i18n/react';
 import { ArrowUpRight } from 'lucide-react';
-import { useSnapshot, type Peer } from '../../desktop/api';
-import { peerState } from '../../features/devices/selectors';
-import { DeviceIcon, DeviceName } from '../devices/DeviceName';
+import { type Peer } from '../../client/api';
+import { useSnapshot } from '../../client/react';
+import { peerState } from '../devices/api';
+import { DeviceIcon, DeviceName } from '../devices/api';
 export function PairedDevices({
   devices,
   onManage,

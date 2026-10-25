@@ -190,11 +190,14 @@ impl Manager {
         driver: DriverSpec,
         deps: Vec<DependencyStartSpec>,
     ) {
-        let mut references = vec![match &kind {
-            Kind::Terminal(id) => TerminalConfigReference::Terminal(*id),
-            Kind::Command { config_id, .. } => TerminalConfigReference::Command(*config_id),
-            Kind::Tunnel { config_id, .. } => TerminalConfigReference::Tunnel(*config_id),
-        }];
+        let mut references = match &kind {
+            Kind::Terminal(id) => id
+                .map(TerminalConfigReference::Terminal)
+                .into_iter()
+                .collect::<Vec<_>>(),
+            Kind::Command { config_id, .. } => vec![TerminalConfigReference::Command(*config_id)],
+            Kind::Tunnel { config_id, .. } => vec![TerminalConfigReference::Tunnel(*config_id)],
+        };
         if let RunTarget::Ssh(target) = &target {
             references.push(TerminalConfigReference::SshTarget(target.config_id));
         }
@@ -211,6 +214,7 @@ impl Manager {
         let config_lease = self
             .leases
             .as_ref()
+            .filter(|_| !references.is_empty())
             .map(|leases| leases.acquire(id, &references));
         self.sequence += 1;
         let (input, input_rx) = mpsc::channel(self.options.input_queue_capacity);

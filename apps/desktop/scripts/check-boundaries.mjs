@@ -10,7 +10,8 @@ async function scan(directory) {
       await scan(file);
       continue;
     }
-    if (!/\.tsx?$/.test(file) || /\.test\.tsx?$/.test(file)) continue;
+    if (!/\.tsx?$/.test(file) || /\.test\.tsx?$/.test(file) || file.endsWith('routeTree.gen.ts'))
+      continue;
     const relative = path.relative(root, file).replaceAll('\\', '/');
     const tree = parse(await fs.readFile(file, 'utf8'), {
       sourceType: 'module',
@@ -44,26 +45,36 @@ async function scan(directory) {
       const assert = (valid, why) => {
         if (!valid) throw new Error(`${relative} -> ${imported}: ${why}`);
       };
-      if (relative.startsWith('desktop/'))
+      if (relative.startsWith('client/'))
         assert(
-          !/^(app|features|preview)\//.test(target),
-          'desktop cannot depend on composition or features',
+          !/^(app|pages|features|preview)\//.test(target),
+          'client cannot depend on composition, pages or features',
         );
-      if (/^(features|app)\//.test(relative) && target.startsWith('desktop/'))
-        assert(target === 'desktop/api', 'use the desktop public facade');
-      if (relative.startsWith('features/'))
+      if (/^(features|pages|app)\//.test(relative) && target.startsWith('client/'))
+        assert(
+          target === 'client/api' || target === 'client/react' || target === 'client/create',
+          'use a public client entry',
+        );
+      if (/^(features|pages)\//.test(relative))
         assert(
           !/^(app|preview)\/|^@tauri-apps\//.test(target),
           'features cannot call IPC or select adapters',
         );
-      if (/^(ui|i18n)\//.test(relative))
+      if (relative.startsWith('features/'))
+        assert(!target.startsWith('pages/'), 'features cannot depend on pages');
+      if (/^(features|pages)\//.test(relative) && target.startsWith('features/')) {
+        const sameFeature =
+          relative.startsWith('features/') && relative.split('/')[1] === target.split('/')[1];
+        assert(sameFeature || /\/api$/.test(target), 'cross-feature imports use the public api');
+      }
+      if (/^shared\//.test(relative))
         assert(
-          !/^(app|features|desktop|preview)\//.test(target),
+          !/^(app|pages|features|client|preview)\//.test(target),
           'shared utilities cannot depend on application layers',
         );
       if (imported.startsWith('@tauri-apps/'))
         assert(
-          relative.startsWith('desktop/bridge/') || relative === 'app/bootstrap.tsx',
+          relative.startsWith('client/bridge/') || relative === 'app/bootstrap.tsx',
           'platform imports belong to the bridge',
         );
     }

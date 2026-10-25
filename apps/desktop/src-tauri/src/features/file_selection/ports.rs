@@ -8,3 +8,8 @@ pub trait SelectedFiles: Send + Sync {
     fn send(&self, paths: Vec<PathBuf>) -> Future<'_, ()>;
     fn set_receive_directory(&self, path: PathBuf) -> Future<'_, ()>;
 }
+
+pub trait SelectedTransfers: Send + Sync {
+    fn upload(&self, paths: Vec<PathBuf>) -> Future<'_, ()>;
+    fn download(&self, directory: PathBuf) -> Future<'_, ()>;
+}

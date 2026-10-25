@@ -238,8 +238,8 @@ pub async fn wait(terminal: &Terminal, predicate: impl Fn(&TerminalSnapshot) -> 
 pub async fn terminal(terminal: &Terminal, target: SshStartTarget) -> TerminalRunId {
     let id = terminal
         .start_terminal(StartTerminalRequest {
-            config_id: TerminalConfigId::new(),
-            config_name: "remote terminal".into(),
+            config_id: Some(TerminalConfigId::new()),
+            name: "remote terminal".into(),
             target: TerminalStartTarget::Ssh(target),
             dependencies: vec![],
         })

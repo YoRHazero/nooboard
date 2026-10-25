@@ -1,4 +1,4 @@
-import type { DesktopEvent } from '../../desktop/api';
+import type { DesktopEvent } from '../../client/api';
 import { carriesProps, type Clip, type Gesture } from './motions';
 export type { Clip } from './motions';
 

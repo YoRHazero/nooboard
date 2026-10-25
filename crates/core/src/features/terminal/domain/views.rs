@@ -7,6 +7,18 @@ use serde::Serialize;
 )]
 #[serde(transparent)]
 pub struct TerminalPromptId(pub(crate) uuid::Uuid);
+impl std::fmt::Display for TerminalPromptId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+impl std::str::FromStr for TerminalPromptId {
+    type Err = uuid::Error;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        uuid::Uuid::parse_str(value).map(Self)
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub enum SshAuthSummary {
     Password { saved: bool },

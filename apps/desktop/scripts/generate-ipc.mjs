@@ -32,7 +32,17 @@ function type(value) {
   if (value.$ref) return value.$ref.split('/').at(-1);
   if (value.enum) return value.enum.map((v) => JSON.stringify(v)).join(' | ');
   if ('const' in value) return JSON.stringify(value.const);
-  if (value.anyOf || value.oneOf) return (value.anyOf ?? value.oneOf).map(type).join(' | ');
+  if (value.anyOf || value.oneOf) {
+    const union = (value.anyOf ?? value.oneOf).map(type).join(' | ');
+    // Flattened Rust tagged enums may have shared properties alongside oneOf.
+    if (value.properties) {
+      const base = { ...value };
+      delete base.anyOf;
+      delete base.oneOf;
+      return `(${type(base)}) & (${union})`;
+    }
+    return union;
+  }
   if (value.allOf) return value.allOf.map((v) => `(${type(v)})`).join(' & ');
   if (Array.isArray(value.type))
     return value.type.map((t) => type({ ...value, type: t })).join(' | ');
@@ -67,7 +77,7 @@ const text =
   Object.entries(schema.definitions)
     .map(([name, value]) => `export type ${name} = ${type(value)};`)
     .join('\n');
-const target = path.join(root, 'src/desktop/bridge/generated.ts');
+const target = path.join(root, 'src/client/bridge/generated.ts');
 const config = await prettier.resolveConfig(target);
 const formatted = await prettier.format(text, { ...config, parser: 'typescript' });
 if (check) {

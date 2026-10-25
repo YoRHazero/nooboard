@@ -1,4 +1,4 @@
-import { decode } from '../desktop/snapshot/decode';
+import { decode } from '../client/snapshot/decode';
 import { snapshotFixture, hostFixture } from './scenarios/fixtures';
 export { examplePeer, examplePeers, nearbySample } from './scenarios/fixtures';
 export function createSeed() {

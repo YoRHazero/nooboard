@@ -1,0 +1,115 @@
+.select-root {
+  display: contents;
+}
+.select-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: start;
+  transition:
+    border-color 120ms,
+    background 120ms;
+}
+.select-control > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.select-control:hover:not(:disabled),
+.select-control[data-state='open'] {
+  border-color: var(--accent);
+}
+.select-control[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.select-chevron {
+  margin-inline-start: auto;
+  color: var(--muted);
+  transition: transform 120ms;
+}
+.select-control[data-state='open'] .select-chevron {
+  transform: rotate(180deg);
+}
+.select-menu {
+  z-index: 202;
+  min-width: var(--radix-select-trigger-width);
+  max-width: var(--radix-select-content-available-width);
+  max-height: min(320px, var(--radix-select-content-available-height));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--ink);
+  box-shadow: 0 8px 28px #0002;
+  transform-origin: var(--radix-select-content-transform-origin);
+  animation: select-enter 100ms ease-out;
+}
+.select-options {
+  padding: 4px;
+}
+.select-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 8px 32px 8px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: default;
+  user-select: none;
+  overflow-wrap: anywhere;
+  outline: none;
+}
+.select-option[data-state='checked'] {
+  color: var(--accent);
+}
+.select-option[data-highlighted] {
+  background: var(--accent-soft);
+}
+.select-option[data-disabled] {
+  opacity: 0.45;
+}
+.select-indicator {
+  position: absolute;
+  right: 10px;
+  display: flex;
+  align-items: center;
+}
+.select-scroll {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  color: var(--muted);
+}
+@keyframes select-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (forced-colors: active) {
+  .select-menu,
+  .select-control {
+    border-color: ButtonText;
+  }
+  .select-option[data-highlighted] {
+    background: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+}

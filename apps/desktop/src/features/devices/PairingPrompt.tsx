@@ -1,11 +1,11 @@
-import { type Problem, errorText, toProblem } from '../../i18n/errors';
-import { useI18n } from '../../i18n/react';
+import { type Problem, errorText, toProblem } from '../../shared/i18n/errors';
+import { useI18n } from '../../shared/i18n/react';
 import { useEffect, useState } from 'react';
 import { Check, KeyRound, LoaderCircle } from 'lucide-react';
-import { useDesktop, useSnapshot } from '../../desktop/api';
-import type { PairingSession } from '../../desktop/api';
-import { Dialog } from '../../ui/Dialog';
-import { Button } from '../../ui/controls';
+import { useDesktop, useSnapshot } from '../../client/react';
+import type { PairingSession } from '../../client/api';
+import { Dialog } from '../../shared/ui/Dialog';
+import { Button } from '../../shared/ui/controls';
 export function PairingPrompt() {
   const { onboarding } = useSnapshot();
   return onboarding?.session ? (

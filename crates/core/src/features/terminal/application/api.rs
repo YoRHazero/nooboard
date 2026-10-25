@@ -134,6 +134,38 @@ impl TerminalWorkspace {
         guard.disarm();
         result
     }
+    /// Open a local shell without creating or occupying a saved configuration.
+    pub async fn start_local_terminal(&self, name: String) -> Result<TerminalRunId> {
+        match self
+            .start(
+                StartKind::LocalTerminal(name),
+                CancellationToken::new(),
+                false,
+            )
+            .await?
+            .0
+        {
+            RunId::Terminal(id) => Ok(id),
+            _ => Err(Error::Internal),
+        }
+    }
+    /// Start and subscribe atomically, including output produced before the reply.
+    pub async fn start_local_terminal_with_output(
+        &self,
+        name: String,
+    ) -> Result<(TerminalRunId, TerminalOutputSubscription)> {
+        match self
+            .start(
+                StartKind::LocalTerminal(name),
+                CancellationToken::new(),
+                true,
+            )
+            .await?
+        {
+            (RunId::Terminal(id), Some(output)) => Ok((id, output)),
+            _ => Err(Error::Internal),
+        }
+    }
     pub async fn start_terminal(&self, id: TerminalConfigId) -> Result<TerminalRunId> {
         match self
             .start(StartKind::Terminal(id), CancellationToken::new(), false)

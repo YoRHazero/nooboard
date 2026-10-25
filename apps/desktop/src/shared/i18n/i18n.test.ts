@@ -1,0 +1,52 @@
+import { afterEach, expect, it } from 'vitest';
+import { i18n, t } from './index';
+import { errorText, fail, problem, toProblem } from './errors';
+import { fullTime } from '../ui/text';
+import { PreviewBridge } from '../../preview/bridge';
+import { createDesktop } from '../../client/create';
+import { deliveryLabel } from '../../features/transfers/deliveries';
+
+afterEach(async () => {
+  await i18n.changeLanguage('zh-CN');
+});
+it('uses English plural rules and localized numbers', async () => {
+  await i18n.changeLanguage('en');
+  expect(t('home:sendTo', { count: 0 })).toBe('To 0 devices');
+  expect(t('home:sendTo', { count: 1 })).toBe('To 1 device');
+  expect(t('home:sendTo', { count: 2 })).toBe('To 2 devices');
+  expect(t('common:items', { count: 1000 })).toBe('1,000 items');
+  await i18n.changeLanguage('zh-CN');
+  expect(t('home:sendTo', { count: 1 })).toBe('发给 1 台设备');
+});
+it('reformats an existing date, delivery state and stored error after switching', async () => {
+  const error = toProblem(fail('pairingCodeRemaining', { count: 1 }));
+  const date = new Date(2026, 8, 16, 12, 30).getTime();
+  const chinese = fullTime(date);
+  expect(errorText(error)).toContain('还可尝试 1 次');
+  await i18n.changeLanguage('en');
+  expect(errorText(error)).toBe('Incorrect code. 1 attempt left.');
+  expect(deliveryLabel('awaitingReceipt')).toBe('Awaiting confirmation');
+  expect(fullTime(date)).not.toBe(chinese);
+  expect(fullTime(date)).toContain('September');
+});
+it('accepts structured IPC errors and hides unrecognized diagnostic text', async () => {
+  await i18n.changeLanguage('en');
+  expect(errorText(toProblem({ code: 'pairingTimeout' }))).toContain('expired');
+  expect(toProblem('raw internal database error')).toEqual(problem('generic'));
+  expect(toProblem({ code: 'unknown' })).toEqual(problem('generic'));
+  expect(toProblem(new Error('本机内部错误'))).toEqual(problem('generic'));
+});
+it('preserves existing clipboard contents, history, names and pairing session when changing language', async () => {
+  const { runtime, desktop: client } = createDesktop(new PreviewBridge());
+  await runtime.start();
+  try {
+    await client.beginPairing('192.168.1.52:24817');
+    const id = client.getSnapshot().onboarding!.session!.id;
+    await client.submitPairingCode(id, '00000000');
+    const before = client.getSnapshot();
+    await i18n.changeLanguage('en');
+    expect(client.getSnapshot()).toBe(before);
+  } finally {
+    await runtime.dispose();
+  }
+});

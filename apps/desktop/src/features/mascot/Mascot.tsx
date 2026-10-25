@@ -1,6 +1,6 @@
-import { useI18n } from '../../i18n/react';
+import { useI18n } from '../../shared/i18n/react';
 import { useEffect, useRef, useState } from 'react';
-import { useDesktop, useSnapshot } from '../../desktop/api';
+import { useDesktop, useSnapshot } from '../../client/react';
 import { Playback, type PlaybackState } from './playback';
 import type { BirdScene } from './scene';
 import type { TargetLayout } from './targets';

@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
-import { SnapshotStore } from '../../desktop/snapshot/store';
+import { SnapshotStore } from '../../client/snapshot/store';
 import { snapshotFixture, hostFixture } from '../../preview/scenarios/fixtures';
-import type { ContentKind, ContentStage } from '../../desktop/bridge/generated';
+import type { ContentKind, ContentStage } from '../../client/bridge/generated';
 import { ActivityInbox } from '../mailbox/ActivityInbox';
 import { Playback } from './playback';
 

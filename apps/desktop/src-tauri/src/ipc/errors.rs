@@ -4,11 +4,17 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
+#[serde(untagged)]
+pub enum ErrorParam {
+    Count(u8),
+    Text(String),
+}
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
 pub struct UiError {
     code: &'static str,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[schemars(default)]
-    params: BTreeMap<&'static str, u8>,
+    params: BTreeMap<&'static str, ErrorParam>,
 }
 pub fn ui(code: &'static str) -> UiError {
     UiError {
@@ -33,8 +39,20 @@ pub fn core(error: nooboard_core::Error) -> UiError {
         Error::AlreadyPaired => "identityChanged",
         Error::Fingerprint => "fingerprint",
         Error::NotFound => "historyMissing",
-        Error::Internal | Error::Terminal(_) | Error::TerminalShutdown(_) => "serviceFault",
-        Error::ConfigurationInUse { .. } => "busy",
+        Error::Internal => "serviceFault",
+        Error::Terminal(error) => {
+            return UiError {
+                code: "terminalOperation",
+                params: BTreeMap::from([("reason", ErrorParam::Text(error.to_string()))]),
+            };
+        }
+        Error::TerminalShutdown(error) => {
+            return UiError {
+                code: "terminalOperation",
+                params: BTreeMap::from([("reason", ErrorParam::Text(error.to_string()))]),
+            };
+        }
+        Error::ConfigurationInUse { .. } => "terminalConfigInUse",
     })
 }
 pub fn pairing(error: &PairingFailure) -> UiError {
@@ -43,7 +61,7 @@ pub fn pairing(error: &PairingFailure) -> UiError {
         PairingFailure::IncorrectCode { remaining } => {
             return UiError {
                 code: "pairingCodeRemaining",
-                params: BTreeMap::from([("count", *remaining)]),
+                params: BTreeMap::from([("count", ErrorParam::Count(*remaining))]),
             };
         }
         PairingFailure::Storage => "pairingStorage",

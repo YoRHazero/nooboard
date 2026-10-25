@@ -56,8 +56,8 @@ async fn host_confirmation_can_outlast_connection_timeout_and_is_cancellable() {
         let client = service.handle();
         let id = client
             .start_terminal(StartTerminalRequest {
-                config_id: TerminalConfigId::new(),
-                config_name: "waiting for trust".into(),
+                config_id: Some(TerminalConfigId::new()),
+                name: "waiting for trust".into(),
                 target: TerminalStartTarget::Ssh(server.target(auth.clone())),
                 dependencies: vec![],
             })
@@ -142,8 +142,8 @@ async fn host_trust_precedes_credentials_and_rejection_sends_no_password() {
     let mut events = client.subscribe().events;
     let id = client
         .start_terminal(StartTerminalRequest {
-            config_id: TerminalConfigId::new(),
-            config_name: "rejected".into(),
+            config_id: Some(TerminalConfigId::new()),
+            name: "rejected".into(),
             target: TerminalStartTarget::Ssh(server.target(auth.clone())),
             dependencies: vec![],
         })
@@ -660,8 +660,8 @@ async fn failed_authentication_never_reports_password_ready_to_save() {
     let mut events = client.subscribe().events;
     let id = client
         .start_terminal(StartTerminalRequest {
-            config_id: TerminalConfigId::new(),
-            config_name: "bad auth".into(),
+            config_id: Some(TerminalConfigId::new()),
+            name: "bad auth".into(),
             target: TerminalStartTarget::Ssh(server.target(rejected.clone())),
             dependencies: vec![],
         })

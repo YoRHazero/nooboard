@@ -112,6 +112,9 @@ configuration 为各目标记录最近一次启用的配置版本，sync 将它�
 
 `app.terminal()` 返回可克隆的 `TerminalWorkspace`。配置 CRUD、复制、删除、参数更新和交互应从这一入口进入；配置 ID 由后端生成 UUID，新执行按当前配置 ID 提交。运行时输入输出、停止、手动继续、生命周期切换、SFTP 和文件任务也从此门面访问。
 
+`start_local_terminal(name)` 与 `start_local_terminal_with_output(name)` 直接打开本机默认 shell，生成 `config_id: None` 的普通 `TerminalRun`，不创建、修改或查找已保存终端配置。后一接口原子登记会话与输出订阅。两者仍经过协调器的启动准入和关闭检查；原有 `start_terminal(config_id)` 系列继续按配置冻结输入并持有占用。
+
+
 ```rust,no_run
 use nooboard_core::terminal::{CommandInput, CommandTarget, CommandReusePolicy, CancellationToken};
 # async fn example(app: nooboard_core::App) -> nooboard_core::Result<()> {
@@ -136,7 +139,7 @@ let (_run, _output) = terminal.start_command_with_output(
 - **交互与订阅**：待答提示保留在快照中，可恢复订阅、回答或取消；过期响应不继续执行。`subscribe_runs()` 的结束事件与字节输出保持有界流语义，活动快照不保存结束历史。
 - **参数**：默认来自 Terminal 的 JSON 配置；Core 保存 `TerminalServiceOptions` 并应用。控制队列容量在本次启动固定，运行中修改被拒绝。保存成功但运行时应用失败会报告 Service issue，保存值用于下次启动；不存在跨数据库与运行时的原子事务。
 
-Core 已接入真实 Terminal Service。新的桌面 Terminal 页面、IPC 命令及文件面板仍需单独实现；当前桌面改动只包括应用生命周期及失败退出处理。
+Core 已接入真实 Terminal Service。桌面通过生成的 IPC 契约调用这一门面，提供 Terminal 页面、认证交互、输出回放与文件面板；具体组织见[桌面架构](../../apps/desktop/ARCHITECTURE.md)。
 
 ## 持久化与兼容范围
 

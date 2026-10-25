@@ -1,4 +1,4 @@
-import { useI18n } from '../../i18n/react';
+import { useI18n } from '../../shared/i18n/react';
 import { motion, useReducedMotion } from 'motion/react';
 
 export function MailboxBadge({ count, reducedMotion }: { count: number; reducedMotion: boolean }) {

@@ -92,9 +92,9 @@ npm run ipc:check
 npm run architecture:check
 ```
 
-生成物为 `ipc/schema.json` 与 `src/desktop/bridge/generated.ts`。同时更新预览实现；不要手工维护第二套接口定义。前端功能模块通过 `desktop/api.ts` 访问宿主，不直接调用 Tauri。
+生成物为 `ipc/schema.json` 与 `src/client/bridge/generated.ts`。同时更新预览实现；不要手工维护第二套接口定义。前端功能模块通过 `client/api.ts` 和 `client/react.tsx` 访问宿主，不直接调用 Tauri。
 
-用户文案同时维护 `src/i18n/locales/zh-CN` 与 `en`，运行 `npm run i18n:check`。完整检查与原生验收命令见 [测试文档](testing.md)。
+用户文案同时维护 `src/shared/i18n/locales/zh-CN` 与 `en`，运行 `npm run i18n:check`。完整检查与原生验收命令见 [测试文档](testing.md)。
 
 ## 命令行后端示例
 
@@ -130,7 +130,7 @@ cargo run -p nooboard-core --example backend -- /path/to/private/nooboard.db my-
 
 工作流定义是构建平台与权限的依据：[CI](../.github/workflows/ci.yml)、[Release](../.github/workflows/release.yml)。推送分支会触发 CI，推送 `v*` 标签会额外触发 Release。
 
-1. 确定新版本，统一更新根 `Cargo.toml`、桌面 `package.json`、`package-lock.json` 和 `tauri.conf.json`，同步 `Cargo.lock` 中六个 workspace 包的版本。
+1. 确定新版本，统一更新根 `Cargo.toml`、桌面 `package.json`、`package-lock.json` 和 `tauri.conf.json`，同步 `Cargo.lock` 中所有 workspace 包的版本。
 2. 执行测试文档中的相关检查，并通过版本验证脚本。下方 `vX.Y.Z` 需替换成实际的新标签。
 3. 提交代码，创建新标签，推送提交及标签。已有发布标签不移动、不覆盖。
 

@@ -5,6 +5,12 @@ use crate::{
 use std::sync::Mutex;
 use tauri::ipc::Channel;
 use tokio::sync::watch;
+pub struct Sources {
+    pub backend: watch::Receiver<nooboard_core::AppSnapshot>,
+    pub desktop: watch::Receiver<crate::app::snapshot::Snapshot>,
+    pub terminal: nooboard_core::terminal::TerminalWorkspace,
+    pub diagnostic: bool,
+}
 #[derive(Default)]
 struct Registration {
     generation: u64,
@@ -24,14 +30,19 @@ impl Subscriptions {
         &self,
         ticket: u64,
         id: String,
-        backend: watch::Receiver<nooboard_core::AppSnapshot>,
-        desktop: watch::Receiver<crate::app::snapshot::Snapshot>,
-        diagnostic: bool,
+        sources: Sources,
         channel: Channel<dto::Frame>,
+        io: &super::terminal_io::TerminalIo,
     ) -> Result<dto::Connection> {
         self.install(ticket, id, |id| {
-            start(id, backend, desktop, diagnostic, channel)
+            io.activate(id.clone());
+            start(id, sources, channel)
         })
+    }
+    pub fn owns(&self, id: &str) -> bool {
+        let state = self.0.lock().unwrap();
+        state.desired.as_deref() == Some(id)
+            && state.active.as_ref().is_some_and(|active| active.id == id)
     }
     fn install<T>(
         &self,
@@ -70,17 +81,28 @@ impl Drop for Subscription {
 }
 pub fn start(
     id: String,
-    mut backend: watch::Receiver<nooboard_core::AppSnapshot>,
-    mut desktop: watch::Receiver<crate::app::snapshot::Snapshot>,
-    diagnostic: bool,
+    sources: Sources,
     channel: Channel<dto::Frame>,
 ) -> (dto::Connection, Subscription) {
+    let Sources {
+        mut backend,
+        mut desktop,
+        terminal,
+        diagnostic,
+    } = sources;
+    let mut terminal_events = terminal.subscribe_runs().events;
+    let mut terminal_watching = true;
     let initial = snapshot(backend.borrow_and_update().clone());
     let host = crate::ipc::mapping::desktop::snapshot(desktop.borrow_and_update().clone());
     let mut visible = host.visible;
     let task = tauri::async_runtime::spawn(async move {
         loop {
             tokio::select! {
+                event=terminal_events.next(),if terminal_watching=>match event {
+                    Ok(Some(event))=>if channel.send(dto::Frame::TerminalEnded(super::mapping::terminal::ended(event))).is_err(){return;},
+                    Err(_)=>{let _=channel.send(dto::Frame::TerminalLagged);terminal_events=terminal.subscribe_runs().events;},
+                    Ok(None)=>terminal_watching=false,
+                },
                 changed = backend.changed() => {
                     if changed.is_err() { break; }
                     let current = backend.borrow_and_update().clone();

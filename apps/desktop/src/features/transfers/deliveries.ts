@@ -1,5 +1,5 @@
-import { t } from '../../i18n/index';
-import type { Activity, DeliveryState } from '../../desktop/api';
+import { t } from '../../shared/i18n/index';
+import type { Activity, DeliveryState } from '../../client/api';
 export function deliveryLabel(state: DeliveryState): string {
   const labels: Record<DeliveryState, string> = {
     queued: t('common:queued'),
@@ -15,7 +15,7 @@ export function deliveryLabel(state: DeliveryState): string {
   };
   return labels[state];
 }
-export { deliveryPending, batchState } from '../../desktop/api';
+export { deliveryPending, batchState } from '../../client/api';
 export function batchSummary(activity: Activity) {
   const targets = activity.targets ?? [];
   const success = targets.filter((d) => d.state === 'applied').length;

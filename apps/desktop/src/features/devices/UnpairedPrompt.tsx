@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { useDesktop, useSnapshot, type Peer } from '../../desktop/api';
-import { type Problem, errorText, toProblem } from '../../i18n/errors';
-import { useI18n } from '../../i18n/react';
-import { Dialog } from '../../ui/Dialog';
-import { Button } from '../../ui/controls';
+import { type Peer } from '../../client/api';
+import { useDesktop, useSnapshot } from '../../client/react';
+import { type Problem, errorText, toProblem } from '../../shared/i18n/errors';
+import { useI18n } from '../../shared/i18n/react';
+import { Dialog } from '../../shared/ui/Dialog';
+import { Button } from '../../shared/ui/controls';
 
 export function UnpairedPrompt() {
   const { peers, session, onboarding } = useSnapshot();

@@ -81,7 +81,8 @@ pub async fn run(runtime: &Runtime, request: Request) -> Result<Reply, UiError> 
         Request::CopyHistory { id } => app.copy_history(routes::history::id(&id)?).await,
         Request::DeleteHistory { id } => app.delete_history(routes::history::id(&id)?).await,
         Request::ClearHistory => app.clear_history().await,
-        Request::HostPreferences { .. }
+        Request::Terminal { .. }
+        | Request::HostPreferences { .. }
         | Request::AcknowledgeNavigation { .. }
         | Request::Probe { .. }
         | Request::SelectFiles

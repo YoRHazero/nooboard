@@ -1,15 +1,10 @@
 import { useEffect, type ReactNode } from 'react';
-import {
-  DesktopProvider,
-  useConnection,
-  useDesktop,
-  usePreferences,
-  type Desktop,
-} from '../desktop/api';
-import { MailboxProvider } from '../features/mailbox/MailboxProvider';
-import { useI18n } from '../i18n/react';
-import { errorText } from '../i18n/errors';
-import { Button } from '../ui/controls';
+import { type Desktop } from '../client/api';
+import { DesktopProvider, useConnection, useDesktop, usePreferences } from '../client/react';
+import { MailboxProvider } from '../features/mailbox/api';
+import { useI18n } from '../shared/i18n/react';
+import { errorText } from '../shared/i18n/errors';
+import { Button } from '../shared/ui/controls';
 export function Providers({ desktop, children }: { desktop: Desktop; children: ReactNode }) {
   return (
     <DesktopProvider desktop={desktop}>

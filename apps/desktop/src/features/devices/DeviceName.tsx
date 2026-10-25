@@ -1,7 +1,7 @@
-import { useI18n } from '../../i18n/react';
+import { useI18n } from '../../shared/i18n/react';
 import { Laptop, Monitor, Terminal } from 'lucide-react';
-import type { DeviceIdentity, Platform } from '../../desktop/api';
-import { shortNoobId } from '../../features/devices/selectors';
+import type { DeviceIdentity, Platform } from '../../client/api';
+import { shortNoobId } from './selectors';
 export function DeviceIcon({ platform, size = 24 }: { platform?: Platform; size?: number }) {
   const Icon = platform === 'macOS' ? Laptop : platform === 'Ubuntu' ? Terminal : Monitor;
   return <Icon size={size} strokeWidth={1.5} aria-hidden="true" />;

@@ -92,8 +92,8 @@ impl Providers {
     ) -> Result<StartTerminalRequest> {
         let c = catalog.terminals.get(&id).ok_or(Error::NotFound)?;
         Ok(StartTerminalRequest {
-            config_id: id,
-            config_name: c.name.clone(),
+            config_id: Some(id),
+            name: c.name.clone(),
             target: match c.target {
                 TerminalTarget::Local => TerminalStartTarget::Local,
                 TerminalTarget::Ssh(id) => TerminalStartTarget::Ssh(self.target(catalog, id)?),

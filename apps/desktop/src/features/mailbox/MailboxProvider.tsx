@@ -8,8 +8,8 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { useDesktop } from '../../desktop/api';
-import type { PlaybackState } from '../mascot/playback';
+import { useDesktop } from '../../client/react';
+import type { PlaybackState } from '../mascot/api';
 import { ActivityInbox } from './ActivityInbox';
 
 const MailboxContext = createContext<{

@@ -7,8 +7,9 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 #[derive(Clone, Debug)]
 pub struct StartTerminalRequest {
-    pub config_id: TerminalConfigId,
-    pub config_name: String,
+    /// None starts a session without a saved terminal configuration.
+    pub config_id: Option<TerminalConfigId>,
+    pub name: String,
     pub target: TerminalStartTarget,
     pub dependencies: Vec<DependencyStartSpec>,
 }

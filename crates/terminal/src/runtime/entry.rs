@@ -9,7 +9,7 @@ pub(super) enum Phase {
     Stopping(Option<TerminalError>),
 }
 pub(super) enum Kind {
-    Terminal(TerminalConfigId),
+    Terminal(Option<TerminalConfigId>),
     Command {
         config_id: CommandConfigId,
         command: String,
@@ -72,7 +72,7 @@ impl Entry {
         TerminalRun {
             id: *id,
             config_id: *config_id,
-            config_name: self.name.clone(),
+            name: self.name.clone(),
             target: self.target.clone(),
             dependency_run_ids: self.dependencies.clone(),
             stop_method: self.method,

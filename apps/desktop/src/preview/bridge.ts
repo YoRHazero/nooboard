@@ -1,6 +1,7 @@
-import type { DesktopBridge, Session } from '../desktop/bridge/port';
-import type { Frame, Reply, Request, PeerConnectionState } from '../desktop/bridge/generated';
-import { fail } from '../i18n/errors';
+import { PreviewTerminal } from './terminal';
+import type { DesktopBridge, Session } from '../client/bridge/port';
+import type { Frame, Reply, Request, PeerConnectionState } from '../client/bridge/generated';
+import { fail } from '../shared/i18n/errors';
 import {
   examples,
   exampleReceived,
@@ -22,6 +23,15 @@ export class PreviewBridge implements DesktopBridge {
   private disposed = false;
   private sequence = 1;
   private initializedPreferences = false;
+  readonly terminal = new PreviewTerminal(
+    (workspace) => {
+      this.snapshot.terminal = workspace;
+      this.publish();
+    },
+    (frame) => {
+      this.listeners.forEach((receive) => receive(frame));
+    },
+  );
   async locale() {
     return typeof navigator === 'undefined' ? 'en' : navigator.language;
   }
@@ -92,6 +102,8 @@ export class PreviewBridge implements DesktopBridge {
   async request(request: Request): Promise<Reply> {
     this.ensureOpen();
     switch (request.type) {
+      case 'terminal':
+        return this.terminal.request(request.data.action);
       case 'hostPreferences':
         if (!this.initializedPreferences && request.data.legacyLanguage)
           this.host.language = request.data.legacyLanguage;
@@ -419,6 +431,7 @@ export class PreviewBridge implements DesktopBridge {
     this.ensureOpen();
     this.clearTimers();
     this.snapshot = snapshotFixture();
+    this.terminal.reset();
     this.history = historyFixture();
     this.sequence = 1;
     this.publish();
@@ -429,6 +442,7 @@ export class PreviewBridge implements DesktopBridge {
   }
   dispose() {
     this.disposed = true;
+    this.terminal.dispose();
     this.clearTimers();
     this.listeners.clear();
   }

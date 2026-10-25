@@ -26,6 +26,7 @@ pub struct Runtime {
     pub tray: Arc<TrayService>,
     pub lifecycle: Arc<Lifecycle>,
     pub subscriptions: Subscriptions,
+    pub terminal_io: crate::ipc::terminal_io::TerminalIo,
     pub files: FileSelection,
     state: watch::Sender<Snapshot>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
@@ -54,6 +55,7 @@ impl Runtime {
             lifecycle,
             files,
             subscriptions: Subscriptions::default(),
+            terminal_io: Default::default(),
             state,
             tasks: Mutex::new(vec![]),
         };
@@ -79,6 +81,37 @@ impl Runtime {
         self.preferences.update(patch, legacy)?;
         self.publish();
         Ok(self.snapshot())
+    }
+    pub async fn terminal_upload(
+        &self,
+        workspace: nooboard_core::terminal::TerminalWorkspace,
+        run: nooboard_core::terminal::TerminalRunId,
+        directory: String,
+        folder: bool,
+        conflict: nooboard_core::terminal::FileConflictPolicy,
+    ) -> Result<()> {
+        let target = super::adapters::terminal_files::TerminalFiles {
+            workspace,
+            run,
+            remote: vec![directory],
+            conflict,
+        };
+        self.files.upload(&target, folder).await
+    }
+    pub async fn terminal_download(
+        &self,
+        workspace: nooboard_core::terminal::TerminalWorkspace,
+        run: nooboard_core::terminal::TerminalRunId,
+        paths: Vec<String>,
+        conflict: nooboard_core::terminal::FileConflictPolicy,
+    ) -> Result<()> {
+        let target = super::adapters::terminal_files::TerminalFiles {
+            workspace,
+            run,
+            remote: paths,
+            conflict,
+        };
+        self.files.download(&target).await
     }
     pub async fn select_files(&self) -> Result<()> {
         let target = FileTarget {
@@ -151,6 +184,7 @@ impl Runtime {
 }
 impl Drop for Runtime {
     fn drop(&mut self) {
+        self.terminal_io.clear();
         for task in self.tasks.get_mut().unwrap() {
             task.abort();
         }

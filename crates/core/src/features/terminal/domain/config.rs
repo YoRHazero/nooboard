@@ -244,6 +244,7 @@ pub(crate) struct StartPlan {
 }
 #[derive(Clone)]
 pub(crate) enum StartKind {
+    LocalTerminal(String),
     Terminal(TerminalConfigId),
     Command(CommandConfigId, CommandReusePolicy),
     Tunnel(TunnelConfigId),
@@ -253,6 +254,7 @@ impl StartPlan {
         let mut references = Vec::new();
         let mut commands = Vec::new();
         match self.root {
+            StartKind::LocalTerminal(ref display_name) => name(display_name)?,
             StartKind::Terminal(id) => {
                 let c = self.catalog.terminals.get(&id).ok_or(Error::NotFound)?;
                 references.push(TerminalConfigReference::Terminal(id));

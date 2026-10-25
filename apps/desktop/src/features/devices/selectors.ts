@@ -1,5 +1,5 @@
-import { t } from '../../i18n/index';
-import type { DeviceIdentity, NearbyDevice, Peer } from '../../desktop/api';
+import { t } from '../../shared/i18n/index';
+import type { DeviceIdentity, NearbyDevice, Peer } from '../../client/api';
 
 /** Keep live socket endpoints distinct from discovery hints and saved dial addresses. */
 export function peerAddresses(peer: Peer, nearby: readonly NearbyDevice[]) {

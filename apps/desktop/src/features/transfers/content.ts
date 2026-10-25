@@ -1,8 +1,8 @@
-import type { ContentStage, ContentTransfer } from '../../desktop/api';
-import { t } from '../../i18n/index';
+import type { ContentStage, ContentTransfer } from '../../client/api';
+import { t } from '../../shared/i18n/index';
 
-import { contentPending } from '../../desktop/api';
-export { contentPending, contentActivityState } from '../../desktop/api';
+import { contentPending } from '../../client/api';
+export { contentPending, contentActivityState } from '../../client/api';
 export const contentCancellable = (stage: ContentStage) =>
   contentPending(stage) && !['Saving', 'Applying', 'Cancelling'].includes(stage);
 export const contentStageLabel = (stage: ContentStage) => t(`transfers:stage${stage}`);

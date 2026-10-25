@@ -22,3 +22,6 @@ mod history;
 pub use history::*;
 mod transfers;
 pub use transfers::*;
+
+mod terminal;
+pub use terminal::*;
