@@ -11,5 +11,9 @@ pub fn snapshot(value: Snapshot) -> contracts::Snapshot {
         visible: value.window.visible,
         navigation: value.window.navigation,
         version: env!("CARGO_PKG_VERSION"),
+        update: value.update.map(|update| contracts::ReadyUpdate {
+            version: update.version,
+            installing: update.installing,
+        }),
     }
 }

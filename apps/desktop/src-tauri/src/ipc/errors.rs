@@ -92,6 +92,8 @@ pub fn desktop(error: crate::error::Error) -> UiError {
         Error::Subscription => ui("subscription"),
         Error::AppDirectory => ui("appDirectory"),
         Error::DiagnosticsDisabled => ui("diagnosticsDisabled"),
+        Error::UpdateUnavailable => ui("updateUnavailable"),
+        Error::UpdateInstall => ui("updateInstall"),
     }
 }
 

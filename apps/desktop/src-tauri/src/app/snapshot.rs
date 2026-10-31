@@ -9,4 +9,5 @@ pub struct Snapshot {
     pub preferences: Preferences,
     pub window: Window,
     pub tray: Tray,
+    pub update: Option<crate::features::update::domain::ReadyUpdate>,
 }

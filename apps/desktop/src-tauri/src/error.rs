@@ -14,6 +14,10 @@ pub enum Error {
     AppDirectory,
     #[error("diagnostics are disabled")]
     DiagnosticsDisabled,
+    #[error("no verified update is available")]
+    UpdateUnavailable,
+    #[error("application update could not be installed")]
+    UpdateInstall,
     #[error(transparent)]
     Core(#[from] nooboard_core::Error),
 }

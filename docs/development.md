@@ -41,15 +41,19 @@ npm run dev
 在 `apps/desktop` 执行：
 
 ```sh
+export TAURI_SIGNING_PRIVATE_KEY="$HOME/.local/share/nooboard-release/updater.key"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
 npm run desktop:build
 ```
+
+正式更新包需要与 `tauri.conf.json` 中公钥对应的发布私钥。仅本地测试、不生成更新包时可用 `npm run desktop:build -- --config '{"bundle":{"createUpdaterArtifacts":false}}'`；不要用临时生成的新密钥替换正式公钥。更新签名与 macOS 应用签名、identity 的本机加密密钥相互独立。
 
 未指定交叉编译 target 时，产物位于仓库根目录的 `target/release/bundle/`。显式指定 target 时，路径为 `target/<target>/release/bundle/`。各平台由本机工具链构建，不能把一次 macOS 构建当作 Windows/Linux 打包验证。
 
 macOS 仅生成本机测试 app，可使用临时签名：
 
 ```sh
-APPLE_SIGNING_IDENTITY=- npm run desktop:build -- --bundles app
+APPLE_SIGNING_IDENTITY=- npm run desktop:build -- --bundles app --config '{"bundle":{"createUpdaterArtifacts":false}}'
 ```
 
 产物是 `target/release/bundle/macos/nooboard.app`。临时签名不等于开发者签名或 Apple 公证。构建完成后可在仓库根目录运行 `codesign --verify --deep --strict target/release/bundle/macos/nooboard.app` 检查包完整性。
@@ -139,6 +143,16 @@ node scripts/check_release_version.mjs vX.Y.Z
 node --test scripts/check_release_version.test.mjs scripts/publish_release.test.mjs
 ```
 
-Release 在 Windows x64、macOS Apple Silicon、Ubuntu x64 分别构建 NSIS、DMG、deb 和 AppImage。所有平台构建成功后才收集四种安装包并发布 Release；只推送标签并不意味着安装包已经生成。
+Release 在 Windows x64、macOS Apple Silicon、Ubuntu x64 分别构建 NSIS、DMG、deb 和 AppImage，同时生成 macOS `.app.tar.gz` 和三个平台的更新签名。所有平台构建成功、产物完整后，发布脚本生成 `latest.json`，上传九个文件并检查上传结果，最后才公开 Release。缺失签名或上传失败时不会公开不完整更新；只推送标签并不意味着安装包已经生成。
 
-当前 Windows 安装包未签名，macOS 使用临时签名且未公证。自动更新元数据不由现有工作流上传。用户下载入口统一链接 GitHub Releases，避免在 README 中保留过期安装包地址。
+发布前需一次性在仓库 Actions Secrets 中配置 `TAURI_SIGNING_PRIVATE_KEY`，内容为本机 `~/.local/share/nooboard-release/updater.key` 文件的完整文本。该文件在仓库之外，权限为 `0600`；请另行保管备份。当前私钥无密码，`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 留空。已登录 GitHub CLI 时可使用：
+
+```sh
+gh secret set TAURI_SIGNING_PRIVATE_KEY --repo YoRHazero/nooboard < "$HOME/.local/share/nooboard-release/updater.key"
+```
+
+桌面只访问公开的 GitHub Releases `latest.json`，不保存 GitHub token。稳定版后台在启动时和每隔六小时检查、下载并验证签名；下载完成后才在版本号旁显示图标。安装请求先关闭 Core，再安装并重启。失败时保留已验证的内存更新包、恢复 Core 并重连界面，可再次点击重试。自动检查失败保持安静；退出应用后内存更新包释放，下次启动重新检查。开发/诊断构建不自动检查。Linux 自动安装仅支持 AppImage，deb 用户继续手动下载安装包。首次使用此功能需要手动安装包含更新器的版本。
+
+预览可用 `?update=ready` 或 `?update=failed` 检查提示和安装失败恢复；它们仅作用于浏览器示例，不运行原生安装。
+
+当前 Windows 安装包未做系统代码签名，macOS 使用临时签名且未公证；更新包均做独立的更新签名。用户下载入口统一链接 GitHub Releases，避免在 README 中保留过期安装包地址。Tauri 的产物和签名格式见[官方更新器文档](https://v2.tauri.app/plugin/updater/)。

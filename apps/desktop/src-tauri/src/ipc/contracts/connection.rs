@@ -101,6 +101,7 @@ pub enum Request {
         id: String,
     },
     ClearHistory,
+    InstallUpdate,
     HostPreferences {
         patch: crate::features::preferences::domain::Patch,
         #[serde(rename = "legacyLanguage")]

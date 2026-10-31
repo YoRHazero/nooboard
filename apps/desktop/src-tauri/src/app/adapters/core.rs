@@ -181,6 +181,9 @@ impl Backend {
     }
 }
 impl BackendControl for Backend {
+    fn resume(&self) -> Future<'_, ()> {
+        Box::pin(self.ensure_started())
+    }
     fn pending_transfers(&self) -> Interaction<'_, usize> {
         Box::pin(async {
             self.app()

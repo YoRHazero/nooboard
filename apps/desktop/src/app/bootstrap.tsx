@@ -13,7 +13,9 @@ import { Providers } from './providers';
 import { RouterProvider } from '@tanstack/react-router';
 import { createAppRouter } from './router';
 export async function bootstrap(element: HTMLElement) {
-  const preview = isTauri() ? undefined : new PreviewBackend();
+  const preview = isTauri()
+    ? undefined
+    : new PreviewBackend(new URLSearchParams(window.location.search).get('update'));
   const motionPreview = ['motion-16', 'business-19'].includes(
     new URLSearchParams(window.location.search).get('mascot') ?? '',
   );

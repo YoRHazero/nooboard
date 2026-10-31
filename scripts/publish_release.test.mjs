@@ -11,19 +11,36 @@ function installers(t) {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const files = [
     'nooboard-windows-x64/nooboard_0.1.0_x64-setup.exe',
+    'nooboard-windows-x64/nooboard_0.1.0_x64-setup.exe.sig',
     'nooboard-macos-arm64/nooboard_0.1.0_aarch64.dmg',
+    'nooboard-macos-arm64/nooboard.app.tar.gz',
+    'nooboard-macos-arm64/nooboard.app.tar.gz.sig',
     'nooboard-linux-x64/deb/nooboard_0.1.0_amd64.deb',
     'nooboard-linux-x64/appimage/nooboard_0.1.0_amd64.AppImage',
+    'nooboard-linux-x64/appimage/nooboard_0.1.0_amd64.AppImage.sig',
   ].map((file) => path.join(root, file));
   for (const file of files) {
     mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, `installer: ${path.basename(file)}`);
+    writeFileSync(
+      file,
+      file.endsWith('.sig')
+        ? Buffer.from(
+            'untrusted comment: test fixture\nsignature\ntrusted comment: timestamp:0\nglobal signature\n',
+          ).toString('base64')
+        : `installer: ${path.basename(file)}`,
+    );
   }
   return { root, files };
 }
 
 function githubStub(options = {}) {
-  const state = { release: null, assets: [], calls: [], failUpload: 0, ...options };
+  const state = {
+    release: null,
+    assets: [],
+    calls: [],
+    failUpload: 0,
+    ...options,
+  };
   let nextId = 10;
   let uploads = 0;
   const record = (name, params) => state.calls.push({ name, params });
@@ -62,7 +79,9 @@ function githubStub(options = {}) {
     },
     async updateRelease(params) {
       record('updateRelease', params);
-      Object.assign(state.release, params, { html_url: 'https://example.test/release' });
+      Object.assign(state.release, params, {
+        html_url: 'https://example.test/release',
+      });
       return { data: state.release };
     },
   };
@@ -85,7 +104,7 @@ function request(root, stub, tag = 'v0.1.0') {
   };
 }
 
-test('collects all four installers, including nested Linux bundles', (t) => {
+test('collects all installers and updater signatures, including nested bundles', (t) => {
   const { root, files } = installers(t);
   const assets = collectReleaseArtifacts(root);
   assert.deepEqual(
@@ -127,8 +146,8 @@ test('creates a draft and publishes only after uploading and checking every inst
   assert.equal(creation.params.draft, true);
   assert.equal(creation.params.tag_name, 'v0.1.0');
   assert.deepEqual(
-    calls.slice(-6).map((call) => call.name),
-    [...Array(4).fill('uploadReleaseAsset'), 'listReleaseAssets', 'updateRelease'],
+    calls.slice(-11).map((call) => call.name),
+    [...Array(9).fill('uploadReleaseAsset'), 'listReleaseAssets', 'updateRelease'],
   );
   assert.equal(calls.at(-1).params.draft, false);
   assert.equal(calls.at(-1).params.prerelease, false);
@@ -158,7 +177,7 @@ test('an interrupted upload stays draft and a retry resumes the same release', a
   stub.state.failUpload = 0;
   await publishRelease(request(root, stub));
   assert.equal(stub.state.release.draft, false);
-  assert.equal(stub.state.assets.length, 4);
+  assert.equal(stub.state.assets.length, 9);
   const count = (name) => stub.state.calls.filter((call) => call.name === name).length;
   assert.equal(count('createRelease'), 1);
   assert.equal(count('deleteReleaseAsset'), 2);
@@ -199,4 +218,46 @@ test('lookup failures stop publication instead of being treated as a missing rel
     stub.state.calls.map((call) => call.name),
     ['listReleases'],
   );
+});
+
+test('metadata points to the signed payloads of this exact release', async (t) => {
+  const { root } = installers(t);
+  const stub = githubStub();
+  await publishRelease(request(root, stub));
+  const uploads = stub.state.calls.filter((call) => call.name === 'uploadReleaseAsset');
+  const manifest = JSON.parse(uploads.at(-1).params.data.toString());
+  assert.equal(uploads.at(-1).params.name, 'latest.json');
+  assert.equal(manifest.version, '0.1.0');
+  assert.deepEqual(Object.keys(manifest.platforms).sort(), [
+    'darwin-aarch64',
+    'linux-x86_64',
+    'windows-x86_64',
+  ]);
+  for (const [platform, entry] of Object.entries(manifest.platforms)) {
+    assert.ok(
+      entry.url.startsWith('https://github.com/example/nooboard/releases/download/v0.1.0/'),
+    );
+    const name = decodeURIComponent(entry.url.split('/').at(-1));
+    const signature = uploads.find((call) => call.params.name === `${name}.sig`);
+    assert.equal(entry.signature, signature.params.data.toString());
+    if (platform === 'darwin-aarch64') assert.equal(name, 'nooboard.app.tar.gz');
+  }
+});
+
+test('missing, mismatched and malformed signatures stop before any API mutation', async (t) => {
+  for (const mutation of [
+    (file) => rmSync(file),
+    (file) => writeFileSync(file, ''),
+    (file) => writeFileSync(file, 'not a signature'),
+    (file) => {
+      rmSync(file);
+      writeFileSync(path.join(path.dirname(file), 'other.app.tar.gz.sig'), 'wrong');
+    },
+  ]) {
+    const { root, files } = installers(t);
+    mutation(files.find((file) => file.endsWith('.app.tar.gz.sig')));
+    const stub = githubStub();
+    await assert.rejects(publishRelease(request(root, stub)), /non-empty|signature/);
+    assert.equal(stub.state.calls.length, 0);
+  }
 });

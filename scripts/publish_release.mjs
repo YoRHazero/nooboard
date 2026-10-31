@@ -1,14 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { checkReleaseVersion } from './check_release_version.mjs';
-import { collectReleaseArtifacts } from './release_artifacts.mjs';
+import { collectReleaseArtifacts, createUpdateManifest } from './release_artifacts.mjs';
 
 /** Keep the release private until every installer has been uploaded successfully. */
 export async function publishRelease({ github, repo, tag, artifactRoot, body }) {
   const { prerelease } = checkReleaseVersion(tag, { release: tag?.slice(1) });
   const assets = collectReleaseArtifacts(artifactRoot);
+  assets.push(createUpdateManifest(artifactRoot, assets, repo, tag));
   const api = github.rest.repos;
   // Listing also finds drafts when resuming a failed publish job.
-  const releases = await github.paginate(api.listReleases, { ...repo, per_page: 100 });
+  const releases = await github.paginate(api.listReleases, {
+    ...repo,
+    per_page: 100,
+  });
   let release = releases.find((item) => item.tag_name === tag);
   if (release && !release.draft) {
     throw new Error(`${tag} is already published. Existing releases will not be overwritten.`);
@@ -42,7 +46,10 @@ export async function publishRelease({ github, repo, tag, artifactRoot, body }) 
       ...releaseParams,
       name: asset.name,
       data: readFileSync(asset.path),
-      headers: { 'content-type': 'application/octet-stream', 'content-length': asset.size },
+      headers: {
+        'content-type': 'application/octet-stream',
+        'content-length': asset.size,
+      },
     });
   }
 

@@ -10,6 +10,10 @@ pub async fn run(runtime: &Runtime, request: Request) -> Result<Reply, UiError> 
         return Err(errors::ui("closing"));
     }
     match request {
+        Request::InstallUpdate => {
+            runtime.install_update().await.map_err(errors::desktop)?;
+            return Ok(Reply::Done);
+        }
         Request::HostPreferences {
             patch,
             legacy_language,
@@ -82,6 +86,7 @@ pub async fn run(runtime: &Runtime, request: Request) -> Result<Reply, UiError> 
         Request::DeleteHistory { id } => app.delete_history(routes::history::id(&id)?).await,
         Request::ClearHistory => app.clear_history().await,
         Request::Terminal { .. }
+        | Request::InstallUpdate
         | Request::HostPreferences { .. }
         | Request::AcknowledgeNavigation { .. }
         | Request::Probe { .. }

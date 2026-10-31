@@ -41,6 +41,32 @@ impl Lifecycle {
     pub async fn shutdown(&self) {
         self.close(None).await;
     }
+    /// Keep exit admission closed throughout installation. Failure after shutdown
+    /// resumes the existing application services before reporting the error.
+    pub async fn restart_with(
+        &self,
+        install: impl std::future::Future<Output = crate::error::Result<()>>,
+        restart: impl FnOnce(),
+    ) -> crate::error::Result<()> {
+        let ticket = self
+            .control
+            .begin(None)
+            .ok_or(crate::error::Error::Closing)?;
+        if let Err(error) = self.backend.shutdown().await {
+            self.control.complete(ticket, false);
+            return Err(error);
+        }
+        if let Err(error) = install.await {
+            if self.control.complete(ticket, false) {
+                self.backend.resume().await?;
+            }
+            return Err(error);
+        }
+        if self.control.complete(ticket, true) {
+            restart();
+        }
+        Ok(())
+    }
     async fn close(&self, confirmation: Option<Ticket>) {
         let Some(ticket) = self.control.begin(confirmation) else {
             return;
@@ -68,12 +94,19 @@ mod tests {
     use tokio::sync::{Notify, mpsc, oneshot};
     struct Backend {
         calls: AtomicUsize,
+        resumes: AtomicUsize,
         fail: AtomicBool,
         block: AtomicBool,
         entered: Notify,
         release: Notify,
     }
     impl BackendControl for Backend {
+        fn resume(&self) -> Future<'_, ()> {
+            Box::pin(async {
+                self.resumes.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            })
+        }
         fn pending_transfers(&self) -> Interaction<'_, usize> {
             Box::pin(async { 1 })
         }
@@ -123,6 +156,7 @@ mod tests {
         let (tx, rx) = mpsc::unbounded_channel();
         let backend = Arc::new(Backend {
             calls: AtomicUsize::new(0),
+            resumes: AtomicUsize::new(0),
             fail: AtomicBool::new(false),
             block: AtomicBool::new(false),
             entered: Notify::new(),
@@ -203,5 +237,70 @@ mod tests {
         bounded(closing).await.unwrap();
         assert!(lifecycle.control.finished());
         assert_eq!(ui.exits.load(Ordering::SeqCst), 1);
+    }
+    #[tokio::test]
+    async fn update_waits_for_shutdown_and_blocks_quit_until_install_finishes() {
+        let (lifecycle, backend, ui, _) = fixture();
+        backend.block.store(true, Ordering::SeqCst);
+        let (installed, started) = oneshot::channel();
+        let (finish, finished) = oneshot::channel();
+        let task = tokio::spawn({
+            let lifecycle = lifecycle.clone();
+            let ui = ui.clone();
+            async move {
+                lifecycle
+                    .restart_with(
+                        async {
+                            installed.send(()).unwrap();
+                            finished.await.unwrap();
+                            Ok(())
+                        },
+                        || {
+                            ui.exits.fetch_add(1, Ordering::SeqCst);
+                        },
+                    )
+                    .await
+            }
+        });
+        bounded(backend.entered.notified()).await;
+        assert_eq!(ui.exits.load(Ordering::SeqCst), 0);
+        backend.release.notify_one();
+        bounded(started).await.unwrap();
+        assert_eq!(lifecycle.control.phase(), Phase::Closing);
+        lifecycle.shutdown().await;
+        assert!(matches!(
+            lifecycle
+                .restart_with(async { panic!("duplicate install") }, || {})
+                .await,
+            Err(Error::Closing)
+        ));
+        assert_eq!(backend.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(ui.exits.load(Ordering::SeqCst), 0);
+        finish.send(()).unwrap();
+        bounded(task).await.unwrap().unwrap();
+        assert!(lifecycle.control.finished());
+        assert_eq!(ui.exits.load(Ordering::SeqCst), 1);
+    }
+    #[tokio::test]
+    async fn failed_shutdown_skips_install_and_failed_install_resumes_services() {
+        let (lifecycle, backend, ui, _) = fixture();
+        backend.fail.store(true, Ordering::SeqCst);
+        assert!(
+            lifecycle
+                .restart_with(async { panic!("shutdown failed") }, || {})
+                .await
+                .is_err()
+        );
+        assert_eq!(lifecycle.control.phase(), Phase::Idle);
+        assert_eq!(backend.resumes.load(Ordering::SeqCst), 0);
+        let result = lifecycle
+            .restart_with(async { Err(Error::UpdateInstall) }, || {
+                panic!("install failed")
+            })
+            .await;
+        assert!(matches!(result, Err(Error::UpdateInstall)));
+        assert_eq!(backend.resumes.load(Ordering::SeqCst), 1);
+        assert_eq!(lifecycle.control.phase(), Phase::Idle);
+        assert_eq!(ui.exits.load(Ordering::SeqCst), 0);
     }
 }

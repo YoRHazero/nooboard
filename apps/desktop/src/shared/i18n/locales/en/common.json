@@ -109,5 +109,8 @@
   "menuBringAll": "Bring All to Front",
   "paste": "Paste",
   "transfers": "Transfers",
-  "pageNotFound": "This page could not be found."
+  "pageNotFound": "This page could not be found.",
+  "updateReady": "Version {{version}} is ready",
+  "restartUpdate": "Restart to update",
+  "updateInstalling": "Updating…"
 }

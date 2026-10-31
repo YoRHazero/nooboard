@@ -1099,6 +1099,21 @@
         "receive"
       ]
     },
+    "ReadyUpdate": {
+      "type": "object",
+      "required": [
+        "installing",
+        "version"
+      ],
+      "properties": {
+        "installing": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
     "Reply": {
       "oneOf": [
         {
@@ -1788,6 +1803,21 @@
         {
           "type": "object",
           "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "installUpdate"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
             "data",
             "type"
           ],
@@ -1936,6 +1966,16 @@
         },
         "traySupported": {
           "type": "boolean"
+        },
+        "update": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReadyUpdate"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "version": {
           "type": "string"

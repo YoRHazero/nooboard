@@ -13,6 +13,7 @@ use crate::{
             domain::{Language, Patch},
         },
         tray::{application::TrayService, domain::Summary},
+        update::application::Updater,
         window::application::WindowService,
     },
     ipc::subscription::Subscriptions,
@@ -28,6 +29,7 @@ pub struct Runtime {
     pub subscriptions: Subscriptions,
     pub terminal_io: crate::ipc::terminal_io::TerminalIo,
     pub files: FileSelection,
+    pub updater: Option<Arc<Updater>>,
     state: watch::Sender<Snapshot>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
 }
@@ -39,12 +41,14 @@ impl Runtime {
         tray: Arc<TrayService>,
         lifecycle: Arc<Lifecycle>,
         files: FileSelection,
+        updater: Option<Arc<Updater>>,
     ) -> Self {
         let state = watch::channel(Snapshot {
             revision: 0,
             preferences: preferences.snapshot(),
             window: window.snapshot(),
             tray: tray.snapshot(),
+            update: updater.as_ref().and_then(|updater| updater.snapshot()),
         })
         .0;
         let instance = Self {
@@ -54,12 +58,16 @@ impl Runtime {
             tray,
             lifecycle,
             files,
+            updater,
             subscriptions: Subscriptions::default(),
             terminal_io: Default::default(),
             state,
             tasks: Mutex::new(vec![]),
         };
         instance.project();
+        if let Some(updater) = instance.updater.clone() {
+            instance.track(tokio::spawn(async move { updater.run().await }));
+        }
         if instance.tray.snapshot().available {
             instance.watch_backend();
         }
@@ -72,10 +80,26 @@ impl Runtime {
         self.state.borrow().clone()
     }
     pub fn publish(&self) {
-        publish(&self.state, &self.preferences, &self.window, &self.tray);
+        publish(
+            &self.state,
+            &self.preferences,
+            &self.window,
+            &self.tray,
+            self.updater.as_deref(),
+        );
     }
     pub fn subscribe(&self) -> watch::Receiver<Snapshot> {
         self.state.subscribe()
+    }
+    pub async fn install_update(&self) -> Result<()> {
+        let updater = self
+            .updater
+            .clone()
+            .ok_or(crate::error::Error::UpdateUnavailable)?;
+        // The install owns its lifecycle even if the invoking webview disconnects.
+        tokio::spawn(async move { updater.install().await })
+            .await
+            .map_err(|_| crate::error::Error::UpdateInstall)?
     }
     pub fn update_preferences(&self, patch: Patch, legacy: Option<Language>) -> Result<Snapshot> {
         self.preferences.update(patch, legacy)?;
@@ -133,15 +157,27 @@ impl Runtime {
         let tray = self.tray.clone();
         let preference_source = self.preferences.clone();
         let window_source = self.window.clone();
+        let updater = self.updater.clone();
+        let mut updates = updater.as_ref().map(|updater| updater.subscribe());
         self.track(tokio::spawn(async move {
             loop {
                 tokio::select! {
                     result=preferences.changed()=>if result.is_err(){break;},
                     result=window.changed()=>if result.is_err(){break;},
+                    result=async { match updates.as_mut() {
+                        Some(updates) => updates.changed().await,
+                        None => std::future::pending().await,
+                    }}=>if result.is_err(){break;},
                 }
                 preferences.borrow_and_update();
                 window.borrow_and_update();
-                publish(&state, &preference_source, &window_source, &tray);
+                publish(
+                    &state,
+                    &preference_source,
+                    &window_source,
+                    &tray,
+                    updater.as_deref(),
+                );
             }
         }));
     }
@@ -196,6 +232,7 @@ fn publish(
     preferences: &PreferenceService,
     window: &WindowService,
     tray: &TrayService,
+    updater: Option<&Updater>,
 ) {
     // Read the sources while holding the projection write lock. A delayed observer
     // cannot overwrite a newer synchronous reply with an older captured state.
@@ -205,6 +242,7 @@ fn publish(
         tray.refresh(&s.preferences.resolved_language);
         s.window = window.snapshot();
         s.tray = tray.snapshot();
+        s.update = updater.and_then(Updater::snapshot);
     });
 }
 
@@ -312,6 +350,7 @@ mod tests {
             tray,
             lifecycle,
             FileSelection::new(Arc::new(Memory)),
+            None,
         );
         let mut changes = runtime.subscribe();
         runtime.window.hide();

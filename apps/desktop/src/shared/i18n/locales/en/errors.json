@@ -60,5 +60,7 @@
   "terminalConfigInUse": "This configuration is still referenced or running.",
   "terminalDirectoryNotFound": "Directory not found",
   "terminalFileExists": "A file or folder with this name already exists",
-  "terminalInvalidFileName": "Enter a file name without slashes; . and .. are not valid names."
+  "terminalInvalidFileName": "Enter a file name without slashes; . and .. are not valid names.",
+  "updateUnavailable": "The update is no longer available. Restart nooboard to try again.",
+  "updateInstall": "Could not install the update. Please try again."
 }

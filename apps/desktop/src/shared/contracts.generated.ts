@@ -172,6 +172,7 @@ export type PeerConnectionState = 'connected' | 'paused' | 'offline' | 'unconnec
 export type PeerPatch = { address?: AddressChange | null; autoSend?: boolean | null };
 export type PeerSettings = { address?: string | null; autoSend: boolean };
 export type ProbeAction = 'copy' | 'receive';
+export type ReadyUpdate = { installing: boolean; version: string };
 export type Reply =
   | { data: { id: string }; type: 'terminalSaved' }
   | { data: { target: TerminalTarget }; type: 'terminalOpened' }
@@ -202,6 +203,7 @@ export type Request =
   | { data: { id: string }; type: 'copyHistory' }
   | { data: { id: string }; type: 'deleteHistory' }
   | { type: 'clearHistory' }
+  | { type: 'installUpdate' }
   | { data: { legacyLanguage?: Language | null; patch: Patch }; type: 'hostPreferences' }
   | { data: { id: number }; type: 'acknowledgeNavigation' }
   | { data: { action: ProbeAction }; type: 'probe' };
@@ -215,6 +217,7 @@ export type Snapshot = {
   revision: number;
   trayAvailable: boolean;
   traySupported: boolean;
+  update?: ReadyUpdate | null;
   version: string;
   visible: boolean;
 };

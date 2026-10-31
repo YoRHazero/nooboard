@@ -23,6 +23,15 @@ export class PreviewBackend implements BackendTransport {
   private disposed = false;
   private sequence = 1;
   private initializedPreferences = false;
+  constructor(private updatePreview: string | null = null) {
+    if (updatePreview === 'ready' || updatePreview === 'failed') {
+      const [major, minor, patch] = this.host.version.split('.');
+      this.host.update = {
+        version: `${major}.${minor}.${Number.parseInt(patch, 10) + 1}`,
+        installing: false,
+      };
+    }
+  }
   readonly terminal = new PreviewTerminal(
     (workspace) => {
       this.snapshot.terminal = workspace;
@@ -102,6 +111,20 @@ export class PreviewBackend implements BackendTransport {
   async request(request: Request): Promise<Reply> {
     this.ensureOpen();
     switch (request.type) {
+      case 'installUpdate':
+        if (!this.host.update) throw fail('updateUnavailable');
+        this.host.update.installing = true;
+        this.publishHost();
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        if (this.updatePreview === 'failed') {
+          this.host.update.installing = false;
+          this.publishHost();
+          throw fail('updateInstall');
+        }
+        this.host.version = this.host.update.version;
+        this.host.update = null;
+        this.publishHost();
+        return { type: 'done' };
       case 'terminal':
         return this.terminal.request(request.data.action);
       case 'hostPreferences':
@@ -303,6 +326,11 @@ export class PreviewBackend implements BackendTransport {
   }
   private changedHistory() {
     this.snapshot.historyRevision = String(BigInt(this.snapshot.historyRevision) + 1n);
+  }
+  private publishHost() {
+    this.host.revision++;
+    for (const receive of this.listeners)
+      receive({ type: 'host', data: structuredClone(this.host) });
   }
   async sampleCopy() {
     this.ensureOpen();

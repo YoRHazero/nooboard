@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../shared/ui/controls';
 import { appVersion } from '../version';
+import { UpdateNotice } from '../../features/update';
 
 import { UnpairedPrompt } from '../../features/devices/index';
 import { PairingPrompt } from '../../features/devices/index';
@@ -136,7 +137,10 @@ export function AppShell({ footer }: { footer?: ReactNode }) {
               <span>{t('common:thisDevice')}</span>
             </div>
           </div>
-          <span className="sidebar-version">nooboard / {host.version ?? appVersion}</span>
+          <div className="sidebar-release">
+            <span className="sidebar-version">nooboard / {host.version ?? appVersion}</span>
+            <UpdateNotice />
+          </div>
         </aside>
         <main
           className={`app-main ${page === 'home' ? 'app-main--home' : page === 'terminal' ? 'app-main--terminal' : ''}`}

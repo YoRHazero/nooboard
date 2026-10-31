@@ -95,7 +95,9 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding: 3px;
+  /* The shared focus outline extends 6px beyond each control. */
+  padding: 8px;
+  scroll-padding-block: 8px;
   display: flex;
   flex-direction: column;
   gap: 16px;

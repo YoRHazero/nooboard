@@ -73,6 +73,7 @@ export function hostFixture(): Snapshot {
     traySupported: false,
     preferenceError: false,
     navigation: null,
+    update: null,
   };
 }
 export function historyFixture(): HistoryItem[] {

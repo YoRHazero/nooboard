@@ -109,5 +109,8 @@
   "menuBringAll": "前置全部窗口",
   "paste": "粘贴",
   "transfers": "传输",
-  "pageNotFound": "找不到这个页面。"
+  "pageNotFound": "找不到这个页面。",
+  "updateReady": "新版本 {{version}} 已就绪",
+  "restartUpdate": "重启更新",
+  "updateInstalling": "正在更新…"
 }

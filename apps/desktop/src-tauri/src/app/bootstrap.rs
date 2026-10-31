@@ -85,8 +85,19 @@ pub fn build(handle: &AppHandle) -> Arc<Runtime> {
         window,
         preferences,
         tray,
-        lifecycle,
+        lifecycle.clone(),
         FileSelection::new(Arc::new(NativeFilePicker::new(download_history))),
+        (!cfg!(debug_assertions) && !diagnostic).then(|| {
+            Arc::new(crate::features::update::application::Updater::new(
+                Arc::new(crate::features::update::adapters::NativeUpdateSource(
+                    handle.clone(),
+                )),
+                Arc::new(super::adapters::update::NativeInstall {
+                    lifecycle,
+                    handle: handle.clone(),
+                }),
+            ))
+        }),
     ));
     let weak = Arc::downgrade(&runtime);
     runtime.track(tokio::spawn(async move {
@@ -117,6 +128,7 @@ pub fn build(handle: &AppHandle) -> Arc<Runtime> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|handle, _, _| {
             super::events::show(handle, None)
         }))

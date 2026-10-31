@@ -49,13 +49,18 @@ jobs:
             target: x86_64-pc-windows-msvc
             bundles: nsis
             artifact: nooboard-windows-x64
-            paths: target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+            paths: |
+              target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+              target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe.sig
           - name: macOS Apple Silicon
             os: macos-14
             target: aarch64-apple-darwin
-            bundles: dmg
+            bundles: app,dmg
             artifact: nooboard-macos-arm64
-            paths: target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            paths: |
+              target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+              target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+              target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
           - name: Ubuntu x64
             os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
@@ -64,12 +69,23 @@ jobs:
             paths: |
               target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
               target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+              target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage.sig
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      - name: Require update signing key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo 'Configure the repository Secret TAURI_SIGNING_PRIVATE_KEY before releasing.'
+            exit 1
+          fi
 
       - uses: actions/setup-node@v4
         with:
@@ -132,6 +148,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && '-' || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: apps/desktop
           uploadUpdaterJson: false

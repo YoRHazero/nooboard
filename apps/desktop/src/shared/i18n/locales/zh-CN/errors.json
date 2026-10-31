@@ -60,5 +60,7 @@
   "terminalConfigInUse": "配置仍被引用或正在运行，无法删除。",
   "terminalDirectoryNotFound": "目录不存在",
   "terminalFileExists": "已存在同名文件或文件夹",
-  "terminalInvalidFileName": "名称不能包含斜杠，也不能是 . 或 ..。"
+  "terminalInvalidFileName": "名称不能包含斜杠，也不能是 . 或 ..。",
+  "updateUnavailable": "更新已不可用，请重启 nooboard 后重试。",
+  "updateInstall": "更新安装失败，请重试。"
 }

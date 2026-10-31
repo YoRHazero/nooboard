@@ -1,11 +1,11 @@
-import { readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 // Names match the build matrix; every requested installer must be present.
 const requiredArtifacts = {
-  'nooboard-windows-x64': ['-setup.exe'],
-  'nooboard-macos-arm64': ['.dmg'],
-  'nooboard-linux-x64': ['.deb', '.AppImage'],
+  'nooboard-windows-x64': ['-setup.exe', '-setup.exe.sig'],
+  'nooboard-macos-arm64': ['.dmg', '.app.tar.gz', '.app.tar.gz.sig'],
+  'nooboard-linux-x64': ['.deb', '.AppImage', '.AppImage.sig'],
 };
 
 function filesIn(directory) {
@@ -36,4 +36,32 @@ export function collectReleaseArtifacts(root) {
     throw new Error('Installer filenames must be unique across platforms.');
   }
   return assets;
+}
+
+/** Only publish metadata after every platform has a signed updater payload. */
+export function createUpdateManifest(root, assets, repo, tag) {
+  const platforms = {};
+  for (const [platform, suffix] of Object.entries({
+    'windows-x86_64': '-setup.exe',
+    'darwin-aarch64': '.app.tar.gz',
+    'linux-x86_64': '.AppImage',
+  })) {
+    const payload = assets.find((asset) => asset.name.endsWith(suffix));
+    const signatureFile = assets.find((asset) => asset.name === `${payload?.name}.sig`);
+    if (!payload || !signatureFile) throw new Error(`Missing updater signature for ${platform}`);
+    const signature = readFileSync(signatureFile.path, 'utf8').trim();
+    if (
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(signature) ||
+      !Buffer.from(signature, 'base64').toString('utf8').startsWith('untrusted comment: ')
+    )
+      throw new Error(`Invalid updater signature file: ${signatureFile.name}`);
+    platforms[platform] = {
+      signature,
+      url: `https://github.com/${repo.owner}/${repo.repo}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(payload.name)}`,
+    };
+  }
+  const manifest = { version: tag.slice(1), platforms };
+  const file = path.join(root, 'latest.json');
+  writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
+  return { name: 'latest.json', path: file, size: statSync(file).size };
 }

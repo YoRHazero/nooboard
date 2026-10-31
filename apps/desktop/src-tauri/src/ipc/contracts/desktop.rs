@@ -20,4 +20,12 @@ pub struct Snapshot {
     pub visible: bool,
     pub navigation: Option<Navigation>,
     pub version: &'static str,
+    pub update: Option<ReadyUpdate>,
+}
+
+#[derive(Clone, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadyUpdate {
+    pub version: String,
+    pub installing: bool,
 }
