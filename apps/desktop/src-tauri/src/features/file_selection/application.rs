@@ -20,7 +20,7 @@ impl FileSelection {
         Ok(())
     }
     pub async fn download(&self, target: &dyn SelectedTransfers) -> Result<()> {
-        if let Some(directory) = self.picker.directory().await? {
+        if let Some(directory) = self.picker.download_directory().await? {
             target.download(directory).await?;
         }
         Ok(())

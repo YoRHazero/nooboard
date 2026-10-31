@@ -1,21 +1,25 @@
+import { useSnapshot } from '../../shared/queries/useBackendSnapshotQuery';
+import { useSelectTargetsMutation } from './queries/useSelectTargetsMutation';
 import { type Problem, errorText, toProblem } from '../../shared/i18n/errors';
 import { useI18n } from '../../shared/i18n/react';
 import { useState } from 'react';
-import { useDesktop, useSnapshot } from '../../client/react';
-import { canSend, peerState, shortNoobId } from '../devices/api';
-import { DeviceIcon, DeviceName } from '../devices/api';
+import { canSend, peerState, shortNoobId } from '../devices/index';
+import { DeviceIcon, DeviceName } from '../devices/index';
 import { Button } from '../../shared/ui/controls';
 import { Dialog } from '../../shared/ui/Dialog';
 
 export function TargetPicker({ onClose }: { onClose: () => void }) {
+  const selectTargetsMutation = useSelectTargetsMutation();
+
   const { t } = useI18n();
   const { peers, manualTargets, settings } = useSnapshot();
-  const client = useDesktop();
   const [selected, setSelected] = useState([...manualTargets]);
   const [error, setError] = useState<Problem | null>(null);
   const save = async () => {
     try {
-      await client.selectTargets(selected.filter((id) => peers.some((p) => p.noobId === id)));
+      await selectTargetsMutation.mutateAsync([
+        selected.filter((id) => peers.some((p) => p.noobId === id)),
+      ]);
       onClose();
     } catch (reason) {
       setError(toProblem(reason));

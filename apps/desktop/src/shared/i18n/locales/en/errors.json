@@ -57,5 +57,8 @@
   "nativeOnly": "Open the desktop app to use the native file picker.",
   "terminalUnavailable": "Terminal is unavailable in this connection.",
   "terminalOperation": "{{reason}}",
-  "terminalConfigInUse": "This configuration is still referenced or running."
+  "terminalConfigInUse": "This configuration is still referenced or running.",
+  "terminalDirectoryNotFound": "Directory not found",
+  "terminalFileExists": "A file or folder with this name already exists",
+  "terminalInvalidFileName": "Enter a file name without slashes; . and .. are not valid names."
 }

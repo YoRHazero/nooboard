@@ -57,5 +57,8 @@
   "nativeOnly": "请在桌面应用中使用文件选择器。",
   "terminalUnavailable": "当前连接不支持终端。",
   "terminalOperation": "{{reason}}",
-  "terminalConfigInUse": "配置仍被引用或正在运行，无法删除。"
+  "terminalConfigInUse": "配置仍被引用或正在运行，无法删除。",
+  "terminalDirectoryNotFound": "目录不存在",
+  "terminalFileExists": "已存在同名文件或文件夹",
+  "terminalInvalidFileName": "名称不能包含斜杠，也不能是 . 或 ..。"
 }

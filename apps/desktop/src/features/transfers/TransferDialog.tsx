@@ -1,5 +1,5 @@
 import { useI18n } from '../../shared/i18n/react';
-import type { Activity } from '../../client/api';
+import type { Activity } from '../../shared/types';
 import { batchSummary } from './deliveries';
 import { Dialog } from '../../shared/ui/Dialog';
 import { DeliveryList } from './DeliveryList';

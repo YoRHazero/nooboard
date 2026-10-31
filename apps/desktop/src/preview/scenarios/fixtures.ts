@@ -1,6 +1,6 @@
 import { terminalFixture } from '../terminal';
 import { version } from '../../../package.json';
-import type { Peer, DeviceIdentity } from '../../client/api';
+import type { Peer, DeviceIdentity } from '../../shared/types';
 
 export const exampleFileNames = ['设计稿.png', 'Notes.txt'];
 
@@ -60,7 +60,7 @@ export const examples = [
   'const message = "Hello, nooboard!";\nconsole.log(message);',
 ];
 
-import type { BackendSnapshot, Snapshot, HistoryItem } from '../../client/bridge/generated';
+import type { BackendSnapshot, Snapshot, HistoryItem } from '../../shared/contracts.generated';
 export function hostFixture(): Snapshot {
   return {
     revision: 0,

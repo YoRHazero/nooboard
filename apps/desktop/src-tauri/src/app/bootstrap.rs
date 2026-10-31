@@ -30,6 +30,10 @@ pub fn build(handle: &AppHandle) -> Arc<Runtime> {
         target_os = "macos"
     )) && std::env::var("NOOBOARD_DIAGNOSTIC").as_deref() == Ok("1");
     let directory = handle.path().app_data_dir().ok();
+    let download_history = directory
+        .as_ref()
+        .filter(|_| !diagnostic)
+        .map(|p| p.join("download-directory.json"));
     let preferences = Arc::new(PreferenceService::load(
         Arc::new(JsonPreferences {
             path: if diagnostic {
@@ -82,7 +86,7 @@ pub fn build(handle: &AppHandle) -> Arc<Runtime> {
         preferences,
         tray,
         lifecycle,
-        FileSelection::new(Arc::new(NativeFilePicker)),
+        FileSelection::new(Arc::new(NativeFilePicker::new(download_history))),
     ));
     let weak = Arc::downgrade(&runtime);
     runtime.track(tokio::spawn(async move {

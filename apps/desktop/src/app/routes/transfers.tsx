@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { TransfersPage } from '../../pages/transfers/TransfersPage';
+import { TransfersPage } from '../../pages/TransfersPage';
 export const Route = createFileRoute('/transfers')({
   validateSearch: (search: Record<string, unknown>): { focus?: string } => ({
     focus: typeof search.focus === 'string' ? search.focus : undefined,

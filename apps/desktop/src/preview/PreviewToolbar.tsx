@@ -1,11 +1,12 @@
+import { useSnapshot } from '../shared/queries/useBackendSnapshotQuery';
+import { useActionFeedback } from '../shared/action-feedback';
 import { Select, SelectItem } from '../shared/ui/Select';
 import { useI18n } from '../shared/i18n/react';
 import { useState } from 'react';
 import { ArrowDownLeft, CopyPlus, FlaskConical, RotateCcw } from 'lucide-react';
-import { useCommand, useSnapshot } from '../client/react';
-import { shortNoobId } from '../features/devices/api';
-import type { PreviewControls } from './bridge';
-import type { PeerConnectionState } from '../client/bridge/generated';
+import { shortNoobId } from '../features/devices/index';
+import type { PreviewControls } from './backend';
+import type { PeerConnectionState } from '../shared/contracts.generated';
 
 export function PreviewToolbar({
   client,
@@ -15,7 +16,7 @@ export function PreviewToolbar({
   motionPreview?: boolean;
 }) {
   const { t } = useI18n();
-  const { execute } = useCommand();
+  const { execute } = useActionFeedback();
   const { peers, settings } = useSnapshot();
   const [selected, setSelected] = useState('');
   const peer = peers.find((p) => p.noobId === selected) ?? peers[0];

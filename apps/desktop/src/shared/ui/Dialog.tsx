@@ -40,6 +40,11 @@ export function Dialog({
           }}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
+            const next = document.querySelector<HTMLElement>('[role="dialog"][data-state="open"]');
+            if (next && next !== ref.current) {
+              next.querySelector<HTMLElement>('[data-autofocus]')?.focus();
+              return;
+            }
             if (opener.current?.isConnected) opener.current.focus({ preventScroll: true });
           }}
         >

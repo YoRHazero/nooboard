@@ -1,6 +1,7 @@
+import { useSnapshot } from '../../shared/queries/useBackendSnapshotQuery';
+import { useUnpairMutation } from './queries/useUnpairMutation';
 import { useState } from 'react';
-import { type Peer } from '../../client/api';
-import { useDesktop, useSnapshot } from '../../client/react';
+import { type Peer } from '../../shared/types';
 import { type Problem, errorText, toProblem } from '../../shared/i18n/errors';
 import { useI18n } from '../../shared/i18n/react';
 import { Dialog } from '../../shared/ui/Dialog';
@@ -19,15 +20,16 @@ export function UnpairedPrompt() {
 }
 
 function Notice({ peer, onClose }: { peer: Peer; onClose: () => void }) {
+  const unpairMutation = useUnpairMutation();
+
   const { t } = useI18n();
-  const client = useDesktop();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Problem | null>(null);
   const remove = async () => {
     setBusy(true);
     setError(null);
     try {
-      await client.unpair(peer.noobId);
+      await unpairMutation.mutateAsync([peer.noobId]);
       onClose();
     } catch (reason) {
       setError(toProblem(reason));

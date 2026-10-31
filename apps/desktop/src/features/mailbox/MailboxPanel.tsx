@@ -1,4 +1,4 @@
-import { useSnapshot } from '../../client/react';
+import { useSnapshot } from '../../shared/queries/useBackendSnapshotQuery';
 import { useMailbox } from './MailboxProvider';
 import { ActivityList } from './ActivityList';
 import { PairedDevices } from './PairedDevices';

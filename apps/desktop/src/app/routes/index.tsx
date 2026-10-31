@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { HomePage } from '../../pages/home/HomePage';
+import { HomePage } from '../../pages/HomePage';
 export const Route = createFileRoute('/')({ component: Home });
 function Home() {
   const { motionPreview } = Route.useRouteContext();

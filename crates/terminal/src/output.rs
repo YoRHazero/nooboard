@@ -134,28 +134,47 @@ impl TerminalOutputStream {
 #[derive(Default)]
 pub(crate) struct ReadyFilter {
     prefix: Vec<u8>,
-    passthrough: bool,
+    line: ReadyLineState,
+}
+#[derive(Default)]
+enum ReadyLineState {
+    #[default]
+    Matching,
+    Passthrough,
+    Discard,
 }
 impl ReadyFilter {
     pub(crate) fn feed(&mut self, bytes: &[u8]) -> (Vec<u8>, bool) {
-        const LF: &[u8] = b"::nooboard:v1:ready::\n";
-        const CRLF: &[u8] = b"::nooboard:v1:ready::\r\n";
+        const MARKER: &[u8] = b"::nooboard:v1:ready::";
         let mut output = Vec::with_capacity(bytes.len());
         let mut ready = false;
         for &byte in bytes {
-            if self.passthrough {
-                output.push(byte);
-                if byte == b'\n' {
-                    self.passthrough = false;
+            match self.line {
+                ReadyLineState::Discard => {
+                    if byte == b'\n' {
+                        self.line = ReadyLineState::Matching;
+                    }
                 }
-            } else {
-                self.prefix.push(byte);
-                if self.prefix == LF || self.prefix == CRLF {
-                    self.prefix.clear();
-                    ready = true;
-                } else if !LF.starts_with(&self.prefix) && !CRLF.starts_with(&self.prefix) {
-                    output.append(&mut self.prefix);
-                    self.passthrough = byte != b'\n';
+                ReadyLineState::Passthrough => {
+                    output.push(byte);
+                    if byte == b'\n' {
+                        self.line = ReadyLineState::Matching;
+                    }
+                }
+                ReadyLineState::Matching => {
+                    self.prefix.push(byte);
+                    if self.prefix == MARKER {
+                        self.prefix.clear();
+                        ready = true;
+                        // Signal immediately, then hide the rest of this protocol line.
+                        // Nested PTYs can turn its newline into CRCRLF.
+                        self.line = ReadyLineState::Discard;
+                    } else if !MARKER.starts_with(&self.prefix) {
+                        output.append(&mut self.prefix);
+                        if byte != b'\n' {
+                            self.line = ReadyLineState::Passthrough;
+                        }
+                    }
                 }
             }
         }
@@ -169,9 +188,8 @@ impl ReadyFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn ready_marker_is_exact_incremental_and_removed_without_losing_other_bytes() {
-        let input = b"hello\r\n::nooboard:v1:ready::\r\n next ::nooboard:v1:ready::\n::nooboard:v1:ready::\nbye";
+
+    fn assert_filtered(input: &[u8], expected: &[u8], expected_ready: bool) {
         for chunk_size in 1..=input.len() {
             let mut filter = ReadyFilter::default();
             let mut output = Vec::new();
@@ -182,12 +200,44 @@ mod tests {
                 ready |= marked;
             }
             output.extend(filter.finish());
-            assert!(ready);
-            assert_eq!(output, b"hello\r\n next ::nooboard:v1:ready::\nbye");
+            assert_eq!(ready, expected_ready, "chunk size {chunk_size}");
+            assert_eq!(output, expected, "chunk size {chunk_size}");
         }
+    }
+
+    #[test]
+    fn ready_marker_lines_are_removed_across_chunks_and_line_endings() {
+        let input = b"hello\r\n::nooboard:v1:ready::\r\n next ::nooboard:v1:ready::\n::nooboard:v1:ready::\n::nooboard:v1:ready::\r\r\n::nooboard:v1:ready:: trailing text\r\nbye";
+        assert_filtered(input, b"hello\r\n next ::nooboard:v1:ready::\nbye", true);
+    }
+
+    #[test]
+    fn ready_marker_signals_before_any_suffix_or_newline_arrives() {
         let mut filter = ReadyFilter::default();
-        assert!(!filter.feed(b"::nooboard:v1:ready::").1);
-        assert_eq!(filter.finish(), b"::nooboard:v1:ready::");
+        assert_eq!(filter.feed(b"::nooboard:v1:rea"), (vec![], false));
+        assert_eq!(filter.feed(b"dy::"), (vec![], true));
+        assert_eq!(filter.feed(b" trailing text\r\r"), (vec![], false));
+        assert_eq!(filter.feed(b"\nnext\n"), (b"next\n".to_vec(), false));
+        assert!(filter.finish().is_empty());
+        assert_filtered(b"::nooboard:v1:ready::", b"", true);
+    }
+
+    #[test]
+    fn ready_marker_requires_the_complete_prefix_at_the_start_of_a_line() {
+        for input in [
+            b"prompt: ::nooboard:v1:ready::\n".as_slice(),
+            b" ::nooboard:v1:ready::\n",
+            b"\x1b[32m::nooboard:v1:ready::\n",
+            b"prompt\r::nooboard:v1:ready::\n",
+            b"::nooboard:v1:ready:\n",
+            b"::nooboard:v1:ready!::\n",
+        ] {
+            assert_filtered(input, input, false);
+        }
+        let marker = b"::nooboard:v1:ready::";
+        for length in 1..marker.len() {
+            assert_filtered(&marker[..length], &marker[..length], false);
+        }
     }
     #[tokio::test]
     async fn replay_handoff_offsets_lag_and_eof_are_explicit() {

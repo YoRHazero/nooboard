@@ -1,4 +1,6 @@
-import type { TerminalTransport } from '../client/bridge/port';
+import { PreviewTerminalFiles } from './terminal-files';
+import { errorText, toProblem } from '../shared/i18n/errors';
+import type { TerminalTransport } from '../shared/backend-contract';
 import type {
   Frame,
   Reply,
@@ -7,7 +9,7 @@ import type {
   TerminalOutputFrame,
   TerminalTarget,
   TerminalWorkspaceView,
-} from '../client/bridge/generated';
+} from '../shared/contracts.generated';
 import { fail } from '../shared/i18n/errors';
 
 export const terminalFixture = (): TerminalWorkspaceView => ({
@@ -18,6 +20,44 @@ export const terminalFixture = (): TerminalWorkspaceView => ({
       id: '10000000-0000-4000-8000-000000000002',
       kind: 'command',
       data: { name: 'VPN', command: 'icrrvpn -g' },
+    },
+    {
+      id: '10000000-0000-4000-8000-000000000010',
+      kind: 'ssh',
+      data: {
+        name: 'Demo server',
+        address: { kind: 'host', value: 'demo.example' },
+        port: 22,
+        username: 'demo',
+        auth: 'password',
+        passwordSaved: true,
+        trustedKey: { algorithm: 'ssh-ed25519', bytes: [1, 2, 3] },
+      },
+    },
+    {
+      id: '10000000-0000-4000-8000-000000000011',
+      kind: 'terminal',
+      data: {
+        name: 'Remote workspace',
+        sshTarget: '10000000-0000-4000-8000-000000000010',
+        dependencies: [],
+      },
+    },
+    {
+      id: '10000000-0000-4000-8000-000000000012',
+      kind: 'tunnel',
+      data: {
+        name: 'Development tunnel',
+        sshTarget: '10000000-0000-4000-8000-000000000010',
+        dependencies: [],
+        forward: {
+          kind: 'local',
+          listenHost: '127.0.0.1',
+          listenPort: 8080,
+          destinationHost: '127.0.0.1',
+          destinationPort: 3000,
+        },
+      },
     },
   ],
   runs: [],
@@ -40,6 +80,8 @@ export class PreviewTerminal implements TerminalTransport {
   private streams = new Map<string, { target: TerminalTarget; receive: Receive }>();
   private offsets = new Map<string, number>();
   private sequence = 0;
+  private files = new PreviewTerminalFiles();
+  private fileTimers = new Map<string, ReturnType<typeof setInterval>>();
   constructor(
     private publish: (workspace: TerminalWorkspaceView) => void,
     private emit: (frame: Frame) => void,
@@ -190,7 +232,7 @@ export class PreviewTerminal implements TerminalTransport {
               });
           }
         const ssh = this.workspace.configs.find((c) => c.id === config.data.sshTarget);
-        if (ssh?.kind === 'ssh')
+        if (ssh?.kind === 'ssh' && (!ssh.data.passwordSaved || !ssh.data.trustedKey))
           this.workspace.prompts.push({
             id: crypto.randomUUID(),
             targetId: ssh.id,
@@ -293,21 +335,60 @@ export class PreviewTerminal implements TerminalTransport {
       case 'browse':
         return {
           type: 'terminalDirectory',
-          data: {
-            path: action.data.path ?? '/home/demo',
-            entries: [
-              { name: 'projects', kind: 'directory' },
-              { name: 'README.md', kind: 'file', size: '2048' },
-              { name: 'notes.txt', kind: 'file', size: '256' },
-            ],
-          },
+          data: this.files.browse(action.data.path ?? undefined),
         };
       case 'mkdir':
+        this.files.add(action.data.path, true);
+        break;
       case 'rename':
+        this.files.rename(action.data.source, action.data.destination);
+        break;
       case 'upload':
       case 'download':
-      case 'deleteFiles':
+      case 'deleteFiles': {
+        const id = crypto.randomUUID();
+        const operation = action.type === 'deleteFiles' ? 'delete' : action.type;
+        this.workspace.files.push({
+          id,
+          terminalId: action.data.id,
+          operation,
+          bytes: '0',
+          completed: '0',
+          total: '1',
+          totalBytes: operation === 'delete' ? '0' : '8192',
+          phase: 'running',
+        });
+        let step = 0;
+        const timer = setInterval(() => {
+          const file = this.workspace.files.find((file) => file.id === id);
+          if (!file) return;
+          step++;
+          file.bytes = operation === 'delete' ? '0' : String(step * 2048);
+          if (step < 4) {
+            this.changed();
+            return;
+          }
+          let error: string | undefined;
+          try {
+            if (action.type === 'upload') {
+              const path = `${action.data.directory}/${action.data.folder ? 'uploaded-folder' : 'uploaded-file.txt'}`;
+              const entries = this.files.browse(action.data.directory).entries;
+              const exists = entries.some((entry) => entry.name === path.split('/').pop());
+              if (exists && action.data.conflict === 'overwrite') this.files.remove(path);
+              if (!(exists && action.data.conflict === 'skip'))
+                this.files.add(path, action.data.folder);
+            } else if (action.type === 'deleteFiles')
+              action.data.paths.forEach((path) => this.files.remove(path));
+          } catch (reason) {
+            error = errorText(toProblem(reason));
+          }
+          this.finishFile(id, error ? 'failed' : 'succeeded', error);
+        }, 650);
+        this.fileTimers.set(id, timer);
+        break;
+      }
       case 'stopFiles':
+        this.finishFile(action.data.id, 'stopped');
         break;
       case 'options':
         this.workspace.options = action.data.options;
@@ -316,13 +397,28 @@ export class PreviewTerminal implements TerminalTransport {
     this.changed();
     return { type: 'done' };
   }
+  private finishFile(id: string, result: string, error?: string) {
+    clearInterval(this.fileTimers.get(id));
+    this.fileTimers.delete(id);
+    this.workspace.files = this.workspace.files.filter((file) => file.id !== id);
+    this.changed();
+    this.emit({
+      type: 'terminalEnded',
+      data: { id, kind: 'file', name: '', result, error, cleanup: [] },
+    });
+  }
   reset() {
+    this.fileTimers.forEach(clearInterval);
+    this.fileTimers.clear();
+    this.files = new PreviewTerminalFiles();
     this.streams.clear();
     this.offsets.clear();
     this.workspace = terminalFixture();
     this.changed();
   }
   dispose() {
+    this.fileTimers.forEach(clearInterval);
+    this.fileTimers.clear();
     this.streams.clear();
     this.offsets.clear();
   }

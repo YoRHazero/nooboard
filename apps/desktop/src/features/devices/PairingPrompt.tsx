@@ -1,9 +1,13 @@
+import { getBackend } from '../../shared/backend';
+import { useSnapshot } from '../../shared/queries/useBackendSnapshotQuery';
+import { useAcceptPairingMutation } from './queries/useAcceptPairingMutation';
+import { useSubmitPairingCodeMutation } from './queries/useSubmitPairingCodeMutation';
+import { useDismissPairingMutation } from './queries/useDismissPairingMutation';
 import { type Problem, errorText, toProblem } from '../../shared/i18n/errors';
 import { useI18n } from '../../shared/i18n/react';
 import { useEffect, useState } from 'react';
 import { Check, KeyRound, LoaderCircle } from 'lucide-react';
-import { useDesktop, useSnapshot } from '../../client/react';
-import type { PairingSession } from '../../client/api';
+import type { PairingSession } from '../../shared/types';
 import { Dialog } from '../../shared/ui/Dialog';
 import { Button } from '../../shared/ui/controls';
 export function PairingPrompt() {
@@ -13,8 +17,11 @@ export function PairingPrompt() {
   ) : null;
 }
 function SessionPrompt({ session }: { session: PairingSession }) {
+  const dismissPairingMutation = useDismissPairingMutation();
+  const submitPairingCodeMutation = useSubmitPairingCodeMutation();
+  const acceptPairingMutation = useAcceptPairingMutation();
+
   const { t } = useI18n();
-  const client = useDesktop();
   const [code, setCode] = useState('');
   const [error, setError] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
@@ -37,7 +44,7 @@ function SessionPrompt({ session }: { session: PairingSession }) {
       setBusy(false);
     }
   };
-  const close = () => void run(() => client.dismissPairing(session.id));
+  const close = () => void run(() => dismissPairingMutation.mutateAsync([session.id]));
   const incoming = session.incoming && session.stage === 'AwaitingApproval';
   const done = session.stage === 'Completed';
   const failed = session.stage === 'Failed';
@@ -78,7 +85,7 @@ function SessionPrompt({ session }: { session: PairingSession }) {
           id="pair-code-form"
           onSubmit={(e) => {
             e.preventDefault();
-            void run(() => client.submitPairingCode(session.id, code));
+            void run(() => submitPairingCodeMutation.mutateAsync([session.id, code]));
           }}
         >
           <label className="form-field">
@@ -95,7 +102,7 @@ function SessionPrompt({ session }: { session: PairingSession }) {
             />
           </label>
           <p className="field-note">
-            {client.mode === 'preview' && t('preview:demoCode')}
+            {getBackend().mode === 'preview' && t('preview:demoCode')}
             {t('devices:codeExpiry', { count: left })}
           </p>
         </form>
@@ -128,7 +135,7 @@ function SessionPrompt({ session }: { session: PairingSession }) {
           <Button
             variant="primary"
             disabled={busy || left === 0}
-            onClick={() => void run(() => client.acceptPairing(session.id))}
+            onClick={() => void run(() => acceptPairingMutation.mutateAsync([session.id]))}
           >
             {t('devices:allowPairing')}
           </Button>

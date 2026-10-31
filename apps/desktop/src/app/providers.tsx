@@ -1,22 +1,33 @@
+import { Notifications } from './ui/Notifications';
+import { usePreferences } from '../features/settings/store/index';
+import { useConnection } from '../shared/store/index';
+import { useReconnectMutation } from '../shared/queries/useReconnectMutation';
 import { useEffect, type ReactNode } from 'react';
-import { type Desktop } from '../client/api';
-import { DesktopProvider, useConnection, useDesktop, usePreferences } from '../client/react';
-import { MailboxProvider } from '../features/mailbox/api';
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
+import { MailboxProvider } from '../features/mailbox/index';
 import { useI18n } from '../shared/i18n/react';
 import { errorText } from '../shared/i18n/errors';
 import { Button } from '../shared/ui/controls';
-export function Providers({ desktop, children }: { desktop: Desktop; children: ReactNode }) {
+export function Providers({
+  queryClient,
+  children,
+}: {
+  queryClient: QueryClient;
+  children: ReactNode;
+}) {
   return (
-    <DesktopProvider desktop={desktop}>
+    <QueryClientProvider client={queryClient}>
+      <Notifications />
       <ConnectionGate>
         <MailboxProvider>{children}</MailboxProvider>
       </ConnectionGate>
-    </DesktopProvider>
+    </QueryClientProvider>
   );
 }
 function ConnectionGate({ children }: { children: ReactNode }) {
+  const reconnectMutation = useReconnectMutation();
+
   const state = useConnection();
-  const desktop = useDesktop();
   const { t } = useI18n();
   const { appearance } = usePreferences();
   useEffect(() => {
@@ -31,7 +42,10 @@ function ConnectionGate({ children }: { children: ReactNode }) {
       {state.error && (
         <>
           <p role="alert">{errorText(state.error)}</p>
-          <Button variant="primary" onClick={() => void desktop.reconnect().catch(() => {})}>
+          <Button
+            variant="primary"
+            onClick={() => void reconnectMutation.mutateAsync([]).catch(() => {})}
+          >
             {t('common:retry')}
           </Button>
         </>

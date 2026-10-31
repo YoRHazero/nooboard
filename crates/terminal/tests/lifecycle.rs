@@ -145,6 +145,78 @@ async fn shared_dependencies_are_single_instance_and_release_on_last_owner() {
     service.shutdown().await.unwrap();
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn interactive_ready_prefix_releases_dependencies_before_the_line_ends() {
+    let (mut service, terminal) = service();
+    // The command stays alive awaiting a second input after emitting the prefix.
+    // Its later CRLF becomes CRCRLF in the PTY, as with nested sudo PTYs.
+    let spec = command(
+        "stty -echo -echonl; printf 'INPUT_READY\\n'; read -r answer; \
+         printf '::nooboard:v1:ready::'; read -r continue; \
+         printf '\\r\\nAFTER_MARKER\\n'; exec sleep 30",
+    );
+    let (id, mut output) = terminal
+        .start_command_with_output(
+            StartCommandRequest {
+                command: spec.clone(),
+                reuse_policy: CommandReusePolicy::Shared,
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    let owner = terminal
+        .start_terminal(root(vec![dependency(spec)]))
+        .await
+        .unwrap();
+    state(&terminal, |s| {
+        s.dependency_runs.iter().any(|dep| {
+            dep.command_run_id == Some(id)
+                && matches!(dep.gate_state, DependencyGateState::WaitingForRelease)
+        })
+    })
+    .await;
+    let mut data = output.initial_output.data;
+    tokio::time::timeout(Duration::from_secs(6), async {
+        while !String::from_utf8_lossy(&data).contains("INPUT_READY") {
+            data.extend(output.stream.next().await.unwrap().unwrap().data);
+        }
+    })
+    .await
+    .unwrap();
+    terminal
+        .write_input(TerminalIoTarget::Command(id), b"answer\n".to_vec())
+        .await
+        .unwrap();
+    state(&terminal, |s| {
+        s.terminal_runs
+            .iter()
+            .any(|run| run.id == owner && matches!(run.state, TerminalRunState::Running))
+    })
+    .await;
+    let snapshot = terminal.snapshot();
+    assert!(snapshot.command_runs[0].ready_marker_received);
+    assert!(matches!(
+        snapshot.dependency_runs[0].gate_state,
+        DependencyGateState::Released {
+            reason: DependencyReleaseReason::ReadyMarker
+        }
+    ));
+    terminal
+        .write_input(TerminalIoTarget::Command(id), b"continue\n".to_vec())
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(6), async {
+        while !data.ends_with(b"AFTER_MARKER\r\n") {
+            data.extend(output.stream.next().await.unwrap().unwrap().data);
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(data, b"INPUT_READY\r\nAFTER_MARKER\r\n");
+    service.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn manual_release_is_per_dependency_and_readiness_is_not_faked() {
     let (mut service, terminal) = service();
     let spec = command("exec sleep 30");
@@ -445,6 +517,68 @@ async fn atomic_start_output_captures_an_immediately_exiting_command() {
     assert!(terminal.snapshot().command_runs.is_empty());
     service.shutdown().await.unwrap();
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn standalone_command_helpers_can_read_the_controlling_tty_with_piped_stdin() {
+    let (mut service, terminal) = service();
+    let mut events = terminal.subscribe().events;
+    // Like an askpass helper: stdin carries a payload while interactive input
+    // comes from /dev/tty. No credentials, privilege escalation or network I/O.
+    let script = r#"printf 'test payload\n' | /bin/sh -c '
+        IFS= read -r payload
+        printf "HELPER_READY\n" >/dev/tty
+        IFS= read -r answer </dev/tty
+        [ "$payload" = "test payload" ] && [ "$answer" = "test answer" ] || exit 9
+        printf "HELPER_INPUT_OK\n" >/dev/tty
+    '"#;
+    let (id, mut output) = terminal
+        .start_command_with_output(
+            StartCommandRequest {
+                command: command(script),
+                reuse_policy: CommandReusePolicy::AlwaysNew,
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    let mut data = output.initial_output.data;
+    tokio::time::timeout(Duration::from_secs(6), async {
+        while !String::from_utf8_lossy(&data).contains("HELPER_READY") {
+            data.extend(
+                output
+                    .stream
+                    .next()
+                    .await
+                    .unwrap()
+                    .expect("helper exited early")
+                    .data,
+            );
+        }
+        terminal
+            .write_input(TerminalIoTarget::Command(id), b"test answer\n".to_vec())
+            .await
+            .unwrap();
+        while let Some(chunk) = output.stream.next().await.unwrap() {
+            data.extend(chunk.data);
+        }
+    })
+    .await
+    .expect("interactive command timed out");
+    let run = command_end(&mut events, id).await;
+    assert!(
+        matches!(
+            run.state,
+            CommandRunState::Ended {
+                result: CommandRunResult::Succeeded
+            }
+        ),
+        "{run:?}: {}",
+        String::from_utf8_lossy(&data)
+    );
+    assert!(String::from_utf8_lossy(&data).contains("HELPER_INPUT_OK"));
+    service.shutdown().await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn slow_event_subscriber_is_explicitly_disconnected_without_blocking_runs() {
     let (mut service, terminal) = service();

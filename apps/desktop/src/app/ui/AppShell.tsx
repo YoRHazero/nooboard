@@ -1,8 +1,15 @@
-import { AuthenticationPrompt } from '../../features/terminal/api';
+import { useConnection } from '../../shared/store';
+import { usePreferenceStore } from '../../features/settings/store';
+import { useFeedback } from '../../shared/store/index';
+import { useSnapshot } from '../../shared/queries/useBackendSnapshotQuery';
+import { useActionFeedback } from '../../shared/action-feedback';
+import { useReconnectMutation } from '../../shared/queries/useReconnectMutation';
+import { useUpdateSyncSettingsMutation } from '../../features/settings/queries/useUpdateSyncSettingsMutation';
+import { useAcknowledgeNavigationMutation } from '../../shared/queries/useAcknowledgeNavigationMutation';
+import { AuthenticationPrompt, TerminalNotices } from '../../features/terminal/index';
 import { Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
-import { errorText } from '../../shared/i18n/errors';
 import { useI18n } from '../../shared/i18n/react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { MotionConfig, motion } from 'motion/react';
 import {
   House,
@@ -13,15 +20,13 @@ import {
   Pause,
   Play,
   Settings2,
-  X,
   ArrowLeftRight,
 } from 'lucide-react';
-import { useDesktop, useCommand, useSnapshot, useFeedback } from '../../client/react';
-import { Button, IconButton } from '../../shared/ui/controls';
+import { Button } from '../../shared/ui/controls';
 import { appVersion } from '../version';
 
-import { UnpairedPrompt } from '../../features/devices/api';
-import { PairingPrompt } from '../../features/devices/api';
+import { UnpairedPrompt } from '../../features/devices/index';
+import { PairingPrompt } from '../../features/devices/index';
 
 const paths = {
   home: '/',
@@ -34,6 +39,10 @@ const paths = {
 type Page = keyof typeof paths;
 
 export function AppShell({ footer }: { footer?: ReactNode }) {
+  const acknowledgeNavigationMutation = useAcknowledgeNavigationMutation();
+  const updateSyncSettingsMutation = useUpdateSyncSettingsMutation();
+  const reconnectMutation = useReconnectMutation();
+
   const { t } = useI18n();
   const pages = {
     home: { title: t('common:home'), icon: House },
@@ -47,12 +56,16 @@ export function AppShell({ footer }: { footer?: ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const page = (Object.keys(paths) as Page[]).find((key) => paths[key] === pathname) ?? 'home';
   const main = useRef<HTMLElement>(null);
-  const { localDevice, settings, notice, connectionError, host, appearance } = useSnapshot();
+  const { localDevice, settings, host } = useSnapshot();
+  const appearance = usePreferenceStore((state) => state.appearance);
+  const connectionError = useConnection().error;
   const lastNavigation = useRef<number | null>(null);
-  const [dismissed, setDismissed] = useState<string>();
-  const client = useDesktop();
-  const { execute } = useCommand();
-  const { error, clearError } = useFeedback();
+  const { execute } = useActionFeedback([
+    acknowledgeNavigationMutation,
+    updateSyncSettingsMutation,
+    reconnectMutation,
+  ]);
+  const { clearError } = useFeedback();
   useEffect(() => {
     const navigation = host.navigation;
     if (!navigation || lastNavigation.current === navigation.id) return;
@@ -60,8 +73,8 @@ export function AppShell({ footer }: { footer?: ReactNode }) {
     void routeNavigate({ to: paths[navigation.page] });
     main.current?.scrollTo({ top: 0 });
     clearError();
-    void execute(() => client.acknowledgeNavigation(navigation.id));
-  }, [host.navigation, client, clearError, execute, routeNavigate]);
+    void execute(() => acknowledgeNavigationMutation.mutateAsync([navigation.id]));
+  }, [host.navigation, clearError, execute, routeNavigate]);
   useEffect(() => {
     document.title = `nooboard · ${pages[page].title}`;
   }, [page, t]);
@@ -138,7 +151,9 @@ export function AppShell({ footer }: { footer?: ReactNode }) {
                   disabled={!!connectionError}
                   className={settings.paused ? 'resume-button' : ''}
                   onClick={() =>
-                    execute(() => client.updateSyncSettings({ paused: !settings.paused }))
+                    execute(() =>
+                      updateSyncSettingsMutation.mutateAsync([{ paused: !settings.paused }]),
+                    )
                   }
                 >
                   {settings.paused ? <Play size={15} /> : <Pause size={15} />}
@@ -146,32 +161,6 @@ export function AppShell({ footer }: { footer?: ReactNode }) {
                 </Button>
               )}
             </header>
-            {connectionError && (
-              <div className="error-banner" role="alert">
-                <span>{errorText(connectionError)}</span>
-                {
-                  <Button onClick={() => execute(() => client.reconnect())}>
-                    {t('common:reconnect')}
-                  </Button>
-                }
-              </div>
-            )}
-            {notice && dismissed !== notice.id && (
-              <div className="error-banner" role="alert">
-                <span>{errorText(notice.message)}</span>
-                <IconButton label={t('common:dismiss')} onClick={() => setDismissed(notice.id)}>
-                  <X size={15} />
-                </IconButton>
-              </div>
-            )}
-            {error && (
-              <div className="error-banner" role="alert">
-                <span>{errorText(error)}</span>
-                <IconButton label={t('common:dismiss')} onClick={clearError}>
-                  <X size={15} />
-                </IconButton>
-              </div>
-            )}
             <div className="page-content" inert={!!connectionError} key={page}>
               <Outlet />
             </div>
@@ -180,6 +169,7 @@ export function AppShell({ footer }: { footer?: ReactNode }) {
         <PairingPrompt />
         <UnpairedPrompt />
         <AuthenticationPrompt />
+        <TerminalNotices />
         {footer}
       </div>
     </MotionConfig>

@@ -69,16 +69,16 @@ scripts             架构检查、测试工具与发布工具
 
 桌面宿主只依赖 core；Core 按 feature 的 domain/application/ports/adapters 分层，由 app 装配 clipboard、network、storage、identity、terminal。Core 将 Identity 的签名能力适配注入 Network，将加解密能力适配到 Terminal 配置，底层库不直接互相依赖。独占服务所有者管理生命周期，可克隆句柄提交请求、读取或订阅状态。释放界面或句柄不等于停止服务。
 
-| 修改内容                     | 首先阅读                                                                       |
-| ---------------------------- | ------------------------------------------------------------------------------ |
-| 配置、同步策略、历史协调     | [core 接口与持久化](../crates/core/README.md)                                  |
-| 系统剪贴板                   | [clipboard 接口与平台实现](../crates/clipboard/README.md)                      |
-| 配对、设备发现、普通文件传输 | [network 接口与协议](../crates/network/README.md)                              |
-| 数据库与迁移                 | [storage 接口](../crates/storage/README.md)                                    |
-| APP 身份、签名与秘密加密     | [identity 接口与迁移约定](../crates/identity/README.md)                       |
-| 终端、命令依赖、SSH 与 SFTP   | [terminal 接口与运行示例](../crates/terminal/README.md)                        |
-| 页面、IPC、宿主集成          | [桌面架构](../apps/desktop/ARCHITECTURE.md)                                    |
-| 品牌、图标和 3D 动画         | [资源维护文档](../apps/desktop/public/mascot/README.md)                        |
+| 修改内容                     | 首先阅读                                                  |
+| ---------------------------- | --------------------------------------------------------- |
+| 配置、同步策略、历史协调     | [core 接口与持久化](../crates/core/README.md)             |
+| 系统剪贴板                   | [clipboard 接口与平台实现](../crates/clipboard/README.md) |
+| 配对、设备发现、普通文件传输 | [network 接口与协议](../crates/network/README.md)         |
+| 数据库与迁移                 | [storage 接口](../crates/storage/README.md)               |
+| APP 身份、签名与秘密加密     | [identity 接口与迁移约定](../crates/identity/README.md)   |
+| 终端、命令依赖、SSH 与 SFTP  | [terminal 接口与运行示例](../crates/terminal/README.md)   |
+| 页面、IPC、宿主集成          | [桌面架构](../apps/desktop/ARCHITECTURE.md)               |
+| 品牌、图标和 3D 动画         | [资源维护文档](../apps/desktop/public/mascot/README.md)   |
 
 部分 crate README 由 `include_str!` 直接作为 Rust 文档引入，其中的示例属于公开接口契约。
 
@@ -92,7 +92,7 @@ npm run ipc:check
 npm run architecture:check
 ```
 
-生成物为 `ipc/schema.json` 与 `src/client/bridge/generated.ts`。同时更新预览实现；不要手工维护第二套接口定义。前端功能模块通过 `client/api.ts` 和 `client/react.tsx` 访问宿主，不直接调用 Tauri。
+生成物为 `ipc/schema.json` 与 `src/shared/contracts.generated.ts`。同时更新预览实现；不要手工维护第二套接口定义。前端功能模块通过 `queries/` 中的 query/mutation 和 `shared/backend.ts` 访问宿主，不直接调用 Tauri。后端快照只保存在 Query 缓存中；Zustand slices 管理前端交互状态。
 
 用户文案同时维护 `src/shared/i18n/locales/zh-CN` 与 `en`，运行 `npm run i18n:check`。完整检查与原生验收命令见 [测试文档](testing.md)。
 

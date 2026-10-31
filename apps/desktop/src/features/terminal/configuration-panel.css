@@ -1,0 +1,130 @@
+.terminal-config-panel {
+  flex: 0 0 auto;
+  min-height: 0;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: 9px;
+  overflow: hidden;
+}
+.terminal-config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
+  padding: 0 12px;
+}
+.terminal-config-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 10px 0;
+}
+.terminal-config-toggle svg,
+.tree-chevron svg {
+  transition: transform 130ms ease;
+}
+.terminal-config-toggle[aria-expanded='true'] > svg,
+.tree-chevron[aria-expanded='true'] > svg {
+  transform: rotate(90deg);
+}
+.terminal-config-count {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.terminal-config-tools,
+.tree-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.terminal-config-body {
+  max-height: min(32vh, 320px);
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  padding: 7px;
+}
+.configuration-tree,
+.configuration-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.configuration-tree ul {
+  margin-left: 24px;
+  border-left: 1px solid var(--line);
+}
+.configuration-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.configuration-row:hover,
+.configuration-row:focus-visible {
+  background: var(--surface);
+}
+.configuration-row.is-selected {
+  background: var(--accent-soft);
+}
+.tree-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 26px;
+  border: 0;
+  background: none;
+  flex-shrink: 0;
+  padding: 0;
+}
+.tree-icon {
+  display: flex;
+  width: 18px;
+  justify-content: center;
+  align-items: center;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.tree-name {
+  min-width: 40px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tree-detail {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tree-actions {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.tree-actions .icon-button {
+  width: 27px;
+  height: 27px;
+  min-height: 27px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tree-chevron svg,
+  .terminal-config-toggle svg {
+    transition: none;
+  }
+}
+[data-reduced-motion='true'] .tree-chevron svg,
+[data-reduced-motion='true'] .terminal-config-toggle svg {
+  transition: none;
+}

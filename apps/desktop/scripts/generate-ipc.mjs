@@ -77,7 +77,7 @@ const text =
   Object.entries(schema.definitions)
     .map(([name, value]) => `export type ${name} = ${type(value)};`)
     .join('\n');
-const target = path.join(root, 'src/client/bridge/generated.ts');
+const target = path.join(root, 'src/shared/contracts.generated.ts');
 const config = await prettier.resolveConfig(target);
 const formatted = await prettier.format(text, { ...config, parser: 'typescript' });
 if (check) {

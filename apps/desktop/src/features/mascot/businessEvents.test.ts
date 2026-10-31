@@ -1,8 +1,9 @@
 import { expect, it, vi } from 'vitest';
-import { SnapshotStore } from '../../client/snapshot/store';
+import { SnapshotProjection } from '../../app/snapshot-projection';
+import { createQueryClient } from '../../app/query-client';
 import { snapshotFixture, hostFixture } from '../../preview/scenarios/fixtures';
-import type { ContentKind, ContentStage } from '../../client/bridge/generated';
-import { ActivityInbox } from '../mailbox/ActivityInbox';
+import type { ContentKind, ContentStage } from '../../shared/contracts.generated';
+import { createInboxStore } from '../mailbox/store';
 import { Playback } from './playback';
 
 function setup() {
@@ -10,24 +11,30 @@ function setup() {
   frame.activities = [];
   frame.contentTransfers = [];
   const host = hostFixture();
-  const store = new SnapshotStore({ theme: 'light', reducedMotion: false });
+  const store = new SnapshotProjection(createQueryClient());
   store.apply(frame, host);
   const play = vi.fn();
-  const inbox = new ActivityInbox(null);
+  const inbox = createInboxStore(null);
   const playback = new Playback(play, (state) =>
-    inbox.performance(
-      state.activityId !== null,
-      store.getSnapshot().activities.find((row) => row.id === state.activityId) ?? null,
-    ),
+    inbox
+      .getState()
+      .performance(
+        state.activityId !== null,
+        store.getSnapshot().activities.find((row) => row.id === state.activityId) ?? null,
+      ),
   );
-  store.subscribe(() => inbox.sync(store.getSnapshot().activities));
+  store.queryClient.getQueryCache().subscribe((event) => {
+    if (event.type === 'updated') inbox.getState().sync(store.getSnapshot().activities);
+  });
   store.onEvent((event) => {
-    if (event.type === 'reset') inbox.reset(store.getSnapshot().activities[0] ?? null);
+    if (event.type === 'reset') inbox.getState().reset(store.getSnapshot().activities[0] ?? null);
     else if (
       ['copied', 'sent', 'received'].includes(event.type) ||
       event.contentNode === 'finished'
     )
-      inbox.record(store.getSnapshot().activities.find((row) => row.id === event.sequence)!);
+      inbox
+        .getState()
+        .record(store.getSnapshot().activities.find((row) => row.id === event.sequence)!);
     playback.event(event);
   });
   const publish = (recovering = false) => {
@@ -67,7 +74,7 @@ it.each(['Files', 'Image'] as ContentKind[])(
     });
     publish();
     expect(play).not.toHaveBeenCalled();
-    expect(inbox.getSnapshot().latest?.state).toBe('pending');
+    expect(inbox.getState().latest?.state).toBe('pending');
     frame.contentTransfers[0].completedBytes = 100;
     frame.contentTransfers[0].stage = 'Verifying';
     publish();
@@ -81,7 +88,7 @@ it.each(['Files', 'Image'] as ContentKind[])(
     });
     publish();
     expect(play).toHaveBeenLastCalledWith('receive_file', expect.any(Number));
-    expect(inbox.getSnapshot().latest).toMatchObject({
+    expect(inbox.getState().latest).toMatchObject({
       contentKind: kind,
       state: 'applied',
       contentNode: 'finished',
@@ -110,10 +117,10 @@ it.each(['Saved', 'Failed', 'Cancelled'] as ContentStage[])(
       contentStage: stage,
     });
     publish();
-    expect(inbox.getSnapshot().latest?.contentStage).toBe(stage);
+    expect(inbox.getState().latest?.contentStage).toBe(stage);
     if (stage === 'Saved') {
       expect(play).toHaveBeenLastCalledWith('receive_file', expect.any(Number));
-      expect(inbox.getSnapshot().latest?.state).toBe('partial');
+      expect(inbox.getState().latest?.state).toBe('partial');
     } else if (stage === 'Failed')
       expect(play).toHaveBeenLastCalledWith('error', expect.any(Number));
     else expect(play).not.toHaveBeenCalled();
@@ -141,7 +148,7 @@ it.each(['Applied', 'Unconfirmed', 'Rejected'] as const)(
       state === 'Applied' ? 'success' : 'error',
       expect.any(Number),
     );
-    expect(inbox.getSnapshot().latest?.state).toBe(state.toLowerCase());
+    expect(inbox.getState().latest?.state).toBe(state.toLowerCase());
   },
 );
 
@@ -155,7 +162,7 @@ it('updates clipboard state immediately and groups extra activity without replay
   frame.current.text = 'two';
   publish();
   expect(store.getSnapshot().current.text).toBe('two');
-  expect(inbox.getSnapshot().batch.map((row) => row.title)).toEqual(['two', 'one']);
+  expect(inbox.getState().batch.map((row) => row.title)).toEqual(['two', 'one']);
   expect(play).toHaveBeenCalledTimes(1);
   finish();
   frame.activities.unshift({ sequence: '3', kind: 'Received', summary: 'recovered', at: 2 });

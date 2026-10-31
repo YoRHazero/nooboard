@@ -1,6 +1,8 @@
+import { usePreferenceStore } from '../settings';
+import { onBackendEvent } from '../../shared/events';
+import { getBackendSnapshot, subscribeBackendSnapshot } from '../../shared/backend';
 import { useI18n } from '../../shared/i18n/react';
 import { useEffect, useRef, useState } from 'react';
-import { useDesktop, useSnapshot } from '../../client/react';
 import { Playback, type PlaybackState } from './playback';
 import type { BirdScene } from './scene';
 import type { TargetLayout } from './targets';
@@ -20,8 +22,7 @@ export function Mascot({
   interaction?: { id: number; motion: Gesture };
 }) {
   const { t } = useI18n();
-  const client = useDesktop();
-  const { appearance } = useSnapshot();
+  const appearance = usePreferenceStore((state) => state.appearance);
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<BirdScene | null>(null);
   const controller = useRef<Playback | null>(null);
@@ -69,7 +70,7 @@ export function Mascot({
         fallback.disconnect();
         setLoaded(true);
         let sleeping = false;
-        const hidden = () => document.hidden || client.getSnapshot().host.visible === false;
+        const hidden = () => document.hidden || getBackendSnapshot().host.visible === false;
         const visibility = () => {
           const next = hidden();
           if (next === sleeping) {
@@ -84,7 +85,7 @@ export function Mascot({
           } else stage.wake();
         };
         const update = () => {
-          const state = client.getSnapshot();
+          const state = getBackendSnapshot();
           if (!motionPreview)
             control.setMode(
               state.settings.paused
@@ -94,16 +95,18 @@ export function Mascot({
                   : 'idle',
               !hidden(),
             );
-          const reduced = state.appearance.reducedMotion || preference.matches;
+          const reduced =
+            usePreferenceStore.getState().appearance.reducedMotion || preference.matches;
           setReduced(reduced);
           stage.setReduced(reduced);
           visibility();
         };
         subscriptions.push(
-          client.onEvent((event) => {
+          onBackendEvent((event) => {
             if (!motionPreview && !hidden()) control.event(event);
           }),
-          client.subscribe(update),
+          subscribeBackendSnapshot(update),
+          usePreferenceStore.subscribe(update),
         );
         preference.addEventListener('change', update);
         document.addEventListener('visibilitychange', visibility);
@@ -137,17 +140,17 @@ export function Mascot({
       scene.current = null;
       controller.current = null;
     };
-  }, [client, onLayout, onPlayback, motionPreview]);
+  }, [onLayout, onPlayback, motionPreview]);
   useEffect(() => {
     if (
       interaction &&
       scene.current &&
       !motionPreview &&
       !document.hidden &&
-      client.getSnapshot().host.visible !== false
+      getBackendSnapshot().host.visible !== false
     )
       controller.current?.gesture(interaction.motion);
-  }, [interaction, motionPreview, client]);
+  }, [interaction, motionPreview]);
   useEffect(() => {
     const media = matchMedia('(prefers-color-scheme: dark)');
     const repaint = () => requestAnimationFrame(() => scene.current?.theme());

@@ -1,8 +1,11 @@
+import { useConfirmHostMutation } from './queries/useConfirmHostMutation';
+import { usePasswordMutation } from './queries/usePasswordMutation';
+import { useSnapshot } from '../../shared/queries/useBackendSnapshotQuery';
+import { useActionFeedback } from '../../shared/action-feedback';
+import { useCancelPromptMutation } from './queries/useCancelPromptMutation';
 import { useState } from 'react';
-import type { TerminalPromptView } from '../../client/api';
-import { useCommand, useDesktop, useSnapshot } from '../../client/react';
+import type { TerminalPromptView } from '../../shared/types';
 import { useI18n } from '../../shared/i18n/react';
-import { errorText } from '../../shared/i18n/errors';
 import { Button } from '../../shared/ui/controls';
 import { Dialog } from '../../shared/ui/Dialog';
 
@@ -11,15 +14,21 @@ export function AuthenticationPrompt() {
   return prompts[0] ? <Prompt key={prompts[0].id} prompt={prompts[0]} /> : null;
 }
 function Prompt({ prompt }: { prompt: TerminalPromptView }) {
-  const { terminal } = useDesktop();
+  const cancelPromptMutation = useCancelPromptMutation();
+
+  const confirmHostMutation = useConfirmHostMutation();
+  const passwordMutation = usePasswordMutation();
   const { t } = useI18n();
   const configs = useSnapshot((s) => s.terminal.configs);
-  const { execute, pending, error } = useCommand();
+  const { execute, pending } = useActionFeedback([
+    cancelPromptMutation,
+    confirmHostMutation,
+    passwordMutation,
+  ]);
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
   const close = () => {
-    if (!pending)
-      void execute(() => terminal.request({ type: 'cancelPrompt', data: { id: prompt.id } }));
+    if (!pending) void execute(() => cancelPromptMutation.mutateAsync({ id: prompt.id }));
   };
   const host = prompt.prompt.kind === 'host' ? prompt.prompt.data : null;
   return (
@@ -30,11 +39,9 @@ function Prompt({ prompt }: { prompt: TerminalPromptView }) {
           e.preventDefault();
           if (!pending)
             void execute(async () => {
-              await terminal.request(
-                host
-                  ? { type: 'confirmHost', data: { id: prompt.id, accept: true } }
-                  : { type: 'password', data: { id: prompt.id, password, remember } },
-              );
+              await (host
+                ? confirmHostMutation.mutateAsync({ id: prompt.id, accept: true })
+                : passwordMutation.mutateAsync({ id: prompt.id, password, remember }));
               setPassword('');
             });
         }}
@@ -77,11 +84,6 @@ function Prompt({ prompt }: { prompt: TerminalPromptView }) {
               {t('terminal:rememberPassword')}
             </label>
           </>
-        )}
-        {error && (
-          <p className="form-error" role="alert">
-            {errorText(error)}
-          </p>
         )}
         <div className="dialog-actions">
           <Button onClick={close} disabled={pending}>

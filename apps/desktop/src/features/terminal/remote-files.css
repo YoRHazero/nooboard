@@ -1,0 +1,189 @@
+.terminal-files {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-left: 1px solid var(--line);
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+.terminal-files > header {
+  min-height: 48px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+}
+.terminal-files > header > div:first-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.terminal-files > header span {
+  max-width: 200px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 10px;
+}
+.terminal-path {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 10px;
+}
+.terminal-path-input {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+.terminal-path input {
+  width: 100%;
+  font-size: 11px;
+  padding: 7px 8px;
+}
+.terminal-path .icon-button {
+  width: 26px;
+  height: 28px;
+  min-height: 28px;
+}
+.path-suggestions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  max-width: 290px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 4px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px #0002;
+}
+.path-suggestions button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  padding: 7px;
+  background: transparent;
+  font-size: 11px;
+}
+.path-suggestions button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.path-suggestions button:hover,
+.path-suggestions button[aria-selected='true'] {
+  background: var(--accent-soft);
+}
+.terminal-file-list {
+  min-height: 100px;
+  flex: 1;
+  overflow: auto;
+  padding: 0 8px 12px;
+}
+.remote-tree {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.remote-tree .remote-tree {
+  margin-left: 16px;
+  border-left: 1px solid var(--line);
+}
+.terminal-file-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px;
+  min-height: 32px;
+  border: 0;
+  border-radius: 4px;
+}
+.terminal-file-row:hover {
+  background: var(--surface);
+}
+.terminal-file-row.is-selected {
+  background: var(--accent-soft);
+}
+.terminal-file-row > svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.terminal-file-row > .file-disclosure {
+  flex: 0 0 13px;
+  width: 13px;
+  height: 20px;
+  border: 0;
+  padding: 0;
+  background: none;
+  display: flex;
+  align-items: center;
+}
+.file-disclosure[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+.terminal-file-row > .file-name {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  text-align: left;
+  border: 0;
+  background: none;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+}
+.file-size {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.file-branch-status {
+  color: var(--muted);
+  padding: 12px;
+  font-size: 11px;
+  list-style: none;
+}
+.file-branch-status button {
+  border: 0;
+  background: none;
+  color: var(--accent);
+}
+.terminal-file-footer {
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+}
+.terminal-file-footer > span {
+  font-size: 10px;
+}
+.terminal-file-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.terminal-file-actions [aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.file-delete-paths {
+  max-height: 160px;
+  overflow: auto;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

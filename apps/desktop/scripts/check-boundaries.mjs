@@ -17,6 +17,17 @@ async function scan(directory) {
       sourceType: 'module',
       plugins: ['typescript', 'jsx'],
     });
+    if (relative.startsWith('pages/')) {
+      if (relative.split('/').length !== 2) throw new Error(`Pages stay flat: ${relative}`);
+      for (const node of tree.program.body) {
+        if (node.type === 'ImportDeclaration') {
+          for (const specifier of node.specifiers) {
+            if (/^use[A-Z]/.test(specifier.local.name))
+              throw new Error(`Pages cannot import state hooks: ${relative}`);
+          }
+        }
+      }
+    }
     const imports = [];
     function visit(node) {
       if (!node || typeof node !== 'object') return;
@@ -45,38 +56,45 @@ async function scan(directory) {
       const assert = (valid, why) => {
         if (!valid) throw new Error(`${relative} -> ${imported}: ${why}`);
       };
-      if (relative.startsWith('client/'))
+      if (relative.startsWith('pages/')) {
+        assert(!/^(app|preview)\//.test(target), 'pages only compose feature regions');
         assert(
-          !/^(app|pages|features|preview)\//.test(target),
-          'client cannot depend on composition, pages or features',
+          !target.startsWith('shared/backend') &&
+            !target.startsWith('shared/queries/') &&
+            !target.startsWith('shared/store/'),
+          'pages do not access backend or state',
         );
-      if (/^(features|pages|app)\//.test(relative) && target.startsWith('client/'))
         assert(
-          target === 'client/api' || target === 'client/react' || target === 'client/create',
-          'use a public client entry',
+          !['zustand', '@tanstack/react-query'].includes(imported),
+          'pages do not own state or queries',
         );
-      if (/^(features|pages)\//.test(relative))
-        assert(
-          !/^(app|preview)\/|^@tauri-apps\//.test(target),
-          'features cannot call IPC or select adapters',
-        );
+      }
       if (relative.startsWith('features/'))
-        assert(!target.startsWith('pages/'), 'features cannot depend on pages');
+        assert(
+          !/^(app|pages|preview)\//.test(target),
+          'features cannot depend on composition, pages or preview',
+        );
       if (/^(features|pages)\//.test(relative) && target.startsWith('features/')) {
         const sameFeature =
           relative.startsWith('features/') && relative.split('/')[1] === target.split('/')[1];
-        assert(sameFeature || /\/api$/.test(target), 'cross-feature imports use the public api');
-      }
-      if (/^shared\//.test(relative))
         assert(
-          !/^(app|pages|features|client|preview)\//.test(target),
-          'shared utilities cannot depend on application layers',
+          sameFeature ||
+            /^features\/[^/]+(?:\/index)?$/.test(target) ||
+            /^features\/[^/]+\/queries\/use[A-Z]\w+$/.test(target),
+          'cross-feature imports use index.ts or a public query/mutation hook',
+        );
+      }
+      if (relative.startsWith('shared/'))
+        assert(
+          !/^(app|pages|features|preview)\//.test(target),
+          'shared cannot depend on application or feature modules',
         );
       if (imported.startsWith('@tauri-apps/'))
         assert(
-          relative.startsWith('client/bridge/') || relative === 'app/bootstrap.tsx',
-          'platform imports belong to the bridge',
+          ['shared/backend.ts', 'shared/native-menu.ts', 'app/bootstrap.tsx'].includes(relative),
+          'platform imports belong to the backend boundary',
         );
+      assert(!target.startsWith('client/'), 'the former client facade has been retired');
     }
   }
 }

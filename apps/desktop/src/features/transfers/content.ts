@@ -1,8 +1,8 @@
-import type { ContentStage, ContentTransfer } from '../../client/api';
+import type { ContentStage, ContentTransfer } from '../../shared/types';
 import { t } from '../../shared/i18n/index';
 
-import { contentPending } from '../../client/api';
-export { contentPending, contentActivityState } from '../../client/api';
+import { contentPending } from '../../shared/types';
+export { contentPending, contentActivityState } from '../../shared/types';
 export const contentCancellable = (stage: ContentStage) =>
   contentPending(stage) && !['Saving', 'Applying', 'Cancelling'].includes(stage);
 export const contentStageLabel = (stage: ContentStage) => t(`transfers:stage${stage}`);

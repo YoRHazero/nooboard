@@ -1,5 +1,5 @@
 import { t } from '../../shared/i18n/index';
-import type { Activity, DeliveryState } from '../../client/api';
+import type { Activity, DeliveryState } from '../../shared/types';
 export function deliveryLabel(state: DeliveryState): string {
   const labels: Record<DeliveryState, string> = {
     queued: t('common:queued'),
@@ -15,7 +15,7 @@ export function deliveryLabel(state: DeliveryState): string {
   };
   return labels[state];
 }
-export { deliveryPending, batchState } from '../../client/api';
+export { deliveryPending, batchState } from '../../shared/types';
 export function batchSummary(activity: Activity) {
   const targets = activity.targets ?? [];
   const success = targets.filter((d) => d.state === 'applied').length;
