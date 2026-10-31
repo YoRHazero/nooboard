@@ -75,7 +75,12 @@ async fn read(
     loop {
         match receiver.receive().await? {
             Message::Unpaired => return Err(Failure::Unpaired),
-            Message::Ping => queue.control(Message::Pong)?,
+            Message::Ping => match queue.control(Message::Pong) {
+                // Revocation reserves the outbox for Unpaired. A late heartbeat
+                // must not end this reader and cancel the pending final write.
+                Ok(()) | Err(Failure::Disconnected) => {}
+                Err(error) => return Err(error),
+            },
             Message::Pong => {}
             message => events
                 .try_send(SessionEvent::Message {
@@ -85,5 +90,46 @@ async fn read(
                 })
                 .map_err(|_| Failure::Busy)?,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::connections::transport::tls_tcp::TlsConfig;
+    use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn heartbeat_during_revocation_cannot_abort_the_final_notice() {
+        let a = crate::test_identity::generate();
+        let b = crate::test_identity::generate();
+        let client = TlsConfig::new(&a, b.certificate()).unwrap();
+        let server = TlsConfig::new(&b, a.certificate()).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let (client, server) = tokio::join!(client.connect(&address), async {
+            server.accept(listener.accept().await.unwrap().0).await
+        });
+        let (mut peer, mut peer_receiver) = client.unwrap().into_split();
+        let (_sender, mut receiver) = server.unwrap().into_split();
+        let queue = Outbox::new();
+        queue.revoke();
+        // A heartbeat may already be in flight when local revocation starts.
+        peer.send(&Message::Ping).await.unwrap();
+        peer.send(&Message::Unpaired).await.unwrap();
+        let (events, _events) = mpsc::channel(1);
+        let result = tokio::time::timeout(
+            Duration::from_secs(3),
+            read(&mut receiver, &queue, "peer", 1, &events),
+        )
+        .await
+        .unwrap();
+        assert!(matches!(result, Err(Failure::Unpaired)), "{result:?}");
+        assert!(matches!(
+            queue.next().await.unwrap().message,
+            Message::Unpaired
+        ));
+        receiver.close().await;
+        peer_receiver.close().await;
     }
 }
