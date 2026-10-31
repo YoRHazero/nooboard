@@ -1,5 +1,8 @@
 use crate::{
-    contracts::{PortFuture, terminal::SshTargetConfigId},
+    contracts::{
+        PortFuture,
+        terminal::{CommandConfigId, SshTargetConfigId},
+    },
     features::terminal::domain::{config::EncryptedSecret, inputs::SecretInput},
 };
 #[derive(Clone, Copy)]
@@ -7,17 +10,11 @@ pub(crate) enum SecretField {
     Password,
     PrivateKey,
 }
+pub(crate) enum SecretScope {
+    Ssh(SshTargetConfigId, SecretField),
+    CommandInput(CommandConfigId, String),
+}
 pub(crate) trait SecretsPort: Send + Sync {
-    fn seal(
-        &self,
-        id: SshTargetConfigId,
-        field: SecretField,
-        secret: SecretInput,
-    ) -> PortFuture<'_, EncryptedSecret>;
-    fn open(
-        &self,
-        id: SshTargetConfigId,
-        field: SecretField,
-        secret: EncryptedSecret,
-    ) -> PortFuture<'_, SecretInput>;
+    fn seal(&self, scope: SecretScope, secret: SecretInput) -> PortFuture<'_, EncryptedSecret>;
+    fn open(&self, scope: SecretScope, secret: EncryptedSecret) -> PortFuture<'_, SecretInput>;
 }

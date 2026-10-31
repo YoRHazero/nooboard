@@ -38,11 +38,23 @@ pub struct SshTargetInput {
     pub username: String,
     pub auth: SshAuthInput,
 }
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct CommandInput {
     pub name: String,
     pub target: CommandTarget,
     pub command: String,
+    /// Complete desired mapping. Omitted keys are deleted; existing keys retain order.
+    pub auto_inputs: Vec<CommandAutoInputEdit>,
+}
+#[derive(Debug)]
+pub struct CommandAutoInputEdit {
+    pub prefix: String,
+    pub value: AutoInputValue,
+}
+#[derive(Debug)]
+pub enum AutoInputValue {
+    Keep,
+    Set(SecretInput),
 }
 #[derive(Clone, Debug)]
 pub struct TerminalInput {

@@ -29,6 +29,16 @@ impl Manager {
                 }
             }
             DriverEvent::Ready(id) => self.ready(id),
+            DriverEvent::AutoInputFailed { id, error } => {
+                if let Some(entry) = self.entries.get_mut(&id)
+                    && !entry.stopping()
+                    && let Kind::Command {
+                        auto_input_error, ..
+                    } = &mut entry.kind
+                {
+                    *auto_input_error = Some(error.with_source_run(id));
+                }
+            }
             DriverEvent::Cleaning(id) => {
                 let mut timer = false;
                 if let Some(entry) = self.entries.get_mut(&id) {

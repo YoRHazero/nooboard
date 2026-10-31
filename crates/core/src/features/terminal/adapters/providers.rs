@@ -8,10 +8,14 @@ use crate::{
             state::References,
         },
         domain::config::*,
-        ports::{devices::DeviceAddressPort, secrets::SecretsPort},
+        ports::{
+            devices::DeviceAddressPort,
+            secrets::{SecretScope, SecretsPort},
+        },
     },
 };
 use base64::Engine;
+use nooboard_terminal::{CommandAutoInput, SecretString};
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
 
@@ -54,38 +58,53 @@ impl Providers {
             }),
         })
     }
-    pub fn command(
+    pub async fn command(
         self: &Arc<Self>,
         catalog: &Catalog,
         id: CommandConfigId,
     ) -> Result<CommandStartSpec> {
         let c = catalog.commands.get(&id).ok_or(Error::NotFound)?;
+        let mut auto_inputs = Vec::new();
+        for (prefix, secret) in &c.auto_inputs {
+            let value = self
+                .secrets
+                .open(
+                    SecretScope::CommandInput(id, prefix.clone()),
+                    secret.clone(),
+                )
+                .await?;
+            let text = std::str::from_utf8(value.expose()).map_err(|_| Error::Configuration)?;
+            auto_inputs.push(CommandAutoInput {
+                prefix: prefix.clone(),
+                value: SecretString::new(text),
+            });
+        }
         Ok(CommandStartSpec {
             config_id: id,
             config_name: c.name.clone(),
             command: c.command.clone(),
+            auto_inputs,
             target: match c.target {
                 CommandTarget::Local => CommandStartTarget::Local,
                 CommandTarget::Ssh(id) => CommandStartTarget::Ssh(self.target(catalog, id)?),
             },
         })
     }
-    fn dependencies(
+    async fn dependencies(
         self: &Arc<Self>,
         catalog: &Catalog,
         dependencies: &[DependencyConfig],
     ) -> Result<Vec<DependencyStartSpec>> {
-        dependencies
-            .iter()
-            .map(|d| {
-                Ok(DependencyStartSpec {
-                    command: self.command(catalog, d.command_config_id)?,
-                    reuse_policy: d.reuse_policy,
-                })
-            })
-            .collect()
+        let mut result = Vec::new();
+        for dependency in dependencies {
+            result.push(DependencyStartSpec {
+                command: self.command(catalog, dependency.command_config_id).await?,
+                reuse_policy: dependency.reuse_policy,
+            });
+        }
+        Ok(result)
     }
-    pub fn terminal(
+    pub async fn terminal(
         self: &Arc<Self>,
         catalog: &Catalog,
         id: TerminalConfigId,
@@ -98,10 +117,10 @@ impl Providers {
                 TerminalTarget::Local => TerminalStartTarget::Local,
                 TerminalTarget::Ssh(id) => TerminalStartTarget::Ssh(self.target(catalog, id)?),
             },
-            dependencies: self.dependencies(catalog, &c.dependencies)?,
+            dependencies: self.dependencies(catalog, &c.dependencies).await?,
         })
     }
-    pub fn tunnel(
+    pub async fn tunnel(
         self: &Arc<Self>,
         catalog: &Catalog,
         id: TunnelConfigId,
@@ -112,7 +131,7 @@ impl Providers {
             config_name: c.name.clone(),
             target: self.target(catalog, c.target)?,
             forward: c.forward.clone(),
-            dependencies: self.dependencies(catalog, &c.dependencies)?,
+            dependencies: self.dependencies(catalog, &c.dependencies).await?,
         })
     }
 }

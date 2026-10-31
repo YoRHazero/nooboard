@@ -156,6 +156,7 @@ struct CommandConfig {
     name: String,
     target: CommandTarget,
     command: String,
+    auto_inputs: IndexMap<String, EncryptedSecret>,
 }
 
 enum CommandTarget {
@@ -180,6 +181,10 @@ enum CommandLifetimePolicy {
 ```
 
 `command` 是完整命令文本，例如 `icrrvpn -g`；不拆分为 executable 与 argv。执行环境按完整 shell 命令处理，需要引号时由命令文本表达。
+
+`auto_inputs` 保存「输出行首提示 → 自动输入值」的有序映射，所有值通过 Core 调用 Identity 加密，附加数据绑定命令 ID 与提示键；复制配置时重新加密。持久化为有序键值对数组，缺省为空。保存请求允许保留或覆盖原值，省略的键删除；现有键保持顺序，新键追加到末尾，不提供排序。快照只暴露键。运行时冻结规则，由 Core 解密后交给 Terminal，不回传原值给编辑界面。
+
+自动输入按原始输出以 LF 分行，不去除空格或颜色控制符。每次收到行片段时，在当前完整匹配且未使用的规则里按保存顺序选择第一条，不等待未完成的规则或换行；重叠前缀可能因输出分块而选择不同规则。每行最多触发一条，每条规则每个实例最多发送一次，Shared 复用不重置。键不能为空、重复或包含 CR/LF/NUL；值限制为单行、保留空格，空值只发送 LF。失败不重试，记录错误并保留手动输入。配置的加密存储不改变命令自身的回显行为。
 
 `CommandReusePolicy` 是本次启动或依赖请求的选择，不是 CommandConfig 的永久单实例属性。`CommandLifetimePolicy` 属于运行实例，不放进上述持久化配置。
 
@@ -362,6 +367,12 @@ struct CommandStartSpec {
     config_name: String,
     target: CommandStartTarget,
     command: String,
+    auto_inputs: Vec<CommandAutoInput>,
+}
+
+struct CommandAutoInput {
+    prefix: String,
+    value: SecretString,
 }
 
 enum CommandStartTarget {
@@ -508,6 +519,7 @@ struct CommandRun {
     state: CommandRunState,
     stop_method: Option<StopMethod>,
     ready_marker_received: bool,
+    auto_input_error: Option<TerminalError>,
 }
 
 enum CommandRunState {

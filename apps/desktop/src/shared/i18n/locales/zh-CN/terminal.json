@@ -183,5 +183,17 @@
   "transferStopped": "文件操作已取消",
   "transferFailed": "文件操作失败",
   "instanceEnded": "{{name}} 已结束",
-  "transferUnknown": "操作已结束，但未收到最终结果。请刷新目录确认。"
+  "transferUnknown": "操作已结束，但未收到最终结果。请刷新目录确认。",
+  "autoInputs": "自动输入",
+  "autoInputsHint": "匹配输出行首后自动输入，每条规则每次运行只使用一次。输入值加密保存，新规则添加到末尾。",
+  "autoInputPrefix": "提示前缀",
+  "autoInputValue": "输入内容",
+  "autoInputSaved": "已保存输入内容",
+  "autoInputEmpty": "留空表示只发送回车",
+  "autoInputReplace": "覆盖输入内容",
+  "autoInputKeep": "保留已保存内容",
+  "autoInputDuplicate": "提示前缀不能重复。",
+  "addAutoInput": "添加输入规则",
+  "autoInputFailed": "自动输入失败 · {{name}}",
+  "autoInputsHelp": "自动输入说明"
 }

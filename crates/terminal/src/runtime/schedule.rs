@@ -195,10 +195,16 @@ impl Manager {
                 command: spec.command.clone(),
                 lifetime,
                 ready: false,
+                auto_input_error: None,
             },
             driver,
             vec![],
         );
+        self.entries[&run]
+            .output
+            .as_ref()
+            .unwrap()
+            .set_auto_inputs(spec.auto_inputs.clone());
         self.launch(run);
         Ok(Some(id))
     }
@@ -481,6 +487,18 @@ fn validate_ssh(target: &SshStartTarget) -> Result<()> {
 }
 fn validate_command(command: &CommandStartSpec) -> Result<()> {
     name(&command.config_name)?;
+    let mut prefixes = std::collections::HashSet::new();
+    for rule in &command.auto_inputs {
+        if rule.prefix.is_empty()
+            || rule.prefix.contains(['\r', '\n', '\0'])
+            || rule.value.expose().contains(['\r', '\n', '\0'])
+            || !prefixes.insert(&rule.prefix)
+        {
+            return Err(TerminalError::invalid(
+                "invalid or duplicate automatic input rule",
+            ));
+        }
+    }
     if command.command.trim().is_empty() || command.command.contains('\0') {
         return Err(TerminalError::invalid(
             "command must not be empty or contain NUL",

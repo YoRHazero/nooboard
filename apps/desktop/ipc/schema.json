@@ -2913,6 +2913,25 @@
         "privateKey"
       ]
     },
+    "TerminalAutoInputEdit": {
+      "type": "object",
+      "required": [
+        "prefix"
+      ],
+      "properties": {
+        "prefix": {
+          "type": "string"
+        },
+        "value": {
+          "description": "None preserves a saved value. An empty string sends only Enter.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "TerminalCommandInput": {
       "type": "object",
       "required": [
@@ -2920,6 +2939,13 @@
         "name"
       ],
       "properties": {
+        "autoInputs": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TerminalAutoInputEdit"
+          }
+        },
         "command": {
           "type": "string"
         },
@@ -2934,6 +2960,34 @@
         }
       },
       "additionalProperties": false
+    },
+    "TerminalCommandView": {
+      "type": "object",
+      "required": [
+        "autoInputs",
+        "command",
+        "name"
+      ],
+      "properties": {
+        "autoInputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "command": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sshTarget": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
     },
     "TerminalConfigInput": {
       "oneOf": [
@@ -3040,7 +3094,7 @@
           ],
           "properties": {
             "data": {
-              "$ref": "#/definitions/TerminalCommandInput"
+              "$ref": "#/definitions/TerminalCommandView"
             },
             "kind": {
               "type": "string",
@@ -3646,6 +3700,12 @@
       ],
       "properties": {
         "address": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "autoInputError": {
           "type": [
             "string",
             "null"

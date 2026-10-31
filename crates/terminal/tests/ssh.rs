@@ -8,6 +8,70 @@ use tokio::{
 };
 
 #[tokio::test]
+async fn ssh_command_auto_input_is_sent_once_and_manual_input_remains_available() {
+    let server = Server::start(Settings {
+        command_prompt: Some(b"Password:".to_vec()),
+        ..Default::default()
+    })
+    .await;
+    let (mut service, client, auth) = service(&server, false);
+    let spec = CommandStartSpec {
+        config_id: CommandConfigId::new(),
+        config_name: "automatic input".into(),
+        target: CommandStartTarget::Ssh(server.target(auth)),
+        command: "interactive".into(),
+        auto_inputs: vec![CommandAutoInput {
+            prefix: "Password:".into(),
+            value: SecretString::new("wire-value"),
+        }],
+    };
+    let (id, mut output) = client
+        .start_command_with_output(
+            StartCommandRequest {
+                command: spec.clone(),
+                reuse_policy: CommandReusePolicy::Shared,
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    let mut data = output.initial_output.data;
+    tokio::time::timeout(Duration::from_secs(6), async {
+        while !String::from_utf8_lossy(&data).contains("wire-value\nPassword:") {
+            data.extend(output.stream.next().await.unwrap().unwrap().data);
+        }
+        assert_eq!(
+            client
+                .start_command(
+                    StartCommandRequest {
+                        command: spec,
+                        reuse_policy: CommandReusePolicy::Shared
+                    },
+                    CancellationToken::new()
+                )
+                .await
+                .unwrap(),
+            id
+        );
+        client
+            .write_input(TerminalIoTarget::Command(id), b"manual\n".to_vec())
+            .await
+            .unwrap();
+        while !String::from_utf8_lossy(&data).contains("manual\nPassword:") {
+            data.extend(output.stream.next().await.unwrap().unwrap().data);
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        *server.data.command_inputs.lock().unwrap(),
+        [b"wire-value\n".to_vec(), b"manual\n".to_vec()]
+    );
+    assert!(client.snapshot().command_runs[0].auto_input_error.is_none());
+    service.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn host_confirmation_can_outlast_connection_timeout_and_is_cancellable() {
     use std::sync::{Arc, atomic::AtomicUsize};
     struct WaitingTrust {

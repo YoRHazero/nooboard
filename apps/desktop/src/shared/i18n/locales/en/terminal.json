@@ -183,5 +183,17 @@
   "transferStopped": "File operation cancelled",
   "transferFailed": "File operation failed",
   "instanceEnded": "{{name}} ended",
-  "transferUnknown": "The operation ended, but its result could not be confirmed. Refresh the directory to check."
+  "transferUnknown": "The operation ended, but its result could not be confirmed. Refresh the directory to check.",
+  "autoInputs": "Automatic input",
+  "autoInputsHint": "Match the start of an output line and send a value once per run. Values are saved encrypted. New rules append to the end.",
+  "autoInputPrefix": "Prompt prefix",
+  "autoInputValue": "Input value",
+  "autoInputSaved": "Value saved",
+  "autoInputEmpty": "Empty sends Enter only",
+  "autoInputReplace": "Replace value",
+  "autoInputKeep": "Keep saved value",
+  "autoInputDuplicate": "Each prompt prefix must be unique.",
+  "addAutoInput": "Add input rule",
+  "autoInputFailed": "Automatic input failed · {{name}}",
+  "autoInputsHelp": "About automatic input"
 }

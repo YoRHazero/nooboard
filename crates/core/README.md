@@ -122,6 +122,7 @@ let terminal = app.terminal();
 let id = terminal.create_command(CommandInput {
     name: "准备环境".into(), target: CommandTarget::Local,
     command: "printf ready".into(),
+    auto_inputs: vec![],
 }).await?;
 let (_run, _output) = terminal.start_command_with_output(
     id, CommandReusePolicy::Shared, CancellationToken::new(),
@@ -131,6 +132,7 @@ let (_run, _output) = terminal.start_command_with_output(
 ```
 
 - **配置与启动**：一次启动冻结主配置及全部依赖；编辑只作用于后续执行。Shared 复用旧实例时显示旧实例的真实参数。配置被其他配置、活动 Run 或待处理启动引用时拒绝删除。
+- **自动输入**：`CommandInput.auto_inputs` 提交有序规则，值用 `AutoInputValue::Keep` 保留或 `Set(SecretInput)` 覆盖，省略的键删除。现有键保持位置，新键追加。Core 通过 Identity 加密全部值并绑定命令 ID 与提示键；复制命令重新加密。持久化使用 `IndexMap` 的有序键值对数组，旧配置默认空映射。快照只返回提示键，不包含值或密文。启动计划冻结规则，解密后交给 Terminal；Shared 复用不重复发送。命令回显按原样展示，加密保证针对配置存储。
 - **可靠占用**：Core 串行登记启动预留，Terminal 管理器在登记真实 Run 时取得 `RunLease`，直到确认结束才释放。Shared 等待保留预留，独立存活的命令保留自己的 lease，不依赖可落后的 UI 结束事件。
 - **设备地址**：依赖放行后读取 Network 当前发现或活动连接地址，使用配置的 SSH 端口。无需配对；无可用地址直接失败，不使用历史地址兜底。
 - **主机信任**：按 SshTargetConfigId 保存公钥。未知密钥产生 HostTrust 提示，变化则失败并记录旧/新密钥。更换信任需要提交预期旧值，避免并发覆盖。复制配置不复制信任。

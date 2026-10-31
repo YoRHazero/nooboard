@@ -77,6 +77,94 @@
 .terminal-address-source {
   min-height: 40px;
 }
+.terminal-auto-inputs {
+  align-items: stretch;
+  gap: 8px;
+  min-height: 0;
+  flex: 1;
+}
+.terminal-auto-input-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.terminal-auto-input-list {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.terminal-auto-input .form-field {
+  margin-top: 0;
+  min-width: 0;
+}
+.terminal-auto-input {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+.terminal-auto-input-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.terminal-auto-inputs > .button {
+  align-self: flex-start;
+  flex: none;
+}
+.dialog.terminal-command-dialog {
+  height: min(720px, calc(100dvh - 48px));
+  overflow: hidden;
+}
+.terminal-command-dialog .dialog__surface {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.terminal-command-dialog .dialog__surface > header {
+  flex: none;
+}
+.terminal-command-dialog .terminal-form,
+.terminal-command-dialog .terminal-form > fieldset {
+  flex: 1;
+  min-height: 0;
+}
+.terminal-command-dialog .terminal-form > p,
+.terminal-command-dialog .terminal-form .form-field,
+.terminal-command-dialog .dialog-actions {
+  flex: none;
+  margin: 0;
+}
+.terminal-command-dialog textarea {
+  resize: none;
+}
+@media (max-height: 640px) {
+  .terminal-command-dialog .dialog__surface {
+    padding: 16px;
+  }
+  .terminal-command-dialog .dialog__surface > header {
+    margin-bottom: 12px;
+  }
+  .terminal-command-dialog .terminal-form,
+  .terminal-command-dialog .terminal-form > fieldset {
+    gap: 8px;
+  }
+  .terminal-command-dialog textarea {
+    height: 52px;
+  }
+  .terminal-command-dialog .terminal-auto-inputs {
+    padding-top: 10px;
+  }
+}
 .terminal-address-source button {
   flex: 1;
   min-width: 0;

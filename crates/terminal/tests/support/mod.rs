@@ -20,12 +20,14 @@ use tokio::{
 };
 #[derive(Default)]
 pub struct Settings {
+    pub command_prompt: Option<Vec<u8>>,
     pub deny_sftp: bool,
     pub slow_writes: bool,
     pub atomic_replace: bool,
     pub drop_commit_reply: bool,
 }
 pub struct Data {
+    pub command_inputs: Mutex<Vec<Vec<u8>>>,
     pub passwords: AtomicUsize,
     pub transports: AtomicUsize,
     pub subsystems: AtomicUsize,
@@ -64,6 +66,7 @@ impl Server {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let data = Arc::new(Data {
+            command_inputs: Mutex::new(vec![]),
             passwords: AtomicUsize::new(0),
             transports: AtomicUsize::new(0),
             subsystems: AtomicUsize::new(0),
@@ -337,6 +340,8 @@ impl server::Handler for Handler {
             session.exit_status_request(id, 0)?;
             session.eof(id)?;
             session.close(id)?;
+        } else if let Some(prompt) = &self.data.settings.command_prompt {
+            session.data(id, prompt.clone())?;
         } else {
             session.data(id, b"::nooboard:v1:ready::\r\n".to_vec())?;
         }
@@ -350,6 +355,14 @@ impl server::Handler for Handler {
     ) -> std::result::Result<(), Self::Error> {
         if self.channels.contains_key(&id) {
             session.data(id, bytes.to_vec())?;
+            if let Some(prompt) = &self.data.settings.command_prompt {
+                self.data
+                    .command_inputs
+                    .lock()
+                    .unwrap()
+                    .push(bytes.to_vec());
+                session.data(id, prompt.clone())?;
+            }
         }
         Ok(())
     }

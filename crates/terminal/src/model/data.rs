@@ -87,6 +87,7 @@ pub struct CommandRun {
     pub state: CommandRunState,
     pub stop_method: Option<StopMethod>,
     pub ready_marker_received: bool,
+    pub auto_input_error: Option<TerminalError>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

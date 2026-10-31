@@ -18,7 +18,10 @@ impl Runtime {
             } => {
                 let key = self.keys.unlock(private_key, passphrase).await?;
                 SshAuthConfig::PrivateKey {
-                    private_key: self.secrets.seal(id, SecretField::PrivateKey, key).await?,
+                    private_key: self
+                        .secrets
+                        .seal(SecretScope::Ssh(id, SecretField::PrivateKey), key)
+                        .await?,
                 }
             }
         };
@@ -59,10 +62,50 @@ impl Runtime {
         input: CommandInput,
     ) -> Result<CommandConfigId> {
         self.admit()?;
-        if id.is_some_and(|id| !self.catalog.commands.contains_key(&id)) {
-            return Err(Error::NotFound);
-        }
+        let old = id
+            .map(|id| {
+                self.catalog
+                    .commands
+                    .get(&id)
+                    .cloned()
+                    .ok_or(Error::NotFound)
+            })
+            .transpose()?;
         let id = id.unwrap_or_default();
+        let mut edits = indexmap::IndexMap::new();
+        for rule in input.auto_inputs {
+            auto_input_prefix(&rule.prefix)?;
+            if let AutoInputValue::Set(value) = &rule.value {
+                if value
+                    .expose()
+                    .iter()
+                    .any(|byte| matches!(byte, b'\r' | b'\n' | 0))
+                    || std::str::from_utf8(value.expose()).is_err()
+                {
+                    return Err(Error::Configuration);
+                }
+            } else if !old
+                .as_ref()
+                .is_some_and(|c| c.auto_inputs.contains_key(&rule.prefix))
+            {
+                return Err(Error::Configuration);
+            }
+            if edits.insert(rule.prefix, rule.value).is_some() {
+                return Err(Error::Configuration);
+            }
+        }
+        // Existing keys retain their positions; new keys append in request order.
+        let mut auto_inputs = old.map(|c| c.auto_inputs).unwrap_or_default();
+        auto_inputs.retain(|key, _| edits.contains_key(key));
+        for (prefix, edit) in edits {
+            if let AutoInputValue::Set(value) = edit {
+                let secret = self
+                    .secrets
+                    .seal(SecretScope::CommandInput(id, prefix.clone()), value)
+                    .await?;
+                auto_inputs.insert(prefix, secret);
+            }
+        }
         let mut next = self.catalog.clone();
         next.commands.insert(
             id,
@@ -71,6 +114,7 @@ impl Runtime {
                 name: input.name,
                 target: input.target,
                 command: input.command,
+                auto_inputs,
             },
         );
         self.commit(next).await?;
@@ -138,11 +182,14 @@ impl Runtime {
                     SshAuthConfig::Password {
                         password: Some(secret),
                     } => {
-                        let plain = self.secrets.open(id, SecretField::Password, secret).await?;
+                        let plain = self
+                            .secrets
+                            .open(SecretScope::Ssh(id, SecretField::Password), secret)
+                            .await?;
                         SshAuthConfig::Password {
                             password: Some(
                                 self.secrets
-                                    .seal(c.id, SecretField::Password, plain)
+                                    .seal(SecretScope::Ssh(c.id, SecretField::Password), plain)
                                     .await?,
                             ),
                         }
@@ -150,12 +197,12 @@ impl Runtime {
                     SshAuthConfig::PrivateKey { private_key } => {
                         let plain = self
                             .secrets
-                            .open(id, SecretField::PrivateKey, private_key)
+                            .open(SecretScope::Ssh(id, SecretField::PrivateKey), private_key)
                             .await?;
                         SshAuthConfig::PrivateKey {
                             private_key: self
                                 .secrets
-                                .seal(c.id, SecretField::PrivateKey, plain)
+                                .seal(SecretScope::Ssh(c.id, SecretField::PrivateKey), plain)
                                 .await?,
                         }
                     }
@@ -168,6 +215,19 @@ impl Runtime {
             TerminalConfigReference::Command(id) => {
                 let mut c = next.commands.get(&id).cloned().ok_or(Error::NotFound)?;
                 c.id = CommandConfigId::new();
+                for (prefix, secret) in &mut c.auto_inputs {
+                    let value = self
+                        .secrets
+                        .open(
+                            SecretScope::CommandInput(id, prefix.clone()),
+                            secret.clone(),
+                        )
+                        .await?;
+                    *secret = self
+                        .secrets
+                        .seal(SecretScope::CommandInput(c.id, prefix.clone()), value)
+                        .await?;
+                }
                 let new = c.id;
                 next.commands.insert(new, c);
                 TerminalConfigReference::Command(new)

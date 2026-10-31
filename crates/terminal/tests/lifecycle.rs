@@ -33,6 +33,7 @@ fn service() -> (TerminalService, Terminal) {
 }
 fn command(text: &str) -> CommandStartSpec {
     CommandStartSpec {
+        auto_inputs: vec![],
         config_id: CommandConfigId::new(),
         config_name: "test command".into(),
         target: CommandStartTarget::Local,
@@ -81,6 +82,38 @@ async fn command_end(events: &mut TerminalEventStream, id: CommandRunId) -> Comm
     })
     .await
     .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dependency_commands_accept_automatic_input_and_preserve_command_echo() {
+    let (mut service, terminal) = service();
+    let mut spec = command(
+        "printf 'Answer:'; IFS= read -r answer; [ \"$answer\" = 'test-value' ] || exit 9; printf '::nooboard:v1:ready::\\n'; exec sleep 30",
+    );
+    spec.auto_inputs = vec![CommandAutoInput {
+        prefix: "Answer:".into(),
+        value: SecretString::new("test-value"),
+    }];
+    // Command text may contain test values; the rule's Debug must not expose its value.
+    assert!(!format!("{:?}", spec.auto_inputs).contains("test-value"));
+    let owner = terminal
+        .start_terminal(root(vec![dependency(spec)]))
+        .await
+        .unwrap();
+    state(&terminal, |s| {
+        s.terminal_runs
+            .iter()
+            .any(|run| run.id == owner && matches!(run.state, TerminalRunState::Running))
+    })
+    .await;
+    let snapshot = terminal.snapshot();
+    assert!(snapshot.command_runs[0].ready_marker_received);
+    let output = terminal
+        .subscribe_output(TerminalIoTarget::Command(snapshot.command_runs[0].id))
+        .await
+        .unwrap();
+    assert!(String::from_utf8_lossy(&output.initial_output.data).contains("Answer:test-value"));
+    service.shutdown().await.unwrap();
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn successful_and_failed_commands_deliver_results_without_history() {

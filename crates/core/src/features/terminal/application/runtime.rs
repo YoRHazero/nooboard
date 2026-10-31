@@ -18,7 +18,7 @@ use crate::{
             engine::TerminalEngine,
             keys::PrivateKeyPort,
             repository::TerminalRepository,
-            secrets::{SecretField, SecretsPort},
+            secrets::{SecretField, SecretScope, SecretsPort},
         },
     },
 };

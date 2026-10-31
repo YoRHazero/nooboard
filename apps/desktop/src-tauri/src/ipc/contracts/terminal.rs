@@ -100,6 +100,23 @@ pub struct TerminalCommandInput {
     pub name: String,
     pub ssh_target: Option<String>,
     pub command: String,
+    #[serde(default)]
+    pub auto_inputs: Vec<TerminalAutoInputEdit>,
+}
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalAutoInputEdit {
+    pub prefix: String,
+    /// None preserves a saved value. An empty string sends only Enter.
+    pub value: Option<String>,
+}
+#[derive(Clone, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCommandView {
+    pub name: String,
+    pub ssh_target: Option<String>,
+    pub command: String,
+    pub auto_inputs: Vec<String>,
 }
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -139,7 +156,7 @@ pub struct TerminalSshView {
 #[serde(tag = "kind", content = "data", rename_all = "camelCase")]
 pub enum TerminalConfigData {
     Terminal(TerminalSessionInput),
-    Command(TerminalCommandInput),
+    Command(TerminalCommandView),
     Tunnel(TerminalTunnelInput),
     Ssh(TerminalSshView),
 }
@@ -161,6 +178,7 @@ pub struct TerminalRunView {
     pub command: Option<String>,
     pub lifetime: Option<TerminalLifetime>,
     pub ready_marker_received: bool,
+    pub auto_input_error: Option<String>,
     pub forward: Option<TerminalForward>,
     pub error: Option<String>,
 }

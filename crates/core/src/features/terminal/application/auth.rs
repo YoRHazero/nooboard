@@ -4,7 +4,7 @@ use crate::{
     contracts::terminal::*,
     features::terminal::{
         domain::{config::*, inputs::SecretInput, views::TerminalIssue},
-        ports::secrets::{SecretField, SecretsPort},
+        ports::secrets::{SecretField, SecretScope, SecretsPort},
     },
 };
 use std::sync::{Arc, Mutex};
@@ -35,7 +35,10 @@ impl AuthSession {
                     password: Some(secret),
                 } => self
                     .secrets
-                    .open(self.target.id, SecretField::Password, secret.clone())
+                    .open(
+                        SecretScope::Ssh(self.target.id, SecretField::Password),
+                        secret.clone(),
+                    )
                     .await
                     .map(Credentials::Password),
                 SshAuthConfig::Password { password: None } => {
@@ -59,7 +62,10 @@ impl AuthSession {
                 }
                 SshAuthConfig::PrivateKey { private_key } => self
                     .secrets
-                    .open(self.target.id, SecretField::PrivateKey, private_key.clone())
+                    .open(
+                        SecretScope::Ssh(self.target.id, SecretField::PrivateKey),
+                        private_key.clone(),
+                    )
                     .await
                     .map(Credentials::PrivateKey),
             }
@@ -74,7 +80,10 @@ impl AuthSession {
         let operation = async {
             let secret = self
                 .secrets
-                .seal(self.target.id, SecretField::Password, secret)
+                .seal(
+                    SecretScope::Ssh(self.target.id, SecretField::Password),
+                    secret,
+                )
                 .await?;
             self.coordinator
                 .call(|reply| {

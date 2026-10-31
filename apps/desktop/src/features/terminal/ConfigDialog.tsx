@@ -46,6 +46,7 @@ export function ConfigDialog({
   const target = config && config.kind !== 'ssh' ? config.data.sshTarget : sshTarget;
   return (
     <Dialog
+      className={kind === 'command' ? 'terminal-command-dialog' : undefined}
       title={t(config ? 'terminal:editConfigTitle' : 'terminal:newConfigTitle', {
         kind: t(`terminal:${kind}`),
       })}

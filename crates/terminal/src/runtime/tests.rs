@@ -25,6 +25,7 @@ async fn unconfirmed_stop_keeps_occupancy_and_fails_existing_and_new_shared_wait
         None,
     );
     let command = CommandStartSpec {
+        auto_inputs: vec![],
         config_id: CommandConfigId::new(),
         config_name: "unconfirmed process".into(),
         target: CommandStartTarget::Local,
@@ -42,12 +43,21 @@ async fn unconfirmed_stop_keeps_occupancy_and_fails_existing_and_new_shared_wait
             command: command.command.clone(),
             lifetime: CommandLifetimePolicy::Independent,
             ready: false,
+            auto_input_error: None,
         },
         DriverSpec::Local {
             command: Some(command.command.clone()),
         },
         vec![],
     );
+    manager.entries.get_mut(&run).unwrap().phase = Phase::Running;
+    manager.event(DriverEvent::AutoInputFailed {
+        id: run,
+        error: TerminalError::new(TerminalErrorKind::ProcessFailed, "input write failed"),
+    });
+    assert!(manager.entries[&run].command().auto_input_error.is_some());
+    assert!(matches!(manager.entries[&run].phase, Phase::Running));
+    assert!(manager.tasks.is_empty()); // Reporting a write failure neither retries nor stops the run.
     manager.entries.get_mut(&run).unwrap().phase = Phase::Stopping(None);
     let request = StartCommandRequest {
         command,

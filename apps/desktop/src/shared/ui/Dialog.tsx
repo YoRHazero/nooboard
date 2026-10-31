@@ -8,10 +8,12 @@ export function Dialog({
   title,
   onClose,
   children,
+  className = '',
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  className?: string;
 }) {
   const { t } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
@@ -29,7 +31,7 @@ export function Dialog({
         <DialogPrimitive.Overlay className="dialog-overlay" />
         <DialogPrimitive.Content
           ref={ref}
-          className="dialog"
+          className={`dialog ${className}`}
           aria-describedby={undefined}
           onOpenAutoFocus={(event) => {
             const field = ref.current?.querySelector<HTMLElement>('[data-autofocus]');

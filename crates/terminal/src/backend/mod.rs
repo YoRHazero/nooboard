@@ -50,6 +50,10 @@ pub(crate) enum DriverEvent {
         address: SocketAddr,
     },
     Ready(RunId),
+    AutoInputFailed {
+        id: RunId,
+        error: TerminalError,
+    },
     Cleaning(RunId),
     Forced(RunId),
     StopFailed {
@@ -72,6 +76,7 @@ pub(crate) struct Context {
     pub transport: Arc<Mutex<Option<Arc<ssh::TransportControl>>>>,
     pub size: Arc<Mutex<Option<TerminalSize>>>,
     pub input: mpsc::Receiver<Input>,
+    pub auto_input: mpsc::UnboundedReceiver<SecretString>,
     pub output: Option<Arc<OutputSink>>,
 }
 pub(crate) struct OutputSink {
@@ -80,6 +85,8 @@ pub(crate) struct OutputSink {
     ready_sent: std::sync::atomic::AtomicBool,
     id: RunId,
     events: mpsc::UnboundedSender<DriverEvent>,
+    auto_inputs: Mutex<crate::auto_input::AutoInputs>,
+    auto_input: mpsc::UnboundedSender<SecretString>,
 }
 impl OutputSink {
     pub fn new(
@@ -87,6 +94,7 @@ impl OutputSink {
         command: bool,
         id: RunId,
         events: mpsc::UnboundedSender<DriverEvent>,
+        auto_input: mpsc::UnboundedSender<SecretString>,
     ) -> Arc<Self> {
         Arc::new(Self {
             buffer,
@@ -94,9 +102,16 @@ impl OutputSink {
             ready_sent: std::sync::atomic::AtomicBool::new(false),
             id,
             events,
+            auto_inputs: Mutex::new(Default::default()),
+            auto_input,
         })
     }
     pub fn push(&self, data: &[u8]) {
+        // Match the original output, including lines hidden by ReadyFilter.
+        let mut auto_inputs = self.auto_inputs.lock().unwrap();
+        for value in auto_inputs.feed(data) {
+            let _ = self.auto_input.send(value);
+        }
         let mut filter = self.filter.lock().unwrap();
         if let Some(filter) = filter.as_mut() {
             let (bytes, ready) = filter.feed(data);
@@ -117,6 +132,9 @@ impl OutputSink {
             self.buffer.push(&filter.finish());
         }
         self.buffer.close();
+    }
+    pub fn set_auto_inputs(&self, rules: Vec<CommandAutoInput>) {
+        *self.auto_inputs.lock().unwrap() = crate::auto_input::AutoInputs::new(rules);
     }
 }
 impl Context {

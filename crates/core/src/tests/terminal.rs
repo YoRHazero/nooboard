@@ -23,6 +23,7 @@ async fn state(
 }
 fn command(text: &str) -> CommandInput {
     CommandInput {
+        auto_inputs: vec![],
         name: "test command".into(),
         target: CommandTarget::Local,
         command: text.into(),
@@ -59,6 +60,260 @@ async fn prompt(workspace: &TerminalWorkspace) -> TerminalPrompt {
 }
 async fn empty(workspace: &TerminalWorkspace) {
     state(workspace, |s| s.runs.is_empty()).await;
+}
+
+fn auto_input(prefix: &str, value: Option<&str>) -> CommandAutoInputEdit {
+    CommandAutoInputEdit {
+        prefix: prefix.into(),
+        value: value
+            .map(|text| AutoInputValue::Set(SecretInput::text(text.into())))
+            .unwrap_or(AutoInputValue::Keep),
+    }
+}
+
+#[test]
+fn old_command_configs_load_with_no_automatic_inputs() {
+    let config: CommandConfig = serde_json::from_value(serde_json::json!({
+        "id": CommandConfigId::new(), "name": "old config", "target": "Local", "command": "echo old"
+    }))
+    .unwrap();
+    assert!(config.auto_inputs.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn command_auto_inputs_preserve_order_encrypt_values_and_bind_copies() {
+    use crate::features::terminal::{
+        adapters::{
+            self,
+            identity::SecretsAdapter,
+            repository::{KEY, Repository},
+        },
+        ports::{
+            repository::TerminalRepository,
+            secrets::{SecretScope, SecretsPort},
+        },
+    };
+    let (storage_owner, storage) = nooboard_storage::StorageService::start(
+        crate::BackendConfig::Sqlite(crate::SqliteOptions::in_memory()),
+        Default::default(),
+    )
+    .await
+    .unwrap();
+    let (mut identity_owner, identity) = nooboard_identity::IdentityService::start(
+        nooboard_identity::IdentityConfig::Ephemeral,
+        Default::default(),
+    )
+    .await
+    .unwrap();
+    let (network_owner, network, _) = super::start_network(nooboard_network::Options {
+        listen: "127.0.0.1:0".parse().unwrap(),
+        pairing_listen: "127.0.0.1:0".parse().unwrap(),
+        discovery: false,
+        ..Default::default()
+    })
+    .await;
+    let mut owner = adapters::create(storage.clone(), identity.clone(), network.clone())
+        .await
+        .unwrap();
+    let workspace = &owner.workspace;
+    let mut input = command("exit 0");
+    input.auto_inputs = vec![
+        auto_input("Zulu:", Some(" original-secret ")),
+        auto_input("Alpha:", Some("")),
+    ];
+    let id = workspace.create_command(input).await.unwrap();
+    assert_eq!(
+        workspace.snapshot().commands[0].auto_inputs,
+        ["Zulu:", "Alpha:"]
+    );
+    let repo = Repository(storage.clone());
+    let original = repo.load().await.unwrap().commands[&id].clone();
+    let mut edit = command("exit 0");
+    edit.auto_inputs = vec![
+        auto_input("New:", Some("new-secret")),
+        auto_input("Alpha:", None),
+        auto_input("Zulu:", Some(" replacement-secret ")),
+    ];
+    workspace.update_command(id, edit).await.unwrap();
+    assert_eq!(
+        workspace.snapshot().commands[0].auto_inputs,
+        ["Zulu:", "Alpha:", "New:"]
+    );
+    let updated = repo.load().await.unwrap().commands[&id].clone();
+    assert_eq!(
+        original.auto_inputs["Alpha:"],
+        updated.auto_inputs["Alpha:"]
+    );
+    assert_ne!(original.auto_inputs["Zulu:"], updated.auto_inputs["Zulu:"]);
+
+    for rules in [
+        vec![auto_input("Missing:", None)],
+        vec![auto_input("", Some("x"))],
+        vec![auto_input("Bad\n", Some("x"))],
+        vec![auto_input("Value:", Some("x\ny"))],
+        vec![
+            auto_input("Repeated:", Some("x")),
+            auto_input("Repeated:", Some("y")),
+        ],
+    ] {
+        let mut edit = command("exit 0");
+        edit.auto_inputs = rules;
+        assert!(workspace.update_command(id, edit).await.is_err());
+    }
+    assert_eq!(repo.load().await.unwrap().commands[&id], updated);
+    let TerminalConfigReference::Command(copy) = workspace
+        .copy_config(TerminalConfigReference::Command(id))
+        .await
+        .unwrap()
+    else {
+        panic!()
+    };
+    let copied = repo.load().await.unwrap().commands[&copy].clone();
+    let secrets = SecretsAdapter(identity.clone());
+    for (key, encrypted) in &copied.auto_inputs {
+        assert_ne!(encrypted, &updated.auto_inputs[key]);
+        let opened = secrets
+            .open(
+                SecretScope::CommandInput(copy, key.clone()),
+                encrypted.clone(),
+            )
+            .await
+            .unwrap();
+        let expected = secrets
+            .open(
+                SecretScope::CommandInput(id, key.clone()),
+                updated.auto_inputs[key].clone(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(opened.expose(), expected.expose());
+        assert!(
+            secrets
+                .open(
+                    SecretScope::CommandInput(id, key.clone()),
+                    encrypted.clone()
+                )
+                .await
+                .is_err()
+        );
+        assert!(
+            secrets
+                .open(
+                    SecretScope::CommandInput(copy, "wrong-key".into()),
+                    encrypted.clone()
+                )
+                .await
+                .is_err()
+        );
+    }
+    let persisted = storage.settings().get(KEY).await.unwrap().unwrap();
+    let snapshot = serde_json::to_string(&workspace.snapshot()).unwrap();
+    for secret in ["original-secret", "replacement-secret", "new-secret"] {
+        assert!(!persisted.contains(secret));
+        assert!(!snapshot.contains(secret));
+    }
+    assert!(!snapshot.contains("ciphertext"));
+    bounded(owner.shutdown()).await.unwrap();
+    let mut owner = adapters::create(storage.clone(), identity.clone(), network)
+        .await
+        .unwrap();
+    assert_eq!(
+        owner
+            .workspace
+            .snapshot()
+            .commands
+            .iter()
+            .find(|c| c.id == id)
+            .unwrap()
+            .auto_inputs,
+        ["Zulu:", "Alpha:", "New:"]
+    );
+    let mut edit = command("exit 0");
+    edit.auto_inputs = vec![auto_input("Alpha:", None)];
+    owner.workspace.update_command(id, edit).await.unwrap();
+    assert_eq!(
+        repo.load().await.unwrap().commands[&id]
+            .auto_inputs
+            .keys()
+            .collect::<Vec<_>>(),
+        [&"Alpha:".to_string()]
+    );
+    bounded(owner.shutdown()).await.unwrap();
+    network_owner.shutdown().await.unwrap();
+    identity_owner.shutdown().await.unwrap();
+    storage_owner.shutdown().await.unwrap();
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn command_auto_inputs_are_frozen_and_shared_runs_do_not_replay_used_rules() {
+    let (mut service, app) = start(&Clipboard::new()).await;
+    let workspace = app.terminal();
+    let script = "stty -echo -echonl; printf 'First:'; IFS= read -r first; printf '\\nFIRST=%s\\nWAIT\\n' \"$first\"; read -r barrier; printf 'First:'; IFS= read -r repeated; printf '\\nREPEATED=%s\\nSecond:' \"$repeated\"; IFS= read -r second; printf '\\nSECOND=%s\\n' \"$second\"; exec sleep 30";
+    let make = |first: &str, second: &str| {
+        let mut input = command(script);
+        input.auto_inputs = vec![
+            auto_input("First:", Some(first)),
+            auto_input("Second:", Some(second)),
+        ];
+        input
+    };
+    let config = workspace
+        .create_command(make("old-first", " old-second "))
+        .await
+        .unwrap();
+    let (run, mut output) = workspace
+        .start_command_with_output(config, CommandReusePolicy::Shared, CancellationToken::new())
+        .await
+        .unwrap();
+    let mut bytes = output.initial_output.data;
+    bounded(async {
+        while !String::from_utf8_lossy(&bytes).contains("WAIT\r\n") {
+            bytes.extend(output.stream.next().await.unwrap().unwrap().data);
+        }
+    })
+    .await;
+    workspace
+        .update_command(config, make("new-first", "new-second"))
+        .await
+        .unwrap();
+    assert_eq!(
+        workspace
+            .start_command(config, CommandReusePolicy::Shared, CancellationToken::new())
+            .await
+            .unwrap(),
+        run
+    );
+    workspace
+        .write_input(TerminalIoTarget::Command(run), b"go\nmanual\n".to_vec())
+        .await
+        .unwrap();
+    bounded(async {
+        while !String::from_utf8_lossy(&bytes).contains("SECOND= old-second \r\n") {
+            bytes.extend(output.stream.next().await.unwrap().unwrap().data);
+        }
+    })
+    .await;
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(text.contains("FIRST=old-first\r\n"));
+    assert!(text.contains("REPEATED=manual\r\n"));
+    let (new, mut output) = workspace
+        .start_command_with_output(
+            config,
+            CommandReusePolicy::AlwaysNew,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    assert_ne!(new, run);
+    let mut bytes = output.initial_output.data;
+    bounded(async {
+        while !String::from_utf8_lossy(&bytes).contains("FIRST=new-first\r\n") {
+            bytes.extend(output.stream.next().await.unwrap().unwrap().data);
+        }
+    })
+    .await;
+    bounded(service.shutdown()).await.unwrap();
 }
 
 #[cfg(unix)]
@@ -378,7 +633,7 @@ async fn imported_private_keys_are_unlocked_encrypted_bound_to_id_and_copied_wit
         domain::config::SshAuthConfig,
         ports::{
             repository::TerminalRepository,
-            secrets::{SecretField, SecretsPort},
+            secrets::{SecretField, SecretScope, SecretsPort},
         },
     };
     let (storage_owner, storage) = nooboard_storage::StorageService::start(
@@ -459,7 +714,7 @@ async fn imported_private_keys_are_unlocked_encrypted_bound_to_id_and_copied_wit
     assert_ne!(key(id), key(copy));
     let secrets = SecretsAdapter(identity);
     let opened = secrets
-        .open(copy, SecretField::PrivateKey, key(copy))
+        .open(SecretScope::Ssh(copy, SecretField::PrivateKey), key(copy))
         .await
         .unwrap();
     let parsed =
@@ -468,13 +723,13 @@ async fn imported_private_keys_are_unlocked_encrypted_bound_to_id_and_copied_wit
     assert_eq!(parsed.public_key(), private.public_key());
     assert!(
         secrets
-            .open(copy, SecretField::PrivateKey, key(id))
+            .open(SecretScope::Ssh(copy, SecretField::PrivateKey), key(id))
             .await
             .is_err()
     );
     assert!(
         secrets
-            .open(id, SecretField::Password, key(id))
+            .open(SecretScope::Ssh(id, SecretField::Password), key(id))
             .await
             .is_err()
     );

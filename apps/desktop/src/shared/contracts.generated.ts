@@ -273,7 +273,19 @@ export type TerminalAddress = { kind: TerminalAddressKind; value: string };
 export type TerminalAddressKind = 'host' | 'device';
 export type TerminalAuthEdit = 'keep' | 'password' | 'privateKey';
 export type TerminalAuthKind = 'password' | 'privateKey';
-export type TerminalCommandInput = { command: string; name: string; sshTarget?: string | null };
+export type TerminalAutoInputEdit = { prefix: string; value?: string | null };
+export type TerminalCommandInput = {
+  autoInputs?: Array<TerminalAutoInputEdit>;
+  command: string;
+  name: string;
+  sshTarget?: string | null;
+};
+export type TerminalCommandView = {
+  autoInputs: Array<string>;
+  command: string;
+  name: string;
+  sshTarget?: string | null;
+};
 export type TerminalConfigInput =
   | { data: TerminalSessionInput; kind: 'terminal' }
   | { data: TerminalCommandInput; kind: 'command' }
@@ -281,7 +293,7 @@ export type TerminalConfigInput =
   | { data: TerminalSshInput; kind: 'ssh' };
 export type TerminalConfigView = { id: string } & (
   | { data: TerminalSessionInput; kind: 'terminal' }
-  | { data: TerminalCommandInput; kind: 'command' }
+  | { data: TerminalCommandView; kind: 'command' }
   | { data: TerminalTunnelInput; kind: 'tunnel' }
   | { data: TerminalSshView; kind: 'ssh' }
 );
@@ -361,6 +373,7 @@ export type TerminalResourceKind = 'terminal' | 'command' | 'tunnel' | 'ssh';
 export type TerminalReuse = 'shared' | 'alwaysNew';
 export type TerminalRunView = {
   address?: string | null;
+  autoInputError?: string | null;
   command?: string | null;
   configId?: string | null;
   error?: string | null;

@@ -1,0 +1,23 @@
+.toggle-tip-trigger {
+  width: 26px;
+  height: 26px;
+  padding: 4px;
+  color: var(--muted);
+}
+.toggle-tip {
+  z-index: 210;
+  width: min(300px, var(--radix-popover-content-available-width));
+  max-height: var(--radix-popover-content-available-height);
+  overflow-y: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.toggle-tip-arrow {
+  fill: var(--paper);
+}

@@ -15,6 +15,7 @@ pub(super) enum Kind {
         command: String,
         lifetime: CommandLifetimePolicy,
         ready: bool,
+        auto_input_error: Option<TerminalError>,
     },
     Tunnel {
         config_id: TunnelConfigId,
@@ -32,6 +33,7 @@ pub(super) struct Entry {
     pub dependencies: Vec<DependencyRunId>,
     pub driver: Option<DriverSpec>,
     pub input_rx: Option<mpsc::Receiver<Input>>,
+    pub auto_input_rx: Option<mpsc::UnboundedReceiver<SecretString>>,
     pub input: mpsc::Sender<Input>,
     pub output: Option<Arc<OutputSink>>,
     pub size: Arc<Mutex<Option<TerminalSize>>>,
@@ -94,6 +96,7 @@ impl Entry {
                 command,
                 lifetime,
                 ready,
+                auto_input_error,
             },
         ) = (&self.id, &self.kind)
         else {
@@ -107,6 +110,7 @@ impl Entry {
             command: command.clone(),
             lifetime_policy: *lifetime,
             ready_marker_received: *ready,
+            auto_input_error: auto_input_error.clone(),
             stop_method: self.method,
             state: match &self.phase {
                 Phase::Waiting | Phase::Starting => CommandRunState::Starting,

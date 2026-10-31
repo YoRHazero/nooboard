@@ -19,7 +19,7 @@ export const terminalFixture = (): TerminalWorkspaceView => ({
     {
       id: '10000000-0000-4000-8000-000000000002',
       kind: 'command',
-      data: { name: 'VPN', command: 'icrrvpn -g' },
+      data: { name: 'VPN', command: 'icrrvpn -g', autoInputs: [] },
     },
     {
       id: '10000000-0000-4000-8000-000000000010',
@@ -146,6 +146,34 @@ export class PreviewTerminal implements TerminalTransport {
                     : 'password',
               passwordSaved: previous?.kind === 'ssh' && previous.data.passwordSaved,
               trustedKey: previous?.kind === 'ssh' ? previous.data.trustedKey : null,
+            },
+          };
+        } else if (config.kind === 'command') {
+          const previous = this.workspace.configs.find((c) => c.id === id);
+          const old = previous?.kind === 'command' ? previous.data.autoInputs : [];
+          const edits = config.data.autoInputs ?? [];
+          const keys = edits.map((rule) => rule.prefix);
+          if (
+            new Set(keys).size !== keys.length ||
+            edits.some(
+              (rule) =>
+                !rule.prefix ||
+                /[\r\n\0]/.test(rule.prefix) ||
+                (rule.value == null ? !old.includes(rule.prefix) : /[\r\n\0]/.test(rule.value)),
+            )
+          )
+            throw fail('generic');
+          view = {
+            id,
+            kind: 'command',
+            data: {
+              name: config.data.name,
+              command: config.data.command,
+              sshTarget: config.data.sshTarget,
+              autoInputs: [
+                ...old.filter((key) => keys.includes(key)),
+                ...keys.filter((key) => !old.includes(key)),
+              ],
             },
           };
         } else view = { ...config, id };

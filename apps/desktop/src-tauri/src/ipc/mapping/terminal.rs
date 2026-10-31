@@ -97,13 +97,14 @@ pub fn workspace(value: core::TerminalWorkspaceSnapshot) -> TerminalWorkspaceVie
     for c in value.commands {
         configs.push(TerminalConfigView {
             id: c.id.to_string(),
-            config: TerminalConfigData::Command(TerminalCommandInput {
+            config: TerminalConfigData::Command(TerminalCommandView {
                 name: c.name,
                 ssh_target: match c.target {
                     core::CommandTarget::Local => None,
                     core::CommandTarget::Ssh(id) => Some(id.to_string()),
                 },
                 command: c.command,
+                auto_inputs: c.auto_inputs,
             }),
         });
     }
@@ -153,6 +154,7 @@ pub fn workspace(value: core::TerminalWorkspaceSnapshot) -> TerminalWorkspaceVie
             command: None,
             lifetime: None,
             ready_marker_received: false,
+            auto_input_error: None,
             forward: None,
             error,
         });
@@ -180,6 +182,7 @@ pub fn workspace(value: core::TerminalWorkspaceSnapshot) -> TerminalWorkspaceVie
                 core::CommandLifetimePolicy::Independent => TerminalLifetime::Independent,
             }),
             ready_marker_received: r.ready_marker_received,
+            auto_input_error: r.auto_input_error.map(|error| error.to_string()),
             forward: None,
             error,
         });
@@ -204,6 +207,7 @@ pub fn workspace(value: core::TerminalWorkspaceSnapshot) -> TerminalWorkspaceVie
             command: None,
             lifetime: None,
             ready_marker_received: false,
+            auto_input_error: None,
             forward: Some(forward(r.forward)),
             error,
         });

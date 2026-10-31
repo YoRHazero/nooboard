@@ -66,12 +66,12 @@ impl TerminalEngine for EngineAdapter {
                     .await
                 }
                 StartKind::Terminal(id) => {
-                    self.start_terminal(self.providers.terminal(&plan.catalog, id)?, output)
+                    self.start_terminal(self.providers.terminal(&plan.catalog, id).await?, output)
                         .await
                 }
                 StartKind::Command(id, reuse_policy) => {
                     let request = StartCommandRequest {
-                        command: self.providers.command(&plan.catalog, id)?,
+                        command: self.providers.command(&plan.catalog, id).await?,
                         reuse_policy,
                     };
                     if output {
@@ -90,7 +90,7 @@ impl TerminalEngine for EngineAdapter {
                 }
                 StartKind::Tunnel(id) => self
                     .handle
-                    .start_tunnel(self.providers.tunnel(&plan.catalog, id)?)
+                    .start_tunnel(self.providers.tunnel(&plan.catalog, id).await?)
                     .await
                     .map(|id| (RunId::Tunnel(id), None))
                     .map_err(Into::into),

@@ -365,6 +365,12 @@ pub(super) async fn run(
                     break;
                 }
                 _ = connection.ended.cancelled() => return Err(lost()),
+                // A matched prompt must not be starved by a continuous output stream.
+                Some(value) = context.auto_input.recv() => {
+                    if let Err(error) = request(duration, channel.data(value.expose().as_bytes())).await {
+                        context.event(DriverEvent::AutoInputFailed { id: context.id, error });
+                    }
+                }
                 msg = channel.wait() => match msg {
                     Some(ChannelMsg::Data { data } | ChannelMsg::ExtendedData { data, .. }) => {
                         if let Some(output) = &context.output { output.push(&data); }
@@ -386,7 +392,7 @@ pub(super) async fn run(
                         let _ = reply.send(result);
                     }
                     None => { context.stop.cancel(); },
-                }
+                },
             }
         }
         if context.stop.is_cancelled() || context.force.is_cancelled() {

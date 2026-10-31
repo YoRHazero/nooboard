@@ -45,6 +45,8 @@ pub struct CommandConfig {
     pub name: String,
     pub target: CommandTarget,
     pub command: String,
+    #[serde(default, with = "indexmap::map::serde_seq")]
+    pub auto_inputs: indexmap::IndexMap<String, EncryptedSecret>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DependencyConfig {
@@ -105,6 +107,13 @@ fn endpoint(value: &TunnelEndpoint) -> Result<()> {
         Ok(())
     }
 }
+pub(crate) fn auto_input_prefix(value: &str) -> Result<()> {
+    if value.is_empty() || value.contains(['\r', '\n', '\0']) {
+        Err(Error::Configuration)
+    } else {
+        Ok(())
+    }
+}
 impl Catalog {
     pub fn validate(&self) -> Result<()> {
         if self.version != 1 {
@@ -140,6 +149,12 @@ impl Catalog {
             }
             name(&command.name)?;
             name(&command.command)?;
+            for (prefix, secret) in &command.auto_inputs {
+                auto_input_prefix(prefix)?;
+                if secret.version != 1 || secret.nonce.len() != 24 || secret.ciphertext.len() < 16 {
+                    return Err(Error::Configuration);
+                }
+            }
             if let CommandTarget::Ssh(id) = command.target {
                 self.ssh(id)?;
             }

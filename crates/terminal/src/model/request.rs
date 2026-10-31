@@ -47,6 +47,14 @@ pub struct CommandStartSpec {
     pub config_name: String,
     pub target: CommandStartTarget,
     pub command: String,
+    /// Ordered, frozen rules. Each value is sent at most once per new run.
+    pub auto_inputs: Vec<CommandAutoInput>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CommandAutoInput {
+    pub prefix: String,
+    pub value: SecretString,
 }
 
 #[derive(Clone, Debug)]

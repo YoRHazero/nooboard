@@ -25,13 +25,31 @@ export function TerminalNotices() {
   const files = useRef(new Set<string>());
   const ended = useRef(new Set<string>());
   const missing = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const inputFailures = useRef(new Map<string, string>());
   useEffect(() => {
     missing.current.forEach(clearTimeout);
     missing.current.clear();
     for (const id of files.current) toast.dismiss(`file:${id}`);
     files.current.clear();
     ended.current.clear();
+    inputFailures.current.clear();
   }, [session]);
+  useEffect(() => {
+    const active = new Set(workspace.runs.map((run) => run.target.id));
+    for (const id of inputFailures.current.keys()) {
+      if (!active.has(id)) inputFailures.current.delete(id);
+    }
+    for (const run of workspace.runs) {
+      if (!run.autoInputError || inputFailures.current.get(run.target.id) === run.autoInputError)
+        continue;
+      inputFailures.current.set(run.target.id, run.autoInputError);
+      toast.error(t('terminal:autoInputFailed', { name: run.name }), {
+        id: `auto-input:${run.target.id}`,
+        description: run.autoInputError,
+        duration: Infinity,
+      });
+    }
+  }, [workspace.runs, t]);
   useEffect(
     () =>
       onTerminalEnded((event) => {

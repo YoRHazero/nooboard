@@ -156,6 +156,16 @@ pub(super) async fn run(command: Option<String>, mut context: Context) -> Result
                     None => { context.stop.cancel(); }
                 }
             }
+            Some(value) = context.auto_input.recv(), if !stop_sent && writes.is_empty() => {
+                let writer = writer.clone();
+                let events = context.events.clone();
+                let id = context.id;
+                writes.spawn_blocking(move || {
+                    if let Err(error) = writer.lock().unwrap().write_all(value.expose().as_bytes()) {
+                        let _ = events.send(DriverEvent::AutoInputFailed { id, error: error.into() });
+                    }
+                });
+            }
             _ = writes.join_next(), if !writes.is_empty() => {}
         }
     };

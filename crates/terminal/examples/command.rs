@@ -41,6 +41,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .start_command_with_output(
                 StartCommandRequest {
                     command: CommandStartSpec {
+                        auto_inputs: vec![],
                         config_id: CommandConfigId::new(),
                         config_name: "example command".into(),
                         target: CommandStartTarget::Local,

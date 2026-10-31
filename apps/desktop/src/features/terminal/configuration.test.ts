@@ -17,7 +17,7 @@ const ssh: TerminalConfigView = {
 const command: TerminalConfigView = {
   id: 'cmd',
   kind: 'command',
-  data: { name: 'prepare', command: 'echo ready', sshTarget: 'ssh' },
+  data: { name: 'prepare', command: 'echo ready', sshTarget: 'ssh', autoInputs: [] },
 };
 const terminal: TerminalConfigView = {
   id: 'session',

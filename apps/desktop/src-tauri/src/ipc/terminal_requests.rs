@@ -93,6 +93,19 @@ async fn save(
                     .transpose()?
                     .unwrap_or(core::CommandTarget::Local),
                 command: input.command,
+                auto_inputs: input
+                    .auto_inputs
+                    .into_iter()
+                    .map(|rule| core::CommandAutoInputEdit {
+                        prefix: rule.prefix,
+                        value: match rule.value {
+                            Some(value) => {
+                                core::AutoInputValue::Set(core::SecretInput::text(value))
+                            }
+                            None => core::AutoInputValue::Keep,
+                        },
+                    })
+                    .collect(),
             };
             match config_id {
                 Some(value) => {

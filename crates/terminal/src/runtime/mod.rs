@@ -218,12 +218,14 @@ impl Manager {
             .map(|leases| leases.acquire(id, &references));
         self.sequence += 1;
         let (input, input_rx) = mpsc::channel(self.options.input_queue_capacity);
+        let (auto_input, auto_input_rx) = mpsc::unbounded_channel();
         let output = (!matches!(id, RunId::Tunnel(_))).then(|| {
             OutputSink::new(
                 OutputBuffer::new(self.options.output_buffer_bytes),
                 matches!(id, RunId::Command(_)),
                 id,
                 self.tx.clone(),
+                auto_input,
             )
         });
         let mut entry = Entry {
@@ -241,6 +243,7 @@ impl Manager {
             dependencies: vec![],
             driver: Some(driver),
             input_rx: Some(input_rx),
+            auto_input_rx: Some(auto_input_rx),
             input,
             output,
             size: Arc::new(Mutex::new(None)),
@@ -304,6 +307,7 @@ impl Manager {
             transport: entry.transport.clone(),
             size: entry.size.clone(),
             input: entry.input_rx.take().unwrap(),
+            auto_input: entry.auto_input_rx.take().unwrap(),
             output: entry.output.clone(),
         };
         let tx = self.tx.clone();

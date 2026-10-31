@@ -1,5 +1,6 @@
 use zeroize::Zeroizing;
-/// Authentication input: deliberately not serializable and always redacted in Debug.
+/// Sensitive runtime text: deliberately not serializable and always redacted in Debug.
+#[derive(Clone)]
 pub struct SecretString(Zeroizing<String>);
 impl SecretString {
     pub fn new(value: impl Into<String>) -> Self {

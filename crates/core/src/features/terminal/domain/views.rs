@@ -72,13 +72,22 @@ pub struct TerminalWorkspaceSnapshot {
     pub revision: u64,
     pub closing: bool,
     pub ssh_targets: Vec<SshTargetView>,
-    pub commands: Vec<CommandConfig>,
+    pub commands: Vec<CommandConfigView>,
     pub terminals: Vec<TerminalConfig>,
     pub tunnels: Vec<TunnelConfig>,
     pub runs: TerminalSnapshot,
     pub prompts: Vec<TerminalPrompt>,
     pub issue: Option<TerminalIssue>,
     pub options: TerminalServiceOptions,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct CommandConfigView {
+    pub id: CommandConfigId,
+    pub name: String,
+    pub target: CommandTarget,
+    pub command: String,
+    /// Only ordered keys are exposed. Values and ciphertext stay in Core.
+    pub auto_inputs: Vec<String>,
 }
 impl Catalog {
     pub(crate) fn view(&self) -> TerminalWorkspaceSnapshot {
@@ -103,7 +112,17 @@ impl Catalog {
                     trusted_key: self.trusted_hosts.get(&c.id).cloned(),
                 })
                 .collect(),
-            commands: self.commands.values().cloned().collect(),
+            commands: self
+                .commands
+                .values()
+                .map(|c| CommandConfigView {
+                    id: c.id,
+                    name: c.name.clone(),
+                    target: c.target.clone(),
+                    command: c.command.clone(),
+                    auto_inputs: c.auto_inputs.keys().cloned().collect(),
+                })
+                .collect(),
             terminals: self.terminals.values().cloned().collect(),
             tunnels: self.tunnels.values().cloned().collect(),
             runs: TerminalSnapshot::default(),
