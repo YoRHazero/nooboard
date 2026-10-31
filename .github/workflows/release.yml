@@ -53,7 +53,7 @@ jobs:
               target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
               target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe.sig
           - name: macOS Apple Silicon
-            os: macos-14
+            os: macos-15
             target: aarch64-apple-darwin
             bundles: app,dmg
             artifact: nooboard-macos-arm64
