@@ -25,10 +25,26 @@ pub(super) async fn run(
     }
     let _close = Close(queue.clone());
     let (mut sender, mut receiver) = connection.into_split();
-    let result = tokio::select! {
-        result = write(&mut sender, &queue, &peer, generation, &events) => result,
-        result = read(&mut receiver, &queue, &peer, generation, &events) => result,
-        _ = queue.closed() => Err(Failure::Disconnected),
+    let result = {
+        let incoming = read(&mut receiver, &queue, &peer, generation, &events);
+        tokio::pin!(incoming);
+        tokio::select! {
+            result = write(&mut sender, &queue, &peer, generation, &events) => {
+                if queue.is_closed() {
+                    result
+                } else {
+                    queue.close();
+                    // Keep the transport alive for the peer to consume our final
+                    // notice. A write failure can also precede its Unpaired frame.
+                    match tokio::time::timeout(Duration::from_secs(2), &mut incoming).await {
+                        Ok(Err(Failure::Unpaired)) => Err(Failure::Unpaired),
+                        _ => result,
+                    }
+                }
+            },
+            result = &mut incoming => result,
+            _ = queue.closed() => Err(Failure::Disconnected),
+        }
     };
     receiver.close().await;
     result
@@ -97,10 +113,10 @@ async fn read(
 mod tests {
     use super::*;
     use crate::connections::transport::tls_tcp::TlsConfig;
+    use crate::transfer::{QueuePolicy, protocol::MessageId};
     use tokio::net::TcpListener;
 
-    #[tokio::test]
-    async fn heartbeat_during_revocation_cannot_abort_the_final_notice() {
+    async fn pair() -> (Connection, Connection) {
         let a = crate::test_identity::generate();
         let b = crate::test_identity::generate();
         let client = TlsConfig::new(&a, b.certificate()).unwrap();
@@ -110,8 +126,14 @@ mod tests {
         let (client, server) = tokio::join!(client.connect(&address), async {
             server.accept(listener.accept().await.unwrap().0).await
         });
-        let (mut peer, mut peer_receiver) = client.unwrap().into_split();
-        let (_sender, mut receiver) = server.unwrap().into_split();
+        (client.unwrap(), server.unwrap())
+    }
+
+    #[tokio::test]
+    async fn heartbeat_during_revocation_cannot_abort_the_final_notice() {
+        let (client, server) = pair().await;
+        let (mut peer, mut peer_receiver) = client.into_split();
+        let (_sender, mut receiver) = server.into_split();
         let queue = Outbox::new();
         queue.revoke();
         // A heartbeat may already be in flight when local revocation starts.
@@ -131,5 +153,66 @@ mod tests {
         ));
         receiver.close().await;
         peer_receiver.close().await;
+    }
+
+    #[tokio::test]
+    async fn write_failure_does_not_hide_an_incoming_unpaired_notice() {
+        let (client, server) = pair().await;
+        let (mut peer, mut peer_receiver) = client.into_split();
+        let queue = Outbox::new();
+        // Force a write failure before emitting any bytes for this frame.
+        queue
+            .text(
+                Message::Text {
+                    id: MessageId {
+                        session: "a".repeat(32),
+                        sequence: 1,
+                    },
+                    target_epoch: 1,
+                    text: "\0".into(),
+                },
+                QueuePolicy::Append,
+            )
+            .unwrap();
+        let (events, mut received) = mpsc::channel(4);
+        let session = tokio::spawn(run(server, queue, "peer".into(), 1, events));
+        let event = tokio::time::timeout(Duration::from_secs(3), received.recv())
+            .await
+            .unwrap();
+        assert!(matches!(event, Some(SessionEvent::Started { .. })));
+        peer.send(&Message::Unpaired).await.unwrap();
+        let result = tokio::time::timeout(Duration::from_secs(3), session)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(result, Err(Failure::Unpaired)), "{result:?}");
+        peer_receiver.close().await;
+    }
+
+    #[tokio::test]
+    async fn outgoing_unpaired_notice_keeps_transport_alive_until_peer_closes() {
+        let (client, server) = pair().await;
+        let (peer, mut peer_receiver) = client.into_split();
+        let queue = Outbox::new();
+        queue.revoke();
+        let (events, _received) = mpsc::channel(4);
+        let mut session = tokio::spawn(run(server, queue, "peer".into(), 1, events));
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while peer_receiver.receive().await.unwrap() != Message::Unpaired {}
+        })
+        .await
+        .unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), &mut session)
+                .await
+                .is_err()
+        );
+        drop(peer);
+        peer_receiver.close().await;
+        tokio::time::timeout(Duration::from_secs(3), session)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
     }
 }
