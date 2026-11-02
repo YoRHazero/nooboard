@@ -86,6 +86,9 @@ jobs:
         run: bash scripts/test_linux_native.sh
       - name: Build native desktop executable
         working-directory: apps/desktop
+        # PowerShell's npm.ps1 shim drops `--`, so on Windows `--no-bundle`
+        # never reached Tauri and the updater bundle demanded a signing key.
+        shell: bash
         run: npm run tauri -- build --no-bundle
       - name: Build backend harness
         run: cargo build -p nooboard-core --example backend --locked
