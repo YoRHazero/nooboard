@@ -228,6 +228,9 @@ pub struct TerminalOutputChunk {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TerminalOutputError {
+    /// The subscriber fell behind the replay window, so bytes from `expected_offset`
+    /// up to `available_offset` were dropped. The stream stays open and resumes at
+    /// `available_offset`; only the end of the run ends it.
     Lagged {
         expected_offset: u64,
         available_offset: u64,
