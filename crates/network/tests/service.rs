@@ -83,6 +83,98 @@ async fn stage(service: &Network, id: &TransferId, peer: &str, expected: Transfe
 }
 
 #[tokio::test]
+async fn idle_linked_services_do_not_republish_unchanged_status() {
+    let (a_service, a, _a_events) = start("a").await;
+    let (b_service, b, _b_events) = start("b").await;
+    link(&a, &b).await;
+    let mut a_status = a.subscribe();
+    let mut b_status = b.subscribe();
+    // Let connection setup settle, then observe a quiet period spanning many ticks.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    a_status.borrow_and_update();
+    b_status.borrow_and_update();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert!(!a_status.has_changed().unwrap(), "idle service republished");
+    assert!(!b_status.has_changed().unwrap(), "idle peer republished");
+    bounded(a_service.shutdown()).await.unwrap();
+    bounded(b_service.shutdown()).await.unwrap();
+}
+
+#[tokio::test]
+async fn bulk_transfer_progress_notifications_are_bounded_by_the_tick() {
+    let (a_service, a, _a_events) = start("sender").await;
+    let (b_service, b, mut b_events) = start("receiver").await;
+    link(&a, &b).await;
+    let peer = b.status().identity.id;
+    let source = tempfile::tempdir().unwrap();
+    let destination = tempfile::tempdir().unwrap();
+    let file = source.path().join("bulk.bin");
+    // 128 chunks of 256 KiB: one notification per chunk would exceed the bound below.
+    std::fs::write(&file, vec![7_u8; 32 * 1024 * 1024]).unwrap();
+    let receiver = {
+        let b = b.clone();
+        let directory = destination.path().to_path_buf();
+        tokio::spawn(async move {
+            let NetworkEvent::IncomingOffer { id, .. } = event(&mut b_events).await else {
+                panic!("expected offer")
+            };
+            b.decide_incoming(
+                id,
+                ReceiveDecision::Accept {
+                    directory: Some(directory),
+                },
+            )
+            .await
+            .unwrap();
+            let NetworkEvent::ContentReady { id, .. } = event(&mut b_events).await else {
+                panic!("expected files")
+            };
+            b.complete_incoming(id, ApplicationOutcome::Applied)
+                .await
+                .unwrap();
+        })
+    };
+    let mut status = a.subscribe();
+    status.borrow_and_update();
+    let started = std::time::Instant::now();
+    let id = a
+        .send(SendRequest {
+            targets: vec![peer],
+            content: OutgoingContent::Files(vec![file]),
+            queue: QueuePolicy::Append,
+        })
+        .await
+        .unwrap();
+    let mut notifications = 0_u32;
+    tokio::time::timeout(Duration::from_secs(60), async {
+        loop {
+            status.changed().await.unwrap();
+            notifications += 1;
+            if status
+                .borrow_and_update()
+                .transfers
+                .iter()
+                .any(|t| t.id == id && t.stage.is_terminal())
+            {
+                return;
+            }
+        }
+    })
+    .await
+    .expect("bulk transfer timed out");
+    let elapsed = started.elapsed().as_secs_f64();
+    // At most one flush per 100 ms tick, plus a handful of stage transitions.
+    let bound = (elapsed * 10.0).ceil() as u32 + 20;
+    assert!(
+        notifications <= bound,
+        "{notifications} notifications in {elapsed:.2}s exceeds {bound}"
+    );
+    bounded(receiver).await.unwrap();
+    bounded(a_service.shutdown()).await.unwrap();
+    bounded(b_service.shutdown()).await.unwrap();
+}
+
+#[tokio::test]
 async fn facade_delivers_exact_text_only_reports_applied_after_application_and_closes_listeners() {
     let (a_service, a, _a_events) = start("sender").await;
     let (b_service, b, mut b_events) = start("receiver").await;

@@ -104,6 +104,8 @@ struct Row {
     finish_sent: bool,
     late_receipt: Option<(ContentResult, Option<WireError>)>,
     retired_stage: Option<TransferStage>,
+    /// Latest `(done, total)` bytes from the worker, applied to `status` on the next tick.
+    progress: Option<(u64, u64)>,
 }
 pub(super) struct Context {
     pub key: Key,
@@ -254,6 +256,7 @@ impl Runtime {
     }
     pub async fn run(mut self) -> Result<()> {
         let mut jobs = JoinSet::new();
+        // Checks deadlines and flushes coalesced byte progress to observers.
         let mut tick = tokio::time::interval(Duration::from_millis(100));
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let result = async {
@@ -367,12 +370,82 @@ pub(super) fn from_wire_error(error: WireError) -> Failure {
 mod tests {
     use super::*;
     fn runtime() -> Runtime {
+        observed().0
+    }
+    fn observed() -> (Runtime, watch::Receiver<Snapshot>) {
         let (_tx, rx) = mpsc::channel(1);
         let (inbox, _) = mpsc::channel(1);
         let (_, stop) = watch::channel(false);
-        Runtime::new(&Options::default(), rx, inbox, stop)
-            .unwrap()
-            .0
+        let (runtime, handle) = Runtime::new(&Options::default(), rx, inbox, stop).unwrap();
+        (runtime, handle.status)
+    }
+    #[test]
+    fn observers_wake_only_for_visible_changes_and_byte_progress_waits_for_the_tick() {
+        let (mut runtime, mut status) = observed();
+        runtime
+            .link(LinkEvent::Connected {
+                peer: "peer".into(),
+                generation: 1,
+                outbox: Outbox::new(),
+            })
+            .unwrap();
+        status.borrow_and_update();
+        runtime.publish();
+        runtime.tick();
+        assert!(!status.has_changed().unwrap(), "maintenance woke observers");
+
+        let key = Key {
+            peer: "peer".into(),
+            id: TransferId {
+                session: "0123456789abcdef0123456789abcdef".into(),
+                sequence: 1,
+            },
+            incoming: false,
+        };
+        let row = runtime.new_row(
+            &key,
+            &runtime.routes["peer"],
+            TransferStage::Sending,
+            8,
+            false,
+        );
+        runtime.rows.insert(key.clone(), row);
+        runtime.publish();
+        assert!(status.has_changed().unwrap());
+        status.borrow_and_update();
+
+        let progress = |stage, done| WorkerEvent::Progress {
+            key: key.clone(),
+            generation: 1,
+            stage,
+            done,
+            total: 8,
+        };
+        runtime.update(progress(TransferStage::Sending, 4));
+        assert!(
+            !status.has_changed().unwrap(),
+            "byte progress bypassed the tick"
+        );
+        // An unrelated publication, such as a chunk acknowledgement, must not leak it.
+        runtime.publish();
+        assert!(
+            !status.has_changed().unwrap(),
+            "byte progress leaked through another publication"
+        );
+        runtime.tick();
+        assert!(status.has_changed().unwrap(), "tick did not flush progress");
+        assert_eq!(status.borrow_and_update().rows[0].completed_bytes, 4);
+        runtime.tick();
+        assert!(!status.has_changed().unwrap());
+
+        runtime.update(progress(TransferStage::AwaitingReceipt, 8));
+        assert!(
+            status.has_changed().unwrap(),
+            "stage change waited for the tick"
+        );
+        let current = status.borrow_and_update();
+        assert_eq!(current.rows[0].stage, TransferStage::AwaitingReceipt);
+        assert_eq!(current.rows[0].completed_bytes, 8);
     }
     #[test]
     fn a_closed_or_superseded_connection_event_never_stops_the_service() {

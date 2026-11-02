@@ -117,17 +117,26 @@ pub(crate) async fn start(options: Options, dependencies: NetworkDependencies) -
                 _ = transfers.changed() => {},
             }
             let discovered = discovery_snapshot(&mut nearby, &hints);
-            status.send_modify(|s| {
-                s.connections = peers.borrow_and_update().clone();
-                s.nearby = discovered;
-                s.pairings = pairings.borrow_and_update().clone();
-                let snapshot = transfers.borrow_and_update();
-                s.transfers = snapshot.rows.clone();
-                for peer in &mut s.connections {
-                    peer.accepting =
-                        peer.connected && snapshot.ready.get(&peer.peer) == Some(&peer.generation);
+            let mut connections = peers.borrow_and_update().clone();
+            let sessions = pairings.borrow_and_update().clone();
+            let snapshot = transfers.borrow_and_update();
+            for peer in &mut connections {
+                peer.accepting =
+                    peer.connected && snapshot.ready.get(&peer.peer) == Some(&peer.generation);
+            }
+            // Child runtimes may republish unchanged state; forward only visible changes.
+            // `|=` rather than `||`: every field must be assigned, not just the first change.
+            status.send_if_modified(|s| {
+                let mut changed = replace_if_changed(&mut s.connections, connections);
+                changed |= replace_if_changed(&mut s.nearby, discovered);
+                changed |= replace_if_changed(&mut s.pairings, sessions);
+                if s.transfers != snapshot.rows {
+                    s.transfers.clone_from(&snapshot.rows);
+                    changed = true;
                 }
+                changed
             });
+            drop(snapshot);
         }
         signal.send_replace(true);
         // Feature runtimes drain owned workers, including non-cancellable file publication.
@@ -170,6 +179,14 @@ pub(crate) async fn start(options: Options, dependencies: NetworkDependencies) -
         stop,
         task,
     })
+}
+
+fn replace_if_changed<T: PartialEq>(slot: &mut T, value: T) -> bool {
+    if *slot == value {
+        return false;
+    }
+    *slot = value;
+    true
 }
 
 // `changed().await` marks a watch update as seen. Forward its value independently

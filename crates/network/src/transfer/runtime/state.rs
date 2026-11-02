@@ -30,14 +30,26 @@ impl Runtime {
                 self.inbox_keys.remove(&id);
             }
         }
-        self.status.send_replace(Snapshot {
-            rows: self.rows.values().rev().map(|r| r.status.clone()).collect(),
-            ready: self
-                .routes
+        let rows = &self.rows;
+        let routes = &self.routes;
+        // Deadline checks and acknowledgements call this often. Wake observers
+        // only when the externally visible snapshot actually differs.
+        self.status.send_if_modified(|current| {
+            if current
+                .rows
                 .iter()
-                .filter(|(_, r)| r.accepting && r.remote_epoch.is_some() && !r.outbox.is_closed())
-                .map(|(id, r)| (id.clone(), r.generation))
-                .collect(),
+                .eq(rows.values().rev().map(|r| &r.status))
+                && current.ready.iter().eq(ready_routes(routes))
+            {
+                return false;
+            }
+            *current = Snapshot {
+                rows: rows.values().rev().map(|r| r.status.clone()).collect(),
+                ready: ready_routes(routes)
+                    .map(|(id, generation)| (id.clone(), *generation))
+                    .collect(),
+            };
+            true
         });
     }
     pub(super) fn pending(&self) -> usize {
@@ -96,6 +108,7 @@ impl Runtime {
             finish_sent: false,
             late_receipt: None,
             retired_stage: None,
+            progress: None,
         }
     }
     pub(super) fn finish_row(&mut self, key: &Key, stage: TransferStage, error: Option<ErrorKind>) {
@@ -144,15 +157,24 @@ impl Runtime {
                 done,
                 total,
             } => {
-                if let Some(row) = self.rows.get_mut(&key)
-                    && row.generation == generation
-                    && !row.status.stage.is_terminal()
-                    && row.status.stage != TransferStage::Cancelling
-                {
-                    row.status.stage = stage;
-                    row.status.completed_bytes = done;
-                    row.status.total_bytes = total;
+                let Some(row) = self.rows.get_mut(&key).filter(|row| {
+                    row.generation == generation
+                        && !row.status.stage.is_terminal()
+                        && row.status.stage != TransferStage::Cancelling
+                }) else {
+                    return;
+                };
+                if row.status.stage == stage {
+                    // Keep byte counters private until the next tick. Otherwise any
+                    // unrelated publication, such as a chunk acknowledgement, would
+                    // still expose every chunk to observers.
+                    row.progress = Some((done, total));
+                    return;
                 }
+                row.status.stage = stage;
+                row.status.completed_bytes = done;
+                row.status.total_bytes = total;
+                row.progress = None;
             }
             WorkerEvent::Ready {
                 key,
@@ -197,6 +219,8 @@ impl Runtime {
             row.working = false;
             row.wire = None;
             row.application = None;
+            // The worker's final counters supersede any progress not yet flushed.
+            row.progress = None;
             row.status.stage = finished.stage;
             row.status.error = finished.error;
             row.status.completed_bytes = finished.done;
@@ -216,6 +240,12 @@ impl Runtime {
         self.publish();
     }
     pub(super) fn tick(&mut self) {
+        for row in self.rows.values_mut() {
+            if let Some((done, total)) = row.progress.take() {
+                row.status.completed_bytes = done;
+                row.status.total_bytes = total;
+            }
+        }
         let closed = self
             .routes
             .iter()
@@ -251,6 +281,12 @@ impl Runtime {
     }
 }
 
+fn ready_routes(routes: &BTreeMap<String, Route>) -> impl Iterator<Item = (&String, &u64)> {
+    routes
+        .iter()
+        .filter(|(_, r)| r.accepting && r.remote_epoch.is_some() && !r.outbox.is_closed())
+        .map(|(id, r)| (id, &r.generation))
+}
 pub(super) fn application_stage(row: &Row, outcome: ApplicationOutcome) -> TransferStage {
     match outcome {
         ApplicationOutcome::Applied => TransferStage::Applied,
