@@ -1,4 +1,7 @@
-use super::{Context, DriverEvent, Input, driver_error, process::ProcessScope};
+use super::{
+    Context, DriverEvent, Input, driver_error,
+    process::{GracefulStop, ProcessScope},
+};
 use crate::*;
 use portable_pty::{CommandBuilder, MasterPty, PtySize};
 use std::{
@@ -46,13 +49,19 @@ fn prepare(command: Option<String>, size: Option<TerminalSize>) -> Result<Prepar
     let pair = portable_pty::native_pty_system()
         .openpty(size.map(pty_size).unwrap_or_default())
         .map_err(driver_error)?;
+    // Without a command this is the user's interactive shell in a terminal tab.
+    let graceful = if command.is_some() {
+        GracefulStop::Terminate
+    } else {
+        GracefulStop::HangUp
+    };
     let builder = command_builder(command);
     // Acquire all PTY handles before spawning, so allocation errors cannot orphan a child.
     let reader = pair.master.try_clone_reader().map_err(driver_error)?;
     let writer = pair.master.take_writer().map_err(driver_error)?;
     let mut child = pair.slave.spawn_command(builder).map_err(driver_error)?;
     drop(pair.slave);
-    let scope = match ProcessScope::new(&*child) {
+    let scope = match ProcessScope::new(&*child, graceful) {
         Ok(scope) => scope,
         Err(error) => {
             let _ = child.kill();
