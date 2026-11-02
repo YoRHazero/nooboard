@@ -1,4 +1,4 @@
-use super::{Context, DriverEvent, Input};
+use super::{Context, DriverEvent, Input, Program};
 use crate::*;
 use russh::{
     Channel, ChannelMsg, ChannelOpenFailure, Disconnect, client,
@@ -326,7 +326,7 @@ pub(crate) async fn confirmation(
 
 pub(super) async fn run(
     target: SshStartTarget,
-    command: Option<String>,
+    program: Program,
     mut context: Context,
 ) -> Result<()> {
     let connection = connect(&target, &context, None).await?;
@@ -341,10 +341,9 @@ pub(super) async fn run(
             true, "xterm-256color", size.cols as u32, size.rows as u32, 0, 0, &[],
         )).await?;
         confirmation(&mut channel, duration, context.output.as_deref()).await?;
-        if let Some(command) = command {
-            request(duration, channel.exec(true, command)).await?;
-        } else {
-            request(duration, channel.request_shell(true)).await?;
+        match program {
+            Program::Shell => request(duration, channel.request_shell(true)).await?,
+            Program::Command(command) => request(duration, channel.exec(true, command)).await?,
         }
         confirmation(&mut channel, duration, context.output.as_deref()).await?;
         context.event(DriverEvent::Started {

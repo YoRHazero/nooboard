@@ -9,14 +9,19 @@ impl Manager {
         name(&request.name)?;
         validate_dependencies(&request.dependencies)?;
         let (target, driver) = match &request.target {
-            TerminalStartTarget::Local => (RunTarget::Local, DriverSpec::Local { command: None }),
+            TerminalStartTarget::Local => (
+                RunTarget::Local,
+                DriverSpec::Local {
+                    program: Program::Shell,
+                },
+            ),
             TerminalStartTarget::Ssh(target) => {
                 validate_ssh(target)?;
                 (
                     ssh_target(target),
                     DriverSpec::Ssh {
                         target: target.clone(),
-                        command: None,
+                        program: Program::Shell,
                     },
                 )
             }
@@ -175,14 +180,14 @@ impl Manager {
             CommandStartTarget::Local => (
                 RunTarget::Local,
                 DriverSpec::Local {
-                    command: Some(spec.command.clone()),
+                    program: Program::Command(spec.command.clone()),
                 },
             ),
             CommandStartTarget::Ssh(target) => (
                 ssh_target(target),
                 DriverSpec::Ssh {
                     target: target.clone(),
-                    command: Some(spec.command.clone()),
+                    program: Program::Command(spec.command.clone()),
                 },
             ),
         };
