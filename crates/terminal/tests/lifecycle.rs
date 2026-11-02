@@ -726,11 +726,11 @@ async fn stopping_an_idle_local_shell_ends_it_without_waiting_for_force() {
     .await;
     // Let the shell finish starting and install its signal dispositions.
     tokio::time::sleep(Duration::from_millis(500)).await;
-    // `stop_terminal` returns once the run has ended.
+    // `stop_terminal` returns once the run has ended; the snapshot is published right after.
     tokio::time::timeout(Duration::from_secs(6), terminal.stop_terminal(id))
         .await
         .expect("the shell was only stopped by the force timeout")
         .unwrap();
-    assert!(terminal.snapshot().is_empty());
+    state(&terminal, TerminalSnapshot::is_empty).await;
     service.shutdown().await.unwrap();
 }
