@@ -57,7 +57,9 @@ export function AppShell({ footer }: { footer?: ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const page = (Object.keys(paths) as Page[]).find((key) => paths[key] === pathname) ?? 'home';
   const main = useRef<HTMLElement>(null);
-  const { localDevice, settings, host } = useSnapshot();
+  const localDevice = useSnapshot((s) => s.localDevice);
+  const settings = useSnapshot((s) => s.settings);
+  const host = useSnapshot((s) => s.host);
   const appearance = usePreferenceStore((state) => state.appearance);
   const connectionError = useConnection().error;
   const lastNavigation = useRef<number | null>(null);

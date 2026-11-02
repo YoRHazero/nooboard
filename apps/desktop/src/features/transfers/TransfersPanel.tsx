@@ -24,7 +24,10 @@ export function TransfersPanel({ focusKey }: { focusKey?: string }) {
   const copyReceivedMutation = useCopyReceivedMutation();
 
   const { t } = useI18n();
-  const { contentTransfers = [], settings, peers, manualTargets } = useSnapshot();
+  const contentTransfers = useSnapshot((s) => s.contentTransfers);
+  const settings = useSnapshot((s) => s.settings);
+  const peers = useSnapshot((s) => s.peers);
+  const manualTargets = useSnapshot((s) => s.manualTargets);
   const { execute } = useActionFeedback([
     selectFilesMutation,
     selectReceiveDirectoryMutation,

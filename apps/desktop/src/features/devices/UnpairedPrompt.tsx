@@ -8,7 +8,9 @@ import { Dialog } from '../../shared/ui/Dialog';
 import { Button } from '../../shared/ui/controls';
 
 export function UnpairedPrompt() {
-  const { peers, session, onboarding } = useSnapshot();
+  const peers = useSnapshot((s) => s.peers);
+  const session = useSnapshot((s) => s.session);
+  const onboarding = useSnapshot((s) => s.onboarding);
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const key = (peer: Peer) => `${session}:${peer.noobId}:${peer.unpairedNotice}`;
   const peer = peers.find((peer) => peer.unpairedNotice != null && !dismissed.has(key(peer)));

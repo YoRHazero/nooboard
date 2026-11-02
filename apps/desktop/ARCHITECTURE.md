@@ -74,7 +74,7 @@ src-tauri/src/
 ## 边界与生命周期
 
 - `pages` 只声明布局和组合 feature 的公共区域组件，不读取 Query、Zustand 或 IPC。功能组件直接位于 feature 根目录；内部小组件仍可通过 props 接收数据。跨 feature 的区域组件与展示工具通过 `index.ts` 导入；独立 query/mutation hook 可以直接从其文件导入，以避免 UI barrel 产生循环依赖。feature 不依赖 pages、app 或 preview。
-- 后端业务状态统一由 TanStack Query 持有。`connect` 返回的初始快照、后续推送和恢复快照经过连接代次及完整宽度版本检查后，写入唯一的 `['backend', 'snapshot']` 缓存项。各组件通过 selector 读取同一份数据，不向 Zustand 复制设备、运行列表或传输状态。
+- 后端业务状态统一由 TanStack Query 持有。`connect` 返回的初始快照、后续推送和恢复快照经过连接代次及完整宽度版本检查后，写入唯一的 `['backend', 'snapshot']` 缓存项。各组件通过只选取所需字段的 selector 读取同一份数据（selector 必填，不订阅整份快照），不向 Zustand 复制设备、运行列表或传输状态。结构共享使未变化的选取结果保持同一引用，组件只在所读部分变化时重新渲染。
 - 共享快照 Query 使用 `skipToken`、无限 freshness / GC 保留，由应用级订阅更新；挂载页面不会创建额外的快照请求。应用释放时清理 QueryClient。后端仍是权威来源，前端缓存不是持久化数据库。
 - 历史分页和远程目录是按需 Query。query key 包含后端 session、筛选条件或运行 ID/路径；历史版本变化使相关查询失效，Core session 切换和会话结束清除失效缓存。IPC 不支持的取消不会被伪装成后端操作已取消；迟到结果通过 Query signal 和连接代次检查丢弃。
 - 每个 query/mutation 位于所属 feature 的 `queries/` 独立文件。类型化请求经过 `shared/backend.ts`，组件不直接导入 Tauri。IPC 使用 `networkMode: 'always'`，可用性由真实连接状态控制；mutation 不自动重试。按钮和表单反馈从 Query 的操作状态派生。

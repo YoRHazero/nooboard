@@ -11,7 +11,7 @@ import type { PairingSession } from '../../shared/types';
 import { Dialog } from '../../shared/ui/Dialog';
 import { Button } from '../../shared/ui/controls';
 export function PairingPrompt() {
-  const { onboarding } = useSnapshot();
+  const onboarding = useSnapshot((s) => s.onboarding);
   return onboarding?.session ? (
     <SessionPrompt key={onboarding.session.id} session={onboarding.session} />
   ) : null;

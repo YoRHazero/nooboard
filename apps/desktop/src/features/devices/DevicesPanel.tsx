@@ -13,7 +13,9 @@ export function DevicesPanel() {
   const configurePeerMutation = useConfigurePeerMutation();
 
   const { t } = useI18n();
-  const { peers, settings, configuration } = useSnapshot();
+  const peers = useSnapshot((s) => s.peers);
+  const settings = useSnapshot((s) => s.settings);
+  const configuration = useSnapshot((s) => s.configuration);
   const { execute } = useActionFeedback([configurePeerMutation]);
   const [pairing, setPairing] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);

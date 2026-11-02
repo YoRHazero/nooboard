@@ -8,7 +8,9 @@ import { LocalDeviceDialog } from './LocalDeviceDialog';
 
 export function LocalDevicePanel() {
   const { t } = useI18n();
-  const { localDevice, peers, settings } = useSnapshot();
+  const localDevice = useSnapshot((s) => s.localDevice);
+  const peers = useSnapshot((s) => s.peers);
+  const settings = useSnapshot((s) => s.settings);
   const [editing, setEditing] = useState(false);
   return (
     <>

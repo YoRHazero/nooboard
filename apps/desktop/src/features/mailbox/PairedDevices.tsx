@@ -12,7 +12,7 @@ export function PairedDevices({
   onManage: () => void;
 }) {
   const { t } = useI18n();
-  const { settings } = useSnapshot();
+  const settings = useSnapshot((s) => s.settings);
   return (
     <section className="mailbox-devices" aria-label={t('devices:pairedDevices')}>
       <header className="mailbox-section-heading">

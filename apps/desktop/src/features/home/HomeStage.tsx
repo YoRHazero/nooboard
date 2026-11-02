@@ -31,7 +31,7 @@ export function HomeStage({
   motionPreview?: boolean;
 }) {
   const { t } = useI18n();
-  const { localDevice } = useSnapshot();
+  const localDevice = useSnapshot((s) => s.localDevice);
   const appearance = usePreferenceStore((state) => state.appearance);
   const [targets, setTargets] = useState<TargetLayout>(fallback);
   const [interaction, setInteraction] = useState<{ id: number; motion: Gesture }>();

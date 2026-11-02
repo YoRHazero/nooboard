@@ -24,9 +24,10 @@ export function ActivityList({
     sent: { icon: ArrowUpRight, label: t('common:send') },
     received: { icon: ArrowDownLeft, label: t('common:receive') },
   };
-  const snapshot = useSnapshot();
+  const latest = useSnapshot((s) => s.activities);
+  const peers = useSnapshot((s) => s.peers);
   const [selected, setSelected] = useState<Activity | null>(null);
-  const detail = selected && (snapshot.activities.find((a) => a.id === selected.id) ?? selected);
+  const detail = selected && (latest.find((a) => a.id === selected.id) ?? selected);
   return (
     <section className="mailbox-events" aria-label={t('home:activity')}>
       <header className="mailbox-section-heading">
@@ -55,7 +56,7 @@ export function ActivityList({
                   ? `${activity.sourceName} · ${title}`
                   : title;
             const source = activity.sourceNoobId
-              ? ` · ${shortNoobId(activity.sourceNoobId, snapshot.peers)}`
+              ? ` · ${shortNoobId(activity.sourceNoobId, peers)}`
               : '';
             return (
               <li

@@ -21,7 +21,9 @@ export function PeerDetails({ peer, onClose }: { peer: Peer; onClose: () => void
   const updateSyncSettingsMutation = useUpdateSyncSettingsMutation();
 
   const { t } = useI18n();
-  const { peers, settings, onboarding } = useSnapshot();
+  const peers = useSnapshot((s) => s.peers);
+  const settings = useSnapshot((s) => s.settings);
+  const onboarding = useSnapshot((s) => s.onboarding);
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);

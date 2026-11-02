@@ -12,7 +12,9 @@ export function TargetPicker({ onClose }: { onClose: () => void }) {
   const selectTargetsMutation = useSelectTargetsMutation();
 
   const { t } = useI18n();
-  const { peers, manualTargets, settings } = useSnapshot();
+  const peers = useSnapshot((s) => s.peers);
+  const manualTargets = useSnapshot((s) => s.manualTargets);
+  const settings = useSnapshot((s) => s.settings);
   const [selected, setSelected] = useState([...manualTargets]);
   const [error, setError] = useState<Problem | null>(null);
   const save = async () => {

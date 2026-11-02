@@ -42,7 +42,9 @@ export function SettingsPanel() {
 
   const { t } = useI18n();
   const { language, appearance } = usePreferences();
-  const { settings, host, configuration } = useSnapshot();
+  const settings = useSnapshot((s) => s.settings);
+  const host = useSnapshot((s) => s.host);
+  const configuration = useSnapshot((s) => s.configuration);
   const { execute } = useActionFeedback([
     updateSyncSettingsMutation,
     updateHostPreferencesMutation,

@@ -14,7 +14,7 @@ export function LocalDeviceDialog({ onClose }: { onClose: () => void }) {
   const updateLocalDeviceMutation = useUpdateLocalDeviceMutation();
 
   const { t } = useI18n();
-  const { localDevice } = useSnapshot();
+  const localDevice = useSnapshot((s) => s.localDevice);
   const [initial] = useState(localDevice);
   const [deviceName, setDeviceName] = useState(initial.deviceName);
   const [pairingPort, setPairingPort] = useState(String(initial.pairingPort));
