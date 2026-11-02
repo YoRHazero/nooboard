@@ -9,11 +9,15 @@ mod send;
 use crate::contracts::clipboard::Snapshot;
 use crate::contracts::network::NetworkEvent;
 use crate::{
-    Error, MessageId, Result, configuration::ports::settings::ConfigurationPort,
-    features::clipboard::application::state::SyncState,
+    Error, MessageId, Result,
+    configuration::ports::settings::ConfigurationPort,
+    features::clipboard::application::state::{Operation, SyncState},
     features::clipboard::ports::clipboard::ClipboardPort,
-    features::clipboard::ports::history::HistoryPort, message::Reply,
+    features::clipboard::ports::history::HistoryPort,
+    message::Reply,
+    publish::Publish,
 };
+use std::collections::{BTreeSet, VecDeque};
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 type PreviewResult = (u64, crate::Result<(Vec<u8>, u32, u32)>);
@@ -63,6 +67,14 @@ pub(crate) struct Runtime {
     accepting: bool,
     ready: std::collections::BTreeMap<String, AutomaticBaseline>,
     pending_preview: Option<(u64, crate::contracts::clipboard::ImageData)>,
+    current: crate::CurrentClipboard,
+    operations: VecDeque<Operation>,
+    activities: VecDeque<crate::ActivityRecord>,
+    fault: Option<String>,
+    application_failures: BTreeSet<(MessageId, String)>,
+    /// Numbers activity records; internal, not part of the published view.
+    sequence: u64,
+    effective_revision: u64,
 }
 pub(crate) fn create(
     clipboard: Arc<dyn ClipboardPort>,
@@ -82,13 +94,13 @@ pub(crate) fn create(
     };
     let observed = initial.revision;
     let accepting = config.current().settings.accepting();
+    let current = crate::CurrentClipboard::from_native(initial, None);
     let (state, snapshot) = watch::channel(SyncState {
-        current: crate::CurrentClipboard::from_native(initial, None),
-        operations: Default::default(),
-        activities: Default::default(),
+        current: current.clone(),
+        operations: VecDeque::new(),
+        activities: VecDeque::new(),
         fault: None,
-        application_failures: Default::default(),
-        sequence: 0,
+        application_failures: BTreeSet::new(),
         effective_revision: 0,
     });
     (
@@ -112,6 +124,13 @@ pub(crate) fn create(
             ready: Default::default(),
             previews: Default::default(),
             pending_preview,
+            current,
+            operations: VecDeque::new(),
+            activities: VecDeque::new(),
+            fault: None,
+            application_failures: BTreeSet::new(),
+            sequence: 0,
+            effective_revision: 0,
         },
     )
 }
@@ -134,6 +153,7 @@ impl Runtime {
             }
             self.prune();
             self.content_activities();
+            self.publish();
             tokio::select! {
                 _ = stop.changed() => break,
                 // All native writes execute through this actor.
@@ -169,13 +189,11 @@ impl Runtime {
                 result = self.previews.join_next(), if !self.previews.is_empty() => {
                     if let Some(Ok((revision, Ok((bytes, width, height))))) = result {
                         use base64::Engine;
-                        self.state.send_if_modified(|state| {
-                            if state.current.revision != revision { return false; }
-                            state.current.preview = Some(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)));
-                            state.current.image_width = Some(width);
-                            state.current.image_height = Some(height);
-                            true
-                        });
+                        if self.current.revision == revision {
+                            self.current.preview = Some(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)));
+                            self.current.image_width = Some(width);
+                            self.current.image_height = Some(height);
+                        }
                     }
                     self.start_preview();
                 },
@@ -222,33 +240,46 @@ impl Runtime {
         }
         Ok(config)
     }
-    fn prune(&self) {
+    fn prune(&mut self) {
         let network = self.network.status();
-        self.state.send_if_modified(|s| {
-            let before = s.operations.len();
-            let mut ended = 0;
-            s.operations.retain(|op| {
-                if network
-                    .transfers
-                    .iter()
-                    .any(|row| op.matches(row) && !row.stage.is_terminal())
-                {
-                    true
-                } else {
-                    ended += 1;
-                    ended <= 64
-                }
-            });
-            s.application_failures.retain(|(id, peer)| {
-                s.operations
-                    .iter()
-                    .any(|op| &op.id == id && op.incoming_peer.as_ref() == Some(peer))
-            });
-            s.operations.len() != before
+        let mut ended = 0;
+        self.operations.retain(|op| {
+            if network
+                .transfers
+                .iter()
+                .any(|row| op.matches(row) && !row.stage.is_terminal())
+            {
+                true
+            } else {
+                ended += 1;
+                ended <= 64
+            }
+        });
+        let operations = &self.operations;
+        self.application_failures.retain(|(id, peer)| {
+            operations
+                .iter()
+                .any(|op| &op.id == id && op.incoming_peer.as_ref() == Some(peer))
         });
     }
-    fn fault(&self, e: &Error) {
-        self.state.send_modify(|s| s.fault = Some(e.to_string()));
+    fn fault(&mut self, e: &Error) {
+        self.fault = Some(e.to_string());
+    }
+    /// The only projection of this runtime's state to observers.
+    fn publish(&self) {
+        self.state.publish(SyncState {
+            current: self.current.clone(),
+            operations: self.operations.clone(),
+            activities: self.activities.clone(),
+            fault: self.fault.clone(),
+            application_failures: self.application_failures.clone(),
+            effective_revision: self.effective_revision,
+        });
+    }
+    /// A command's effects are published before its reply, so callers observe them on return.
+    fn reply<T>(&mut self, reply: Reply<T>, result: Result<T>) {
+        self.publish();
+        let _ = reply.send(result);
     }
     async fn reconcile(&mut self) -> Result<()> {
         let config = self.refresh_routes().await?;
@@ -261,8 +292,6 @@ impl Runtime {
         }
         if config.settings.paused || config.settings.mode == crate::Mode::Manual {
             let ids = self
-                .state
-                .borrow()
                 .operations
                 .iter()
                 .filter(|op| config.settings.paused || op.automatic)
@@ -280,8 +309,6 @@ impl Runtime {
                 .filter(|row| !row.incoming && !row.stage.is_terminal())
             {
                 let automatic = self
-                    .state
-                    .borrow()
                     .operations
                     .iter()
                     .any(|op| op.matches(row) && op.automatic);
@@ -298,15 +325,14 @@ impl Runtime {
                 }
             }
         }
-        self.state
-            .send_modify(|s| s.effective_revision = config.revision);
+        self.effective_revision = config.revision;
         Ok(())
     }
     async fn command(&mut self, request: Request) {
         match request {
             Request::Send { targets, reply } => {
                 let result = self.send_current(targets).await;
-                let _ = reply.send(result);
+                self.reply(reply, result);
             }
             Request::Files { paths, reply } => {
                 let config = self.config.current();
@@ -318,7 +344,7 @@ impl Runtime {
                     )
                     .await
                     .map(|_| ());
-                let _ = reply.send(result);
+                self.reply(reply, result);
             }
             Request::Cancel { key, reply } => {
                 let result = async {
@@ -339,7 +365,7 @@ impl Runtime {
                     Ok(())
                 }
                 .await;
-                let _ = reply.send(result);
+                self.reply(reply, result);
             }
             Request::CopyReceived { key, reply } => {
                 let result = async {
@@ -358,7 +384,7 @@ impl Runtime {
                     Ok(())
                 }
                 .await;
-                let _ = reply.send(result);
+                self.reply(reply, result);
             }
             Request::CopyHistory { id, reply } => {
                 let result = async {
@@ -368,12 +394,12 @@ impl Runtime {
                     Ok(())
                 }
                 .await;
-                let _ = reply.send(result);
+                self.reply(reply, result);
             }
         }
     }
     fn activity(
-        &self,
+        &mut self,
         kind: crate::ActivityKind,
         text: &str,
         source: Option<String>,
@@ -385,22 +411,20 @@ impl Runtime {
             .as_ref()
             .and_then(|id| config.peers.get(id))
             .map(|p| p.trusted.identity.device_name.clone());
-        self.state.send_modify(|s| {
-            s.sequence += 1;
-            s.activities.push_front(crate::ActivityRecord {
-                sequence: s.sequence,
-                kind,
-                summary: text.chars().take(160).collect(),
-                at_ms: crate::clock::now_ms(),
-                source,
-                device_name,
-                message_id: id,
-                content_task: content.as_ref().map(|(key, _, _)| key.clone()),
-                content_node: content.as_ref().map(|(_, node, _)| node.clone()),
-                content_stage: content.map(|(_, _, stage)| stage),
-            });
-            s.activities.truncate(30);
+        self.sequence += 1;
+        self.activities.push_front(crate::ActivityRecord {
+            sequence: self.sequence,
+            kind,
+            summary: text.chars().take(160).collect(),
+            at_ms: crate::clock::now_ms(),
+            source,
+            device_name,
+            message_id: id,
+            content_task: content.as_ref().map(|(key, _, _)| key.clone()),
+            content_node: content.as_ref().map(|(_, node, _)| node.clone()),
+            content_stage: content.map(|(_, _, stage)| stage),
         });
+        self.activities.truncate(30);
     }
     fn content_activities(&mut self) {
         let network = self.network.status();
@@ -412,8 +436,6 @@ impl Runtime {
         });
         for row in &network.transfers {
             let operation = self
-                .state
-                .borrow()
                 .operations
                 .iter()
                 .find(|op| op.matches(row) && op.kind.is_some())

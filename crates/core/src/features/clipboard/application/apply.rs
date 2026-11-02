@@ -10,9 +10,7 @@ impl Runtime {
         self.observe(self.clipboard.read().await?, true).await?;
         let snapshot = self.clipboard.write_content(payload).await?;
         self.observed = self.observed.max(snapshot.revision);
-        self.state.send_modify(|s| {
-            s.current = crate::CurrentClipboard::from_native(snapshot.clone(), source)
-        });
+        self.current = crate::CurrentClipboard::from_native(snapshot.clone(), source);
         if let crate::contracts::clipboard::ReadState::Ready(Payload::Image(image)) =
             &snapshot.content
         {

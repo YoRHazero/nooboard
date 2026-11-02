@@ -72,7 +72,7 @@ src/
 
 设备和同步分别维护自己的流程状态，history 管理历史工作与保留策略。snapshot 只做投影。配对密码学、连接重试、消息去重、传输阶段、文件校验与落盘全部由 network 管理，core 不保留第二套状态机。
 
-feature 的状态发布遵循同一规则：runtime 持有自己的状态，由唯一的 `publish()` 投影为完整视图，经 `publish::Publish` 发出，值没有变化时不通知订阅者。supervisor 在任一输入变化时重新组装快照，本身不做比较。devices 完全按此组织；terminal 与 configuration 同样由自有状态在唯一位置发布，但每次发布都对应真实变化，尚未经过 `Publish`；clipboard 与 history 目前仍在 watch 中原地修改状态，同样只在真实事件时发布。后三者后续统一到同一模型。
+feature 的状态发布遵循同一规则：runtime 持有自己的状态，由唯一的 `publish()` 投影为完整视图，经 `publish::Publish` 发出，值没有变化时不通知订阅者。devices、clipboard、history、terminal 和 configuration 都按此组织；带版本号的视图（terminal）用 `publish_revised`，版本号只随内容变化递增，只读或失败的请求不发布。命令通过各自的 `reply()` 在回复前发布其效果。supervisor 在任一输入变化时重新组装快照，本身不做比较。
 
 Core 用原 profile 启动独立 Identity Service，再把公开证书与签名适配器注入 Network。Identity 继续读取原 `nooboard.identity.v1` 系统条目，不重建证书或身份。Core 同时把 Identity 的用途隔离 `seal/open` 能力接入 Terminal 配置仓库，Terminal 只获得本次认证所需材料。Network 和 Terminal 都不依赖 Identity crate。启动失败清理已经创建的服务。
 

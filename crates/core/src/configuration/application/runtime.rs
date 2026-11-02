@@ -4,6 +4,7 @@ use crate::configuration::ports::storage::ConfigurationRepository;
 use crate::{
     Error, PeerSettings, Result,
     message::{Reply, request},
+    publish::Publish,
 };
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
@@ -31,19 +32,25 @@ impl Handle {
 }
 pub(crate) fn channel(config: Configuration, stopped: watch::Receiver<bool>) -> (Handle, Runtime) {
     let (requests, inbox) = mpsc::channel(32);
-    let (state, receiver) = watch::channel(config);
+    let (state, receiver) = watch::channel(config.clone());
     (
         Handle {
             requests,
             state: receiver,
             stopped,
         },
-        Runtime { inbox, state },
+        Runtime {
+            inbox,
+            state,
+            document: config,
+        },
     )
 }
 pub(crate) struct Runtime {
     inbox: mpsc::Receiver<Request>,
     state: watch::Sender<Configuration>,
+    /// The committed document; the watch is its published copy.
+    document: Configuration,
 }
 impl Runtime {
     pub async fn run(
@@ -68,7 +75,7 @@ impl Runtime {
         Ok(())
     }
     async fn apply(&mut self, change: Change, storage: &dyn ConfigurationRepository) -> Result<()> {
-        let mut next = self.state.borrow().clone();
+        let mut next = self.document.clone();
         match change {
             Change::Settings(settings) => next.settings = settings,
             Change::SavePeer(trusted) => {
@@ -121,11 +128,16 @@ impl Runtime {
         next.automatic_revisions
             .retain(|id, _| next.peers.contains_key(id));
         for id in next.peers.keys() {
-            if next.auto_send_enabled(id) && !self.state.borrow().auto_send_enabled(id) {
+            if next.auto_send_enabled(id) && !self.document.auto_send_enabled(id) {
                 next.automatic_revisions.insert(id.clone(), next.revision);
             }
         }
-        self.state.send_replace(next);
+        self.document = next;
+        self.publish();
         Ok(())
+    }
+    /// The only projection of this runtime's state to observers.
+    fn publish(&self) {
+        self.state.publish(self.document.clone());
     }
 }

@@ -14,9 +14,7 @@ impl Runtime {
             return Ok(());
         }
         self.observed = snapshot.revision;
-        self.state.send_modify(|s| {
-            s.current = crate::CurrentClipboard::from_native(snapshot.clone(), None)
-        });
+        self.current = crate::CurrentClipboard::from_native(snapshot.clone(), None);
         if let ReadState::Ready(Payload::Image(image)) = &snapshot.content {
             self.pending_preview = Some((snapshot.revision, image.clone()));
             self.start_preview();
@@ -178,13 +176,13 @@ mod tests {
                 if order == "configuration-first" {
                     runtime.reconcile().await.unwrap();
                 }
-                let before = runtime.state.borrow().operations.len();
+                let before = runtime.operations.len();
                 runtime
                     .observe(clipboard.read().await.unwrap(), true)
                     .await
                     .unwrap();
                 assert_eq!(
-                    runtime.state.borrow().operations.len(),
+                    runtime.operations.len(),
                     before,
                     "replayed pending copy: {transition}, {order}"
                 );

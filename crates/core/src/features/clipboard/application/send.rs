@@ -73,32 +73,16 @@ impl Runtime {
                 },
             })
             .await?;
-        self.state.send_modify(|s| {
-            s.operations
-                .push_front(crate::features::clipboard::application::state::Operation {
-                    incoming_peer: None,
-                    id: id.clone(),
-                    automatic,
-                    bytes,
-                    names,
-                    kind,
-                    at_ms: crate::clock::now_ms(),
-                });
-            let network = self.network.status();
-            let mut finished = 0;
-            s.operations.retain(|op| {
-                if network
-                    .transfers
-                    .iter()
-                    .any(|r| op.matches(r) && !r.stage.is_terminal())
-                {
-                    true
-                } else {
-                    finished += 1;
-                    finished <= 64
-                }
-            });
+        self.operations.push_front(Operation {
+            incoming_peer: None,
+            id: id.clone(),
+            automatic,
+            bytes,
+            names,
+            kind,
+            at_ms: crate::clock::now_ms(),
         });
+        self.prune();
         if kind.is_none() {
             self.activity(
                 crate::ActivityKind::Sent,

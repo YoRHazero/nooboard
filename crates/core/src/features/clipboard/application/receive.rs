@@ -34,18 +34,14 @@ impl Runtime {
                 let accept = config.settings.accepting()
                     && config.peers.contains_key(&peer)
                     && (kind == crate::ContentKind::Image || directory.is_some());
-                self.state.send_modify(|s| {
-                    s.operations.push_front(
-                        crate::features::clipboard::application::state::Operation {
-                            incoming_peer: Some(peer.clone()),
-                            id: transfer_id,
-                            automatic: false,
-                            bytes: 0,
-                            names: files.iter().map(|f| f.name.clone()).collect(),
-                            kind: Some(kind),
-                            at_ms: crate::clock::now_ms(),
-                        },
-                    );
+                self.operations.push_front(Operation {
+                    incoming_peer: Some(peer.clone()),
+                    id: transfer_id,
+                    automatic: false,
+                    bytes: 0,
+                    names: files.iter().map(|f| f.name.clone()).collect(),
+                    kind: Some(kind),
+                    at_ms: crate::clock::now_ms(),
                 });
                 self.network
                     .decide_incoming(
@@ -88,10 +84,8 @@ impl Runtime {
                 };
                 let result = self.apply(payload.clone(), Some(peer.clone())).await;
                 if result.is_err() && !matches!(payload, Payload::Text(_)) {
-                    self.state.send_modify(|s| {
-                        s.application_failures
-                            .insert((transfer_id.clone(), peer.clone()));
-                    });
+                    self.application_failures
+                        .insert((transfer_id.clone(), peer.clone()));
                 }
                 let outcome = if result.is_ok() {
                     ApplicationOutcome::Applied

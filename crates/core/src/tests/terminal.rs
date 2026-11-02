@@ -1157,3 +1157,32 @@ async fn temporary_local_terminals_do_not_write_or_occupy_saved_configurations()
     identity_owner.shutdown().await.unwrap();
     storage_owner.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn requests_that_change_nothing_publish_nothing_and_a_change_advances_the_revision_once() {
+    let clipboard = Clipboard::new();
+    let (mut service, app) = start(&clipboard).await;
+    let workspace = app.terminal();
+    let mut snapshots = workspace.subscribe();
+    let before = snapshots.borrow_and_update().revision;
+    // A request that fails leaves the workspace as it was.
+    assert!(
+        workspace
+            .update_command(CommandConfigId::new(), command("true"))
+            .await
+            .is_err()
+    );
+    assert!(
+        !snapshots.has_changed().unwrap(),
+        "unchanged view republished"
+    );
+    assert_eq!(snapshots.borrow().revision, before);
+    // A real change is visible on return and numbered once.
+    workspace.create_command(command("true")).await.unwrap();
+    assert!(snapshots.has_changed().unwrap());
+    let after = snapshots.borrow_and_update();
+    assert_eq!(after.revision, before + 1);
+    assert_eq!(after.commands.len(), 1);
+    drop(after);
+    bounded(service.shutdown()).await.unwrap();
+}

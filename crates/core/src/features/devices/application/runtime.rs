@@ -374,7 +374,7 @@ impl Runtime {
         Ok(())
     }
     /// A command's effects are published before its reply, so callers observe them on return.
-    fn respond<T>(&mut self, reply: Reply<T>, result: Result<T>) {
+    fn reply<T>(&mut self, reply: Reply<T>, result: Result<T>) {
         self.publish();
         let _ = reply.send(result);
     }
@@ -384,7 +384,7 @@ impl Runtime {
                 let discoverable = self.config.current().settings.discoverable;
                 let result = self.discover(discoverable, true).await;
                 self.refresh_addresses().await;
-                self.respond(reply, result);
+                self.reply(reply, result);
             }
             Request::Begin {
                 address,
@@ -412,7 +412,7 @@ impl Runtime {
                     Ok(())
                 }
                 .await;
-                self.respond(reply, result);
+                self.reply(reply, result);
             }
             Request::Accept { id, reply } => {
                 let result = async {
@@ -420,7 +420,7 @@ impl Runtime {
                     Ok(())
                 }
                 .await;
-                self.respond(reply, result);
+                self.reply(reply, result);
             }
             Request::Code { id, code, reply } => {
                 let result = async {
@@ -430,7 +430,7 @@ impl Runtime {
                     Ok(())
                 }
                 .await;
-                self.respond(reply, result);
+                self.reply(reply, result);
             }
             Request::Dismiss { id, reply } => {
                 let result = async {
@@ -448,7 +448,7 @@ impl Runtime {
                     Ok(())
                 }
                 .await;
-                self.respond(reply, result);
+                self.reply(reply, result);
             }
             Request::Unpair { id, reply } => {
                 let result = async {
@@ -458,7 +458,7 @@ impl Runtime {
                     Ok(())
                 }
                 .await;
-                self.respond(reply, result);
+                self.reply(reply, result);
             }
             Request::Configure {
                 id,
@@ -476,7 +476,7 @@ impl Runtime {
                     self.reconcile().await
                 }
                 .await;
-                self.respond(reply, result);
+                self.reply(reply, result);
             }
             #[cfg(any(test, feature = "diagnostics"))]
             Request::Trust { fixture, reply } => {
@@ -500,7 +500,7 @@ impl Runtime {
                     Ok(fixture.noob_id)
                 }
                 .await;
-                self.respond(reply, result);
+                self.reply(reply, result);
             }
         }
     }
