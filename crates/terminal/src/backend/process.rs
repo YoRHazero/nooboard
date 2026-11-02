@@ -8,9 +8,11 @@ use portable_pty::Child;
 pub(crate) enum GracefulStop {
     /// A command: ask every process to terminate.
     Terminate,
-    /// An interactive terminal: hang up first, as closing a terminal window does.
+    /// An interactive terminal: hang up, as closing a terminal window does.
     /// Interactive shells ignore SIGTERM but exit, saving their history, on SIGHUP.
-    /// SIGTERM still follows for members that ignore SIGHUP, such as nohup jobs.
+    /// Members still running later, such as nohup jobs, get SIGTERM from
+    /// `terminate_survivors`. Sending it at once would abort hang-up handlers that are
+    /// still cleaning up, such as an editor's emergency save.
     HangUp,
 }
 
@@ -64,29 +66,38 @@ impl ProcessScope {
         Ok(empty)
     }
     pub(crate) fn signal(&self, force: bool) -> Result<()> {
+        self.send(match (force, self.graceful) {
+            (true, _) => libc::SIGKILL,
+            (false, GracefulStop::Terminate) => libc::SIGTERM,
+            (false, GracefulStop::HangUp) => libc::SIGHUP,
+        })
+    }
+    /// Second graceful step after a hang-up, for members that outlived it.
+    /// Commands were already sent SIGTERM, so this does nothing for them.
+    pub(crate) fn terminate_survivors(&self) -> Result<()> {
+        match self.graceful {
+            GracefulStop::HangUp => self.send(libc::SIGTERM),
+            GracefulStop::Terminate => Ok(()),
+        }
+    }
+    fn send(&self, signal: libc::c_int) -> Result<()> {
         if !self.armed.load(std::sync::atomic::Ordering::Acquire) {
             return Ok(());
         }
-        let signals: &[libc::c_int] = match (force, self.graceful) {
-            (true, _) => &[libc::SIGKILL],
-            (false, GracefulStop::Terminate) => &[libc::SIGTERM],
-            (false, GracefulStop::HangUp) => &[libc::SIGHUP, libc::SIGTERM],
-        };
+        let force = signal == libc::SIGKILL;
         let mut failure = None;
-        for &signal in signals {
-            for pid in self.members()? {
-                // SAFETY: recheck membership immediately before signalling; never signal our session.
-                if unsafe { libc::getsid(pid) } != self.session {
-                    continue;
-                }
-                // SAFETY: pid was obtained from this owned PTY session, and signal is a valid constant.
-                if unsafe { libc::kill(pid, signal) } != 0 {
-                    let error = std::io::Error::last_os_error();
-                    if error.raw_os_error() != Some(libc::ESRCH)
-                        && (force || error.raw_os_error() != Some(libc::EPERM))
-                    {
-                        failure = Some(TerminalError::from(error));
-                    }
+        for pid in self.members()? {
+            // SAFETY: recheck membership immediately before signalling; never signal our session.
+            if unsafe { libc::getsid(pid) } != self.session {
+                continue;
+            }
+            // SAFETY: pid was obtained from this owned PTY session, and signal is a valid constant.
+            if unsafe { libc::kill(pid, signal) } != 0 {
+                let error = std::io::Error::last_os_error();
+                if error.raw_os_error() != Some(libc::ESRCH)
+                    && (force || error.raw_os_error() != Some(libc::EPERM))
+                {
+                    failure = Some(TerminalError::from(error));
                 }
             }
         }
@@ -200,6 +211,10 @@ mod windows {
             if unsafe { TerminateJobObject(self.job.as_raw_handle(), 1) } == 0 {
                 return Err(std::io::Error::last_os_error().into());
             }
+            Ok(())
+        }
+        /// Windows has no hang-up step, so nothing follows the console input.
+        pub(crate) fn terminate_survivors(&self) -> Result<()> {
             Ok(())
         }
         pub(crate) fn is_empty(&self) -> Result<bool> {

@@ -695,12 +695,11 @@ async fn temporary_terminals_lease_only_their_real_dependencies() {
     assert!(terminal.snapshot().is_empty());
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn stopping_an_idle_local_shell_ends_it_without_waiting_for_force() {
-    // Only a forced stop would wait this long.
+/// Starts the user's default shell, as a terminal tab runs it.
+async fn local_shell(stop_grace_timeout: Duration) -> (TerminalService, Terminal, TerminalRunId) {
     let mut options = TerminalServiceOptions::default();
-    options.stop.stop_grace_timeout = Duration::from_secs(30);
-    let mut service = TerminalService::start(
+    options.stop.stop_grace_timeout = stop_grace_timeout;
+    let service = TerminalService::start(
         options,
         TerminalServiceDependencies {
             host_verifier: Arc::new(Reject),
@@ -708,7 +707,6 @@ async fn stopping_an_idle_local_shell_ends_it_without_waiting_for_force() {
     )
     .unwrap();
     let terminal = service.handle();
-    // The user's default shell, as a terminal tab runs it. Interactive shells ignore SIGTERM.
     let id = terminal
         .start_terminal(StartTerminalRequest {
             config_id: None,
@@ -724,13 +722,112 @@ async fn stopping_an_idle_local_shell_ends_it_without_waiting_for_force() {
             .any(|r| r.id == id && r.state == TerminalRunState::Running)
     })
     .await;
-    // Let the shell finish starting and install its signal dispositions.
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    // `stop_terminal` returns once the run has ended; the snapshot is published right after.
-    tokio::time::timeout(Duration::from_secs(6), terminal.stop_terminal(id))
+    (service, terminal, id)
+}
+/// Types `line` into a local shell and waits until `ready` appears in the output.
+/// `ready` must not occur in `line`, because the terminal echoes what is typed.
+async fn run_in_shell(terminal: &Terminal, id: TerminalRunId, line: &str, ready: &str) {
+    let target = TerminalIoTarget::Terminal(id);
+    let mut output = terminal.subscribe_output(target).await.unwrap();
+    terminal
+        .write_input(target, format!("{line}\r").into_bytes())
         .await
-        .expect("the shell was only stopped by the force timeout")
         .unwrap();
-    state(&terminal, TerminalSnapshot::is_empty).await;
+    let mut data = output.initial_output.data;
+    tokio::time::timeout(Duration::from_secs(6), async {
+        while !String::from_utf8_lossy(&data).contains(ready) {
+            data.extend(output.stream.next().await.unwrap().unwrap().data);
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("no {ready:?} in {:?}", String::from_utf8_lossy(&data)));
+}
+/// Stops a terminal and returns its ended run, whose `stop_method` says whether it was forced.
+async fn stop_and_end(terminal: &Terminal, id: TerminalRunId) -> TerminalRun {
+    let mut events = terminal.subscribe().events;
+    terminal.stop_terminal(id).await.unwrap();
+    loop {
+        if let Some(TerminalEvent::TerminalEnded { run }) = events.next().await.unwrap()
+            && run.id == id
+        {
+            return run;
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stopping_an_idle_local_shell_ends_it_without_waiting_for_force() {
+    // Only a forced stop would wait this long.
+    let (mut service, terminal, id) = local_shell(Duration::from_secs(30)).await;
+    // A shell that has run a command has installed its signal dispositions.
+    // Interactive shells ignore SIGTERM.
+    run_in_shell(&terminal, id, "printf 'shell-%s\\n' ready", "shell-ready").await;
+    let run = tokio::time::timeout(Duration::from_secs(6), stop_and_end(&terminal, id))
+        .await
+        .expect("the shell was only stopped by the force timeout");
+    assert_eq!(run.stop_method, Some(StopMethod::Graceful));
+    service.shutdown().await.unwrap();
+}
+
+const HANGUP_MARKER: &str = "NOOBOARD_TEST_HANGUP_MARKER";
+/// Run inside a terminal by `stopping_a_local_shell_lets_hangup_handlers_finish`.
+/// Like an editor's emergency save, a hang-up starts a short cleanup that SIGTERM cuts short.
+#[test]
+#[ignore = "helper process for the hang-up test"]
+fn hangup_cleanup_helper() {
+    let Some(marker) = std::env::var_os(HANGUP_MARKER) else {
+        return;
+    };
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            use tokio::signal::unix::{SignalKind, signal};
+            let mut hangup = signal(SignalKind::hangup()).unwrap();
+            let mut terminate = signal(SignalKind::terminate()).unwrap();
+            println!("hangup-helper-ready");
+            hangup.recv().await;
+            let outcome = tokio::select! {
+                _ = tokio::time::sleep(Duration::from_millis(300)) => "saved",
+                _ = terminate.recv() => "interrupted",
+            };
+            std::fs::write(marker, outcome).unwrap();
+        });
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stopping_a_local_shell_lets_hangup_handlers_finish() {
+    let dir = tempfile::tempdir().unwrap();
+    let marker = dir.path().join("outcome");
+    // SIGTERM may follow after 2 s, long after the helper's 300 ms cleanup.
+    let (mut service, terminal, id) = local_shell(Duration::from_secs(4)).await;
+    let helper = std::env::current_exe().unwrap();
+    let line = format!(
+        "{HANGUP_MARKER}='{}' '{}' --exact hangup_cleanup_helper --ignored --nocapture",
+        marker.display(),
+        helper.display()
+    );
+    run_in_shell(&terminal, id, &line, "hangup-helper-ready").await;
+    let run = stop_and_end(&terminal, id).await;
+    assert_eq!(std::fs::read_to_string(&marker).unwrap(), "saved");
+    assert_eq!(run.stop_method, Some(StopMethod::Graceful));
+    service.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stopping_a_local_shell_terminates_jobs_that_ignore_the_hangup() {
+    // SIGTERM follows after 3 s, leaving 3 s before the stop would be forced.
+    let (mut service, terminal, id) = local_shell(Duration::from_secs(6)).await;
+    // A background job that ignores SIGHUP, as nohup makes it. It reports only once it does.
+    run_in_shell(
+        &terminal,
+        id,
+        "sh -c 'trap \"\" HUP; printf \"job-%s\\n\" ready; exec sleep 300' &",
+        "job-ready",
+    )
+    .await;
+    let run = stop_and_end(&terminal, id).await;
+    assert_eq!(run.stop_method, Some(StopMethod::Graceful));
     service.shutdown().await.unwrap();
 }

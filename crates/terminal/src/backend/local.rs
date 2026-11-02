@@ -197,6 +197,9 @@ pub(super) async fn run(command: Option<String>, mut context: Context) -> Result
         });
     }
     let cleanup_started = tokio::time::Instant::now();
+    // Hang-up handlers, such as an editor's emergency save, get the first half of the grace period.
+    let terminate_after = context.options.stop.stop_grace_timeout / 2;
+    let mut terminate_sent = false;
     let mut reported = false;
     loop {
         match scope.is_empty() {
@@ -210,6 +213,15 @@ pub(super) async fn run(command: Option<String>, mut context: Context) -> Result
                 });
             }
             Err(_) => {}
+        }
+        if !terminate_sent && !force_sent && cleanup_started.elapsed() >= terminate_after {
+            terminate_sent = true;
+            if let Err(error) = scope.terminate_survivors() {
+                context.event(DriverEvent::StopFailed {
+                    id: context.id,
+                    error,
+                });
+            }
         }
         if !force_sent
             && (context.force.is_cancelled()
