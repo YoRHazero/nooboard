@@ -9,6 +9,7 @@ use crate::{
     LocalIdentity,
     discovery::NearbyDevice,
     error::{Failure, InternalResult as Result},
+    listener::Listener,
     options::Options,
     pairing::PairingId,
     peers::TrustedPeer,
@@ -124,7 +125,7 @@ pub(crate) struct Runtime {
     identity: Arc<LocalIdentity>,
     own_id: String,
     name: String,
-    listener: TcpListener,
+    listener: Listener,
     requests: mpsc::Receiver<Request>,
     status: watch::Sender<Vec<ConnectionStatus>>,
     events: mpsc::Sender<Event>,
@@ -171,7 +172,7 @@ impl Runtime {
             identity,
             own_id,
             name: options.device_name.clone(),
-            listener,
+            listener: Listener::new(listener),
             requests,
             status,
             events,
@@ -556,8 +557,7 @@ impl Runtime {
                             self.publish();
                         }
                     },
-                    accepted = self.listener.accept() => {
-                        let (stream, _) = accepted?;
+                    (stream, _) = self.listener.accept() => {
                         if tasks.len() < 96 {
                             let tls = self.tls.clone();
                             let revision = self.revision;

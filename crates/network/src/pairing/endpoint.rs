@@ -1,4 +1,5 @@
 use super::{Contact, Control, Error, Event, Result, control, session};
+use crate::listener::Listener;
 use std::{
     collections::HashMap,
     net::IpAddr,
@@ -24,6 +25,7 @@ impl Endpoint {
     ) -> crate::error::InternalResult<Self> {
         let listener = TcpListener::bind(address).await?;
         let address = listener.local_addr()?.to_string();
+        let mut listener = Listener::new(listener);
         let identity = local;
         let (commands, mut jobs) = mpsc::channel::<(Vec<String>, session::Request)>(4);
         let (stop, mut stopped) = watch::channel(false);
@@ -36,11 +38,7 @@ impl Endpoint {
                 }
                 tokio::select! {
                     _ = stopped.changed() => break,
-                    next = listener.accept() => {
-                        let Ok((stream, address)) = next else {
-                            tokio::time::sleep(Duration::from_secs(1)).await;
-                            continue;
-                        };
+                    (stream, address) = listener.accept() => {
                         recent.retain(|_, at| at.elapsed() < Duration::from_secs(3));
                         if tasks.len() >= 8 || recent.len() >= 256 || recent.contains_key(&address.ip()) {
                             continue;
