@@ -2,14 +2,27 @@
 use crate::{Result, TerminalError, TerminalErrorKind};
 use portable_pty::Child;
 
+/// What a graceful (non-forced) stop asks of the processes in a session on Unix.
+/// On Windows the local driver writes console input instead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GracefulStop {
+    /// A command: ask every process to terminate.
+    Terminate,
+    /// An interactive terminal: hang up first, as closing a terminal window does.
+    /// Interactive shells ignore SIGTERM but exit, saving their history, on SIGHUP.
+    /// SIGTERM still follows for members that ignore SIGHUP, such as nohup jobs.
+    HangUp,
+}
+
 #[cfg(unix)]
 pub(crate) struct ProcessScope {
     session: libc::pid_t,
+    graceful: GracefulStop,
     armed: std::sync::atomic::AtomicBool,
 }
 #[cfg(unix)]
 impl ProcessScope {
-    pub(crate) fn new(child: &dyn Child) -> Result<Self> {
+    pub(crate) fn new(child: &dyn Child, graceful: GracefulStop) -> Result<Self> {
         let pid = child.process_id().ok_or_else(|| {
             TerminalError::new(
                 TerminalErrorKind::ProcessFailed,
@@ -28,6 +41,7 @@ impl ProcessScope {
         }
         Ok(Self {
             session,
+            graceful,
             armed: std::sync::atomic::AtomicBool::new(true),
         })
     }
@@ -53,20 +67,26 @@ impl ProcessScope {
         if !self.armed.load(std::sync::atomic::Ordering::Acquire) {
             return Ok(());
         }
-        let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
+        let signals: &[libc::c_int] = match (force, self.graceful) {
+            (true, _) => &[libc::SIGKILL],
+            (false, GracefulStop::Terminate) => &[libc::SIGTERM],
+            (false, GracefulStop::HangUp) => &[libc::SIGHUP, libc::SIGTERM],
+        };
         let mut failure = None;
-        for pid in self.members()? {
-            // SAFETY: recheck membership immediately before signalling; never signal our session.
-            if unsafe { libc::getsid(pid) } != self.session {
-                continue;
-            }
-            // SAFETY: pid was obtained from this owned PTY session, and signal is a valid constant.
-            if unsafe { libc::kill(pid, signal) } != 0 {
-                let error = std::io::Error::last_os_error();
-                if error.raw_os_error() != Some(libc::ESRCH)
-                    && (force || error.raw_os_error() != Some(libc::EPERM))
-                {
-                    failure = Some(TerminalError::from(error));
+        for &signal in signals {
+            for pid in self.members()? {
+                // SAFETY: recheck membership immediately before signalling; never signal our session.
+                if unsafe { libc::getsid(pid) } != self.session {
+                    continue;
+                }
+                // SAFETY: pid was obtained from this owned PTY session, and signal is a valid constant.
+                if unsafe { libc::kill(pid, signal) } != 0 {
+                    let error = std::io::Error::last_os_error();
+                    if error.raw_os_error() != Some(libc::ESRCH)
+                        && (force || error.raw_os_error() != Some(libc::EPERM))
+                    {
+                        failure = Some(TerminalError::from(error));
+                    }
                 }
             }
         }
@@ -136,7 +156,8 @@ mod windows {
         job: OwnedHandle,
     }
     impl ProcessScope {
-        pub(crate) fn new(child: &dyn Child) -> Result<Self> {
+        /// Graceful console input is written by the local driver, so `GracefulStop` is unused here.
+        pub(crate) fn new(child: &dyn Child, _: GracefulStop) -> Result<Self> {
             // SAFETY: no security attributes or name; the returned handle is uniquely owned.
             let raw = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
             if raw.is_null() {

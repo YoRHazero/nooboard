@@ -694,3 +694,43 @@ async fn temporary_terminals_lease_only_their_real_dependencies() {
     service.shutdown().await.unwrap();
     assert!(terminal.snapshot().is_empty());
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stopping_an_idle_local_shell_ends_it_without_waiting_for_force() {
+    // Only a forced stop would wait this long.
+    let mut options = TerminalServiceOptions::default();
+    options.stop.stop_grace_timeout = Duration::from_secs(30);
+    let mut service = TerminalService::start(
+        options,
+        TerminalServiceDependencies {
+            host_verifier: Arc::new(Reject),
+        },
+    )
+    .unwrap();
+    let terminal = service.handle();
+    // The user's default shell, as a terminal tab runs it. Interactive shells ignore SIGTERM.
+    let id = terminal
+        .start_terminal(StartTerminalRequest {
+            config_id: None,
+            name: "local shell".into(),
+            target: TerminalStartTarget::Local,
+            dependencies: vec![],
+        })
+        .await
+        .unwrap();
+    state(&terminal, |s| {
+        s.terminal_runs
+            .iter()
+            .any(|r| r.id == id && r.state == TerminalRunState::Running)
+    })
+    .await;
+    // Let the shell finish starting and install its signal dispositions.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    // `stop_terminal` returns once the run has ended.
+    tokio::time::timeout(Duration::from_secs(6), terminal.stop_terminal(id))
+        .await
+        .expect("the shell was only stopped by the force timeout")
+        .unwrap();
+    assert!(terminal.snapshot().is_empty());
+    service.shutdown().await.unwrap();
+}
