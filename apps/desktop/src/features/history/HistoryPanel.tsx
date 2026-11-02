@@ -19,7 +19,8 @@ export function HistoryPanel() {
   const clearHistoryMutation = useClearHistoryMutation();
 
   const { t } = useI18n();
-  const { current, settings } = useSnapshot();
+  const current = useSnapshot((s) => s.current);
+  const settings = useSnapshot((s) => s.settings);
   const { execute } = useActionFeedback([
     deleteHistoryMutation,
     copyHistoryMutation,

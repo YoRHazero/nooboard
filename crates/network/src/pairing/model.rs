@@ -9,7 +9,7 @@ impl PairingId {
         &self.0
     }
 }
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PairingStatus {
     pub id: PairingId,
     pub peer: Option<PublicIdentity>,

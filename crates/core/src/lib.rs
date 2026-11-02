@@ -11,6 +11,7 @@ mod diagnostic_support;
 mod error;
 mod features;
 mod message;
+mod publish;
 pub use api::*;
 #[cfg(test)]
 mod tests;

@@ -9,11 +9,12 @@ export function HomeOverview({ onDevices }: { onDevices: () => void }) {
   const updateSyncSettingsMutation = useUpdateSyncSettingsMutation();
 
   const { t } = useI18n();
-  const state = useSnapshot();
-  const { settings, peers } = state;
+  const settings = useSnapshot((s) => s.settings);
+  const peers = useSnapshot((s) => s.peers);
+  const activities = useSnapshot((s) => s.activities);
   const { execute } = useActionFeedback([updateSyncSettingsMutation]);
-  const status = homeStatus(state);
-  const latest = latestTransfer(state);
+  const status = homeStatus({ settings, peers });
+  const latest = latestTransfer({ peers, activities });
   return (
     <div className="home-overview">
       <div className="home-overview__status" role="status">

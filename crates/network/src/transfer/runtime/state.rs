@@ -1,7 +1,8 @@
 use super::*;
 
 impl Runtime {
-    pub(super) fn publish(&mut self) {
+    /// Retain at most 64 finished rows, evicting in completion order.
+    pub(super) fn retire_finished(&mut self) {
         // Completion order is independent of peer IDs, namespaces and submission order.
         self.retired.retain(|key| {
             self.rows
@@ -30,7 +31,10 @@ impl Runtime {
                 self.inbox_keys.remove(&id);
             }
         }
-        self.status.send_replace(Snapshot {
+    }
+    /// The only projection of this runtime's state to observers.
+    pub(super) fn publish(&self) {
+        self.status.publish(Snapshot {
             rows: self.rows.values().rev().map(|r| r.status.clone()).collect(),
             ready: self
                 .routes
@@ -60,6 +64,7 @@ impl Runtime {
             cancel: row.cancel.clone(),
             timeout: self.timeout,
             updates: self.updates.clone(),
+            reported: Default::default(),
         }
     }
     pub(super) fn new_row(
@@ -188,7 +193,6 @@ impl Runtime {
                 }
             }
         }
-        self.publish();
     }
     pub(super) fn finished(&mut self, finished: Finished) {
         if let Some(row) = self.rows.get_mut(&finished.key)
@@ -213,7 +217,6 @@ impl Runtime {
                 resolve_receipt(row, result, error);
             }
         }
-        self.publish();
     }
     pub(super) fn tick(&mut self) {
         let closed = self
@@ -247,7 +250,6 @@ impl Runtime {
             }
             row.status.error = Some(ErrorKind::Timeout);
         }
-        self.publish();
     }
 }
 

@@ -4,7 +4,7 @@ import { canSend } from '../devices/index';
 import { batchSummary } from '../transfers/index';
 import { contentStageLabel } from '../transfers/index';
 
-export function homeStatus({ settings, peers }: DesktopSnapshot) {
+export function homeStatus({ settings, peers }: Pick<DesktopSnapshot, 'settings' | 'peers'>) {
   if (settings.paused) return { label: t('common:paused'), detail: '', tone: 'quiet' };
   if (!peers.length) return { label: t('home:notPaired'), detail: '', tone: 'quiet' };
   const online = peers.filter((p) => p.online).length;
@@ -33,7 +33,7 @@ export function transferResult(activity: Activity) {
       : contentStageLabel(activity.contentStage ?? 'Unconfirmed');
   return activity.kind === 'sent' ? batchSummary(activity) : t('home:textReceived');
 }
-export function latestTransfer(state: DesktopSnapshot) {
+export function latestTransfer(state: Pick<DesktopSnapshot, 'peers' | 'activities'>) {
   const ids = new Set(state.peers.map((p) => p.noobId));
   return state.activities.find(
     (item) =>

@@ -116,6 +116,8 @@ pub(crate) async fn start(options: Options, dependencies: NetworkDependencies) -
                 _ = pairings.changed() => {},
                 _ = transfers.changed() => {},
             }
+            // Feature runtimes notify only when their view changed (`crate::publish`),
+            // so each wake-up is forwarded as is; the supervisor holds no comparison.
             let discovered = discovery_snapshot(&mut nearby, &hints);
             status.send_modify(|s| {
                 s.connections = peers.borrow_and_update().clone();

@@ -17,7 +17,9 @@ export function DiscoverDialog({ onClose }: { onClose: () => void }) {
   const updateSyncSettingsMutation = useUpdateSyncSettingsMutation();
 
   const { t } = useI18n();
-  const { onboarding, peers, settings } = useSnapshot();
+  const onboarding = useSnapshot((s) => s.onboarding);
+  const peers = useSnapshot((s) => s.peers);
+  const settings = useSnapshot((s) => s.settings);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [manual, setManual] = useState(false);

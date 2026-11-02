@@ -65,7 +65,6 @@ impl Runtime {
                 }
             }
         }
-        self.publish();
         Ok(())
     }
     pub(super) fn link(&mut self, event: LinkEvent) -> Result<()> {
@@ -159,7 +158,6 @@ impl Runtime {
                 }
             }
         }
-        self.publish();
         Ok(())
     }
 }

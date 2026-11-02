@@ -9,7 +9,7 @@ export function LocalPanel({ onSettings }: { onSettings: () => void }) {
   const updateSyncSettingsMutation = useUpdateSyncSettingsMutation();
 
   const { t } = useI18n();
-  const { settings } = useSnapshot();
+  const settings = useSnapshot((s) => s.settings);
   const { execute } = useActionFeedback([updateSyncSettingsMutation]);
   return (
     <>

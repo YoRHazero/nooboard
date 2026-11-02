@@ -1,5 +1,5 @@
 use crate::{LocalNetwork, OnboardingSnapshot};
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct DeviceState {
     pub onboarding: OnboardingSnapshot,
     pub local: LocalNetwork,

@@ -20,7 +20,7 @@ export function DeviceRow({
   onDetails: () => void;
 }) {
   const { t } = useI18n();
-  const { settings } = useSnapshot();
+  const settings = useSnapshot((s) => s.settings);
   const status = peerState(peer, settings.paused);
   const label = `${peer.deviceName} ${shortNoobId(peer.noobId, peers)}`;
   return (

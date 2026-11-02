@@ -12,7 +12,7 @@ export function MailboxPanel({
   onTransfers: (key?: string) => void;
 }) {
   const { latest, batch } = useMailbox();
-  const { peers } = useSnapshot();
+  const peers = useSnapshot((s) => s.peers);
   const activities = batch.length ? batch : latest ? [latest] : [];
   return (
     <div className="mailbox-content">

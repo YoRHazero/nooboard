@@ -17,7 +17,8 @@ export function PreviewToolbar({
 }) {
   const { t } = useI18n();
   const { execute } = useActionFeedback();
-  const { peers, settings } = useSnapshot();
+  const peers = useSnapshot((s) => s.peers);
+  const settings = useSnapshot((s) => s.settings);
   const [selected, setSelected] = useState('');
   const peer = peers.find((p) => p.noobId === selected) ?? peers[0];
   return (

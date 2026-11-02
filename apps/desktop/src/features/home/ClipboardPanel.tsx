@@ -13,7 +13,10 @@ export function ClipboardPanel() {
   const sendCurrentMutation = useSendCurrentMutation();
 
   const { t } = useI18n();
-  const { current, peers, manualTargets, settings } = useSnapshot();
+  const current = useSnapshot((s) => s.current);
+  const peers = useSnapshot((s) => s.peers);
+  const manualTargets = useSnapshot((s) => s.manualTargets);
+  const settings = useSnapshot((s) => s.settings);
   const { execute } = useActionFeedback([sendCurrentMutation]);
   const [choosing, setChoosing] = useState(false);
   const selected = peers.filter((p) => manualTargets.includes(p.noobId));

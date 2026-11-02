@@ -8,7 +8,7 @@ import { useInstallUpdateMutation } from './queries/useInstallUpdateMutation';
 import './update.css';
 
 export function UpdateNotice() {
-  const { host } = useSnapshot();
+  const host = useSnapshot((s) => s.host);
   const { t } = useI18n();
   const install = useInstallUpdateMutation();
   const update = host.update;

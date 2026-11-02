@@ -13,6 +13,7 @@ use crate::{
     error::{ErrorKind, Failure, InternalResult as Result},
     event::NetworkEvent,
     options::Options,
+    publish::Publish,
     random::new_session_id,
 };
 use std::{
@@ -63,7 +64,7 @@ pub(crate) enum Request {
         reply: oneshot::Sender<Result<()>>,
     },
 }
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct Snapshot {
     pub rows: Vec<TransferStatus>,
     pub ready: BTreeMap<String, u64>,
@@ -105,6 +106,8 @@ struct Row {
     late_receipt: Option<(ContentResult, Option<WireError>)>,
     retired_stage: Option<TransferStage>,
 }
+/// Byte progress is a sample: a worker reports it at most this often within one stage.
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 pub(super) struct Context {
     pub key: Key,
     pub generation: u64,
@@ -113,6 +116,8 @@ pub(super) struct Context {
     pub cancel: Arc<AtomicBool>,
     pub timeout: Duration,
     pub updates: mpsc::Sender<WorkerEvent>,
+    /// The last progress actually reported by this worker.
+    reported: std::sync::Mutex<Option<(TransferStage, tokio::time::Instant)>>,
 }
 impl Context {
     pub fn is_cancelled(&self) -> bool {
@@ -131,14 +136,25 @@ impl Context {
             },
         }
     }
+    /// Report a stage change or the final byte at once; otherwise sample byte progress.
     pub fn progress(&self, stage: TransferStage, done: u64, total: u64) {
-        let _ = self.updates.try_send(WorkerEvent::Progress {
+        let now = tokio::time::Instant::now();
+        let mut reported = self.reported.lock().unwrap();
+        if done < total
+            && reported.is_some_and(|(last, at)| last == stage && now - at < PROGRESS_INTERVAL)
+        {
+            return;
+        }
+        let sent = self.updates.try_send(WorkerEvent::Progress {
             key: self.key.clone(),
             generation: self.generation,
             stage,
             done,
             total,
         });
+        if sent.is_ok() {
+            *reported = Some((stage, now));
+        }
     }
     pub fn finished(
         &self,
@@ -254,6 +270,7 @@ impl Runtime {
     }
     pub async fn run(mut self) -> Result<()> {
         let mut jobs = JoinSet::new();
+        // Checks transfer deadlines.
         let mut tick = tokio::time::interval(Duration::from_millis(100));
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let result = async {
@@ -280,6 +297,8 @@ impl Runtime {
                     },
                     _ = tick.tick() => self.tick(),
                 }
+                self.retire_finished();
+                self.publish();
             }
             Ok(())
         }.await;
@@ -305,6 +324,8 @@ impl Runtime {
                     _ => {},
                 }
             }
+            self.retire_finished();
+            self.publish();
         }
         for row in self.rows.values_mut() {
             if !row.status.stage.is_terminal() {
@@ -321,6 +342,7 @@ impl Runtime {
                 row.status.error = Some(ErrorKind::Stopped);
             }
         }
+        self.retire_finished();
         self.publish();
         result
     }
@@ -367,12 +389,94 @@ pub(super) fn from_wire_error(error: WireError) -> Failure {
 mod tests {
     use super::*;
     fn runtime() -> Runtime {
+        observed().0
+    }
+    fn observed() -> (Runtime, watch::Receiver<Snapshot>) {
         let (_tx, rx) = mpsc::channel(1);
         let (inbox, _) = mpsc::channel(1);
         let (_, stop) = watch::channel(false);
-        Runtime::new(&Options::default(), rx, inbox, stop)
-            .unwrap()
-            .0
+        let (runtime, handle) = Runtime::new(&Options::default(), rx, inbox, stop).unwrap();
+        (runtime, handle.status)
+    }
+    fn sending(runtime: &mut Runtime) -> Key {
+        runtime
+            .link(LinkEvent::Connected {
+                peer: "peer".into(),
+                generation: 1,
+                outbox: Outbox::new(),
+            })
+            .unwrap();
+        let key = Key {
+            peer: "peer".into(),
+            id: TransferId {
+                session: "0123456789abcdef0123456789abcdef".into(),
+                sequence: 1,
+            },
+            incoming: false,
+        };
+        let row = runtime.new_row(
+            &key,
+            &runtime.routes["peer"],
+            TransferStage::Sending,
+            8,
+            false,
+        );
+        runtime.rows.insert(key.clone(), row);
+        key
+    }
+    #[test]
+    fn observers_wake_only_when_the_published_state_changes() {
+        let (mut runtime, mut status) = observed();
+        let key = sending(&mut runtime);
+        runtime.publish();
+        status.borrow_and_update();
+        // Periodic maintenance and unrelated events leave the view unchanged.
+        runtime.tick();
+        runtime.publish();
+        assert!(!status.has_changed().unwrap(), "maintenance woke observers");
+        runtime.update(WorkerEvent::Progress {
+            key,
+            generation: 1,
+            stage: TransferStage::Sending,
+            done: 4,
+            total: 8,
+        });
+        runtime.publish();
+        assert!(status.has_changed().unwrap(), "progress was not published");
+        assert_eq!(status.borrow_and_update().rows[0].completed_bytes, 4);
+        runtime.publish();
+        assert!(
+            !status.has_changed().unwrap(),
+            "unchanged state republished"
+        );
+    }
+    #[tokio::test(start_paused = true)]
+    async fn workers_sample_byte_progress_but_report_stage_changes_and_the_last_byte_at_once() {
+        let mut runtime = runtime();
+        let key = sending(&mut runtime);
+        let context = runtime.context(&key);
+        let mut reported = || {
+            let mut events = vec![];
+            while let Ok(WorkerEvent::Progress { stage, done, .. }) = runtime.incoming.try_recv() {
+                events.push((stage, done));
+            }
+            events
+        };
+        context.progress(TransferStage::Sending, 1, 8);
+        context.progress(TransferStage::Sending, 2, 8);
+        assert_eq!(reported(), [(TransferStage::Sending, 1)]);
+        tokio::time::advance(PROGRESS_INTERVAL).await;
+        context.progress(TransferStage::Sending, 3, 8);
+        context.progress(TransferStage::Sending, 8, 8);
+        context.progress(TransferStage::AwaitingReceipt, 8, 8);
+        assert_eq!(
+            reported(),
+            [
+                (TransferStage::Sending, 3),
+                (TransferStage::Sending, 8),
+                (TransferStage::AwaitingReceipt, 8),
+            ]
+        );
     }
     #[test]
     fn a_closed_or_superseded_connection_event_never_stops_the_service() {
@@ -485,7 +589,7 @@ mod tests {
             row.inbox_id = Some(IncomingId(token));
             runtime.inbox_keys.insert(IncomingId(token), key.clone());
             runtime.rows.insert(key, row);
-            runtime.publish();
+            runtime.retire_finished();
         };
         let delayed = key("a", 1);
         insert(
@@ -516,7 +620,7 @@ mod tests {
             );
         }
         runtime.finish_row(&delayed, TransferStage::Applied, None);
-        runtime.publish();
+        runtime.retire_finished();
         assert!(
             runtime.rows.contains_key(&delayed),
             "newest completion was immediately evicted"
@@ -534,7 +638,7 @@ mod tests {
         // A late authoritative result becomes recent again.
         let late = key("z", 63);
         runtime.finish_row(&late, TransferStage::Applied, None);
-        runtime.publish();
+        runtime.retire_finished();
         insert(&mut runtime, key("a", 2), TransferStage::Saved, false, 4);
         assert_eq!(runtime.rows[&late].status.stage, TransferStage::Applied);
         assert!(!runtime.rows.contains_key(&key("z", 62)));

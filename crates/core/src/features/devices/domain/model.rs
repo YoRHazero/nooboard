@@ -1,6 +1,6 @@
 use crate::{LocalAddress, NearbyDevice, PairingStage};
 use serde::Serialize;
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub enum PairingError {
     Protocol,
     Code,
@@ -13,14 +13,14 @@ pub enum PairingError {
     Storage,
     Connect,
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub enum PairingFailure {
     IdentityChanged,
     IncorrectCode { remaining: u8 },
     Storage,
     Network(PairingError),
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, PartialEq, Eq)]
 pub struct PairingSession {
     pub id: String,
     pub incoming: bool,
@@ -37,7 +37,7 @@ impl PairingSession {
         !matches!(self.stage, PairingStage::Completed | PairingStage::Failed)
     }
 }
-#[derive(Clone, Serialize, Default)]
+#[derive(Clone, Serialize, Default, PartialEq, Eq)]
 pub struct OnboardingSnapshot {
     pub nearby: Vec<NearbyDevice>,
     pub pairing_address: String,
