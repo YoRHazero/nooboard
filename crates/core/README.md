@@ -28,7 +28,7 @@ assert!(!commands.is_running());
 
 - `AppService` 不可克隆，只负责启动与关闭。`shutdown(&mut self).await` 等待清理完成；Terminal 停止失败会保留所有者和底层依赖，可再次调用。`Drop` 在仍有 Tokio runtime 时安排有序清理，不替代显式等待。
 - `App` 可以克隆，只持有请求通道和状态接收端。释放所有句柄不会关闭服务，存活的句柄也不会阻碍所有者关闭服务。
-- `AppSnapshot` 是可恢复的最新状态。观察者允许错过中间进度；重新订阅即可获得当前设备、配对、剪贴板、历史版本、传输结果与 Terminal 配置、运行及待答提示。
+- `AppSnapshot` 是可恢复的最新状态，只在状态变化时通知，空闲时不产生新快照。观察者允许错过中间进度；重新订阅即可获得当前设备、配对、剪贴板、历史版本、传输结果与 Terminal 配置、运行及待答提示。
 - `subscribe_events` 是诊断用途的有界通知流，目前提供传输更新与历史变化。它可能丢失中间通知，不能充当工作队列或审计记录。
 
 `lib.rs` 仅通过 `api` 导出类型。内部业务 runtimes 不向上游开放。后台实例由 app 装配创建，模型和策略函数本身不创建实例。
@@ -59,7 +59,7 @@ src/
 │       ├── ports/               engine、repository、secrets、devices、keys
 │       └── adapters/            Terminal、Storage、Identity、Network、私钥导入
 ├── contracts/                   底层公开的值类型和能力契约，不导入服务句柄
-├── message.rs / clock.rs         请求回复与时钟辅助
+├── message.rs / publish.rs / clock.rs 请求回复、状态发布规则与时钟辅助
 └── tests/                       应用流程、生命周期和集成回归
 ```
 
@@ -70,7 +70,9 @@ src/
 
 配置变更通过具体命令合并到最新文档；设备注册、手动目标和应用设置不会互相覆盖。`set_settings` 明确替换整份用户设置，调用者并发编辑该设置对象时应合并补丁；桌面入口对此串行处理。业务模块读取已提交的配置快照。
 
-设备和同步分别维护自己的流程状态，history 管理历史工作与保留策略。snapshot 只做投影。配对密码学、连接重试、消息去重、传输阶段、文件校验与落盘全部由 network 管理，core 不保留第二套状态机。
+设备和同步分别维护自己的流程状态，history 管理历史工作与保留策略。snapshot 只做投影。
+
+feature 的状态发布遵循同一规则：runtime 持有自己的状态，由唯一的 `publish()` 投影为完整视图，经 `publish::Publish` 发出，值没有变化时不通知订阅者。supervisor 在任一输入变化时重新组装快照，本身不做比较。devices 完全按此组织；terminal 与 configuration 同样由自有状态在唯一位置发布，但每次发布都对应真实变化，尚未经过 `Publish`；clipboard 与 history 目前仍在 watch 中原地修改状态，同样只在真实事件时发布。后三者后续统一到同一模型。配对密码学、连接重试、消息去重、传输阶段、文件校验与落盘全部由 network 管理，core 不保留第二套状态机。
 
 Core 用原 profile 启动独立 Identity Service，再把公开证书与签名适配器注入 Network。Identity 继续读取原 `nooboard.identity.v1` 系统条目，不重建证书或身份。Core 同时把 Identity 的用途隔离 `seal/open` 能力接入 Terminal 配置仓库，Terminal 只获得本次认证所需材料。Network 和 Terminal 都不依赖 Identity crate。启动失败清理已经创建的服务。
 

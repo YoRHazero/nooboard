@@ -1,9 +1,10 @@
 use super::{pairing, state::DeviceState};
 use crate::contracts::network::{NetworkEvent, PairingId};
 use crate::{
-    Error, PairingSession, PairingStage, PeerSettings, Result,
+    Error, LocalNetwork, OnboardingSnapshot, PairingSession, PairingStage, PeerSettings, Result,
     configuration::{domain::change::Change, ports::settings::ConfigurationPort},
     message::Reply,
+    publish::Publish,
 };
 use tokio::sync::{mpsc, watch};
 pub(crate) enum Request {
@@ -56,6 +57,9 @@ pub(crate) struct Runtime {
     expires_at_ms: i64,
     applied_revision: Option<u64>,
     applied: std::collections::BTreeMap<String, crate::contracts::network::TrustedPeer>,
+    local: LocalNetwork,
+    fault: Option<String>,
+    effective_revision: u64,
 }
 pub(crate) struct Channels {
     pub requests: mpsc::Sender<Request>,
@@ -94,6 +98,9 @@ pub(crate) fn create(
             expires_at_ms: 0,
             applied,
             applied_revision: None,
+            local: LocalNetwork::default(),
+            fault: None,
+            effective_revision: 0,
         },
     )
 }
@@ -119,7 +126,8 @@ impl Runtime {
                     self.publish();
                 },
                 request = self.requests.recv() => match request {
-                    Some(request) => { self.command(request).await; self.publish(); },
+                    // `command` publishes its effects before each reply.
+                    Some(request) => self.command(request).await,
                     None => break,
                 },
                 changed = config.changed() => {
@@ -149,11 +157,11 @@ impl Runtime {
         }
         Ok(())
     }
-    fn fault(&self, e: &Error) {
-        let message = Some(e.to_string());
-        // A recurring failure, e.g. on every periodic tick, is not a new state.
-        self.state
-            .send_if_modified(|s| replace_if_changed(&mut s.fault, message));
+    /// Published at once: a later successful reconcile in the same step clears the
+    /// fault, and that must not hide a failure that already happened.
+    fn fault(&mut self, e: &Error) {
+        self.fault = Some(e.to_string());
+        self.publish();
     }
     fn selected(&self, id: &str) -> Result<PairingId> {
         self.network
@@ -202,10 +210,8 @@ impl Runtime {
             .enable_discovery(config.settings.discoverable)
             .await?;
         self.applied_revision = Some(config.revision);
-        self.state.send_if_modified(|s| {
-            replace_if_changed(&mut s.effective_revision, config.revision)
-                | replace_if_changed(&mut s.fault, None)
-        });
+        self.effective_revision = config.revision;
+        self.fault = None;
         Ok(())
     }
     async fn refresh_peer_names(&mut self) -> Result<()> {
@@ -238,23 +244,18 @@ impl Runtime {
         }
         Ok(())
     }
-    async fn refresh_addresses(&self) {
+    async fn refresh_addresses(&mut self) {
         let status = self.network.status();
         let result = self.network.local_addresses().await;
-        // Runs every few seconds; addresses rarely change, so compare before notifying.
-        self.state.send_if_modified(|s| {
-            let mut local = s.local.clone();
-            local.sync_port = status.listen_address.port();
-            local.pairing_port = status.pairing_address.port();
-            match result {
-                Ok(addresses) => {
-                    local.addresses = addresses;
-                    local.error = None;
-                }
-                Err(e) => local.error = Some(e.to_string()),
+        self.local.sync_port = status.listen_address.port();
+        self.local.pairing_port = status.pairing_address.port();
+        match result {
+            Ok(addresses) => {
+                self.local.addresses = addresses;
+                self.local.error = None;
             }
-            replace_if_changed(&mut s.local, local)
-        });
+            Err(e) => self.local.error = Some(e.to_string()),
+        }
     }
     fn publish(&mut self) {
         let net = self.network.status();
@@ -295,15 +296,16 @@ impl Runtime {
                                 })
                         }),
                 });
-        // Called after every network notification, request and tick. Unchanged
-        // onboarding state must not wake the snapshot assembler and the WebView.
-        // `|` rather than `||`: every field must be assigned, not just the first change.
-        let pairing_address = net.pairing_address.to_string();
-        self.state.send_if_modified(|s| {
-            let onboarding = &mut s.onboarding;
-            replace_if_changed(&mut onboarding.nearby, net.nearby)
-                | replace_if_changed(&mut onboarding.pairing_address, pairing_address)
-                | replace_if_changed(&mut onboarding.session, session)
+        self.state.publish(DeviceState {
+            onboarding: OnboardingSnapshot {
+                nearby: net.nearby,
+                pairing_address: net.pairing_address.to_string(),
+                discovery_error: None,
+                session,
+            },
+            local: self.local.clone(),
+            fault: self.fault.clone(),
+            effective_revision: self.effective_revision,
         });
     }
     async fn event(&mut self, event: NetworkEvent) -> Result<()> {
@@ -341,12 +343,17 @@ impl Runtime {
         }
         Ok(())
     }
+    /// A command's effects are published before its reply, so callers observe them on return.
+    fn respond<T>(&mut self, reply: Reply<T>, result: Result<T>) {
+        self.publish();
+        let _ = reply.send(result);
+    }
     async fn command(&mut self, request: Request) {
         match request {
             Request::Refresh { reply } => {
                 let result = self.network.refresh_discovery().await;
                 self.refresh_addresses().await;
-                let _ = reply.send(result);
+                self.respond(reply, result);
             }
             Request::Begin {
                 address,
@@ -374,8 +381,7 @@ impl Runtime {
                     Ok(())
                 }
                 .await;
-                self.publish();
-                let _ = reply.send(result);
+                self.respond(reply, result);
             }
             Request::Accept { id, reply } => {
                 let result = async {
@@ -383,7 +389,7 @@ impl Runtime {
                     Ok(())
                 }
                 .await;
-                let _ = reply.send(result);
+                self.respond(reply, result);
             }
             Request::Code { id, code, reply } => {
                 let result = async {
@@ -393,7 +399,7 @@ impl Runtime {
                     Ok(())
                 }
                 .await;
-                let _ = reply.send(result);
+                self.respond(reply, result);
             }
             Request::Dismiss { id, reply } => {
                 let result = async {
@@ -411,8 +417,7 @@ impl Runtime {
                     Ok(())
                 }
                 .await;
-                self.publish();
-                let _ = reply.send(result);
+                self.respond(reply, result);
             }
             Request::Unpair { id, reply } => {
                 let result = async {
@@ -422,7 +427,7 @@ impl Runtime {
                     Ok(())
                 }
                 .await;
-                let _ = reply.send(result);
+                self.respond(reply, result);
             }
             Request::Configure {
                 id,
@@ -440,7 +445,7 @@ impl Runtime {
                     self.reconcile().await
                 }
                 .await;
-                let _ = reply.send(result);
+                self.respond(reply, result);
             }
             #[cfg(any(test, feature = "diagnostics"))]
             Request::Trust { fixture, reply } => {
@@ -464,18 +469,10 @@ impl Runtime {
                     Ok(fixture.noob_id)
                 }
                 .await;
-                let _ = reply.send(result);
+                self.respond(reply, result);
             }
         }
     }
-}
-
-fn replace_if_changed<T: PartialEq>(slot: &mut T, value: T) -> bool {
-    if *slot == value {
-        return false;
-    }
-    *slot = value;
-    true
 }
 
 #[cfg(test)]
