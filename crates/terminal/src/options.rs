@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
 /// Runtime tunables. Defaults are data, embedded from config/defaults.json.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalServiceOptions {
     pub stop: TerminalStopOptions,
@@ -18,7 +18,7 @@ pub struct TerminalServiceOptions {
     #[serde(rename = "progress_interval_ms", with = "milliseconds")]
     pub progress_interval: Duration,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalStopOptions {
     #[serde(rename = "stop_grace_timeout_ms", with = "milliseconds")]
@@ -28,7 +28,7 @@ pub struct TerminalStopOptions {
     #[serde(rename = "shutdown_timeout_ms", with = "milliseconds")]
     pub shutdown_timeout: Duration,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalIoOptions {
     #[serde(rename = "connect_timeout_ms", with = "milliseconds")]

@@ -1,15 +1,14 @@
 use crate::{ContentKind, contracts::network::TransferStatus};
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct SyncState {
     pub current: crate::CurrentClipboard,
     pub operations: std::collections::VecDeque<Operation>,
     pub activities: std::collections::VecDeque<crate::ActivityRecord>,
     pub fault: Option<String>,
     pub application_failures: std::collections::BTreeSet<(crate::MessageId, String)>,
-    pub sequence: u64,
     pub effective_revision: u64,
 }
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Operation {
     pub incoming_peer: Option<String>,
     pub id: crate::MessageId,

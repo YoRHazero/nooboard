@@ -7,6 +7,7 @@ use crate::{
     Error, HistoryEntry, Result,
     configuration::ports::settings::ConfigurationPort,
     message::{Reply, request},
+    publish::Publish,
 };
 use tokio::sync::{mpsc, watch};
 pub(crate) enum Request {
@@ -78,12 +79,20 @@ pub(crate) fn channel(stopped: watch::Receiver<bool>) -> (Handle, Runtime) {
             state: receiver,
             stopped,
         },
-        Runtime { inbox, state },
+        Runtime {
+            inbox,
+            state,
+            revision: 0,
+            error: None,
+        },
     )
 }
 pub(crate) struct Runtime {
     inbox: mpsc::Receiver<Request>,
     state: watch::Sender<HistoryState>,
+    /// Advances whenever stored history changes, so queries can be invalidated.
+    revision: u64,
+    error: Option<String>,
 }
 impl Runtime {
     pub async fn run(
@@ -100,18 +109,32 @@ impl Runtime {
              value=self.inbox.recv()=>match value{Some(value)=>self.handle(value,storage.as_ref()).await,None=>break},
              _=tick.tick()=>{match storage.prune(policy::retention(&configuration.current().settings,crate::clock::now_ms())).await{Ok(n)=>{if n>0{self.changed();}},Err(e)=>self.fault(e.to_string())}}
             }
+            self.publish();
         }
         self.inbox.close();
         while let Some(value) = self.inbox.recv().await {
             self.handle(value, storage.as_ref()).await;
+            self.publish();
         }
         Ok(())
     }
-    fn changed(&self) {
-        self.state.send_modify(|s| s.revision += 1);
+    fn changed(&mut self) {
+        self.revision += 1;
     }
-    fn fault(&self, error: String) {
-        self.state.send_modify(|s| s.error = Some(error));
+    fn fault(&mut self, error: String) {
+        self.error = Some(error);
+    }
+    /// The only projection of this runtime's state to observers.
+    fn publish(&self) {
+        self.state.publish(HistoryState {
+            revision: self.revision,
+            error: self.error.clone(),
+        });
+    }
+    /// A request's effects are published before its reply, so callers observe them on return.
+    fn reply<T>(&mut self, reply: Reply<T>, result: Result<T>) {
+        self.publish();
+        let _ = reply.send(result);
     }
     async fn handle(
         &mut self,
@@ -145,7 +168,7 @@ impl Runtime {
                     })
                     .await
                     .map(|p| p.entries.into_iter().map(Into::into).collect());
-                let _ = reply.send(result);
+                self.reply(reply, result);
             }
             Request::Get { id, reply } => {
                 let result = async {
@@ -156,7 +179,7 @@ impl Runtime {
                         .into())
                 }
                 .await;
-                let _ = reply.send(result);
+                self.reply(reply, result);
             }
             Request::Delete { id, reply } => {
                 let result = async {
@@ -167,12 +190,83 @@ impl Runtime {
                     Ok(())
                 }
                 .await;
-                let _ = reply.send(result);
+                self.reply(reply, result);
             }
             Request::Clear { reply } => {
                 let result = storage.clear().await.map(|_| self.changed());
-                let _ = reply.send(result);
+                self.reply(reply, result);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nooboard_storage::{BackendConfig, SqliteOptions, StorageService};
+    use tokio::sync::oneshot;
+
+    #[tokio::test]
+    async fn only_changes_to_stored_history_are_published_and_before_the_reply() {
+        let (owner, storage) = StorageService::start(
+            BackendConfig::Sqlite(SqliteOptions::in_memory()),
+            Default::default(),
+        )
+        .await
+        .unwrap();
+        let store = crate::features::history::adapters::storage::port(storage);
+        let (_stop, stopped) = watch::channel(false);
+        let (handle, mut runtime) = channel(stopped);
+        let mut state = handle.state.clone();
+        let now = crate::clock::now_ms();
+        runtime
+            .handle(
+                Request::Record {
+                    entry: NewHistoryEntry {
+                        text: "kept".into(),
+                        source: HistorySource::Local,
+                        copied_at_ms: now,
+                    },
+                    retention: policy::retention(&crate::Settings::default(), now),
+                },
+                store.as_ref(),
+            )
+            .await;
+        runtime.publish();
+        assert_eq!(state.borrow_and_update().revision, 1);
+        // Reading changes nothing.
+        let (reply, result) = oneshot::channel();
+        runtime
+            .handle(
+                Request::Query {
+                    contains: String::new(),
+                    local: None,
+                    limit: 10,
+                    offset: 0,
+                    reply,
+                },
+                store.as_ref(),
+            )
+            .await;
+        let entries = result.await.unwrap().unwrap();
+        assert!(!state.has_changed().unwrap(), "a query republished history");
+        // A deletion is already published when its reply arrives.
+        let (reply, result) = oneshot::channel();
+        runtime
+            .handle(
+                Request::Delete {
+                    id: entries[0].id,
+                    reply,
+                },
+                store.as_ref(),
+            )
+            .await;
+        result.await.unwrap().unwrap();
+        assert!(
+            state.has_changed().unwrap(),
+            "deletion replied before publishing"
+        );
+        assert_eq!(state.borrow_and_update().revision, 2);
+        owner.shutdown().await.unwrap();
     }
 }

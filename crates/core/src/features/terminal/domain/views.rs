@@ -19,12 +19,12 @@ impl std::str::FromStr for TerminalPromptId {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum SshAuthSummary {
     Password { saved: bool },
     PrivateKey,
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct SshTargetView {
     pub id: SshTargetConfigId,
     pub name: String,
@@ -34,7 +34,7 @@ pub struct SshTargetView {
     pub auth: SshAuthSummary,
     pub trusted_key: Option<SshPublicKey>,
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum TerminalPromptKind {
     HostTrust {
         address: std::net::SocketAddr,
@@ -45,14 +45,14 @@ pub enum TerminalPromptKind {
         username: String,
     },
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct TerminalPrompt {
     pub id: TerminalPromptId,
     pub target_id: SshTargetConfigId,
     pub owner: SshConnectionOwnerRunId,
     pub kind: TerminalPromptKind,
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum TerminalIssue {
     CredentialNotSaved {
         target_id: SshTargetConfigId,
@@ -67,7 +67,7 @@ pub enum TerminalIssue {
         message: String,
     },
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct TerminalWorkspaceSnapshot {
     pub revision: u64,
     pub closing: bool,
@@ -80,7 +80,7 @@ pub struct TerminalWorkspaceSnapshot {
     pub issue: Option<TerminalIssue>,
     pub options: TerminalServiceOptions,
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CommandConfigView {
     pub id: CommandConfigId,
     pub name: String,

@@ -21,6 +21,7 @@ use crate::{
             secrets::{SecretField, SecretScope, SecretsPort},
         },
     },
+    publish::{Publish, Revised},
 };
 use std::{collections::BTreeMap, sync::Arc};
 use tokio::{
@@ -57,7 +58,6 @@ pub(crate) struct Runtime {
     prompts: JoinSet<Option<TerminalPromptId>>,
     closing: bool,
     issue: Option<TerminalIssue>,
-    revision: u64,
 }
 pub(crate) struct Dependencies {
     pub engine: Arc<dyn TerminalEngine>,
@@ -87,7 +87,6 @@ impl Runtime {
             prompts: JoinSet::new(),
             closing: false,
             issue: None,
-            revision: 0,
         }
     }
     pub async fn run(mut self, stop: CancellationToken) {
@@ -137,15 +136,15 @@ impl Runtime {
             Ok(())
         }
     }
-    fn publish(&mut self) {
-        self.revision += 1;
+    /// The only projection of this runtime's state to observers. Its revision
+    /// advances only with a change, so read-only requests publish nothing.
+    fn publish(&self) {
         let mut view = self.catalog.view();
-        view.revision = self.revision;
         view.closing = self.closing;
         view.runs = self.engine.snapshot();
         view.prompts = self.pending.values().map(|p| p.view.clone()).collect();
         view.issue = self.issue.clone();
-        self.state.send_replace(view);
+        self.state.publish_revised(view);
     }
     async fn commit(&mut self, next: Catalog) -> Result<()> {
         next.validate()?;
@@ -245,5 +244,11 @@ impl Runtime {
             }
             Request::Finish => unreachable!(),
         }
+    }
+}
+
+impl Revised for TerminalWorkspaceSnapshot {
+    fn revision_mut(&mut self) -> &mut u64 {
+        &mut self.revision
     }
 }

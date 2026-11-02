@@ -64,7 +64,7 @@ pub enum ClipboardKind {
     Sensitive,
     TooLarge,
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct CurrentClipboard {
     pub revision: u64,
     pub kind: ClipboardKind,
@@ -120,7 +120,7 @@ pub enum ActivityKind {
     Sent,
     Received,
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct ActivityRecord {
     pub sequence: u64,
     pub kind: ActivityKind,

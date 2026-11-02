@@ -91,12 +91,12 @@ impl PeerSettings {
 pub(crate) fn valid_name(name: &str) -> bool {
     !name.trim().is_empty() && name.chars().count() <= 80 && !name.chars().any(char::is_control)
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Peer {
     pub trusted: crate::contracts::network::TrustedPeer,
     pub settings: PeerSettings,
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Configuration {
     pub version: u16,
