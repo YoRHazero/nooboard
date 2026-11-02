@@ -1,5 +1,8 @@
 use super::{LocalAddress, NearbyDevice, mdns::Discovery};
-use crate::error::{Failure, InternalResult as Result};
+use crate::{
+    error::{Failure, InternalResult as Result},
+    publish::Publish,
+};
 use std::net::SocketAddr;
 use tokio::sync::{mpsc, oneshot, watch};
 
@@ -82,8 +85,17 @@ impl Runtime {
         } else {
             Ok(())
         };
-        self.status.send_replace(vec![]);
+        self.publish();
         result
+    }
+    /// The only projection of this runtime's state: what an active driver currently observes.
+    fn publish(&mut self) {
+        let devices = if self.driver.is_some() {
+            self.observed.borrow_and_update().clone()
+        } else {
+            vec![]
+        };
+        self.status.publish(devices);
     }
     pub async fn run(mut self) -> Result<()> {
         loop {
@@ -121,7 +133,7 @@ impl Runtime {
                 },
                 changed = self.observed.changed(), if self.driver.is_some() => {
                     changed.map_err(|_| Failure::Internal)?;
-                    self.status.send_replace(self.observed.borrow_and_update().clone());
+                    self.publish();
                 },
             }
         }

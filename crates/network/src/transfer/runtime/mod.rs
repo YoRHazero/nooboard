@@ -13,6 +13,7 @@ use crate::{
     error::{ErrorKind, Failure, InternalResult as Result},
     event::NetworkEvent,
     options::Options,
+    publish::Publish,
     random::new_session_id,
 };
 use std::{
@@ -63,7 +64,7 @@ pub(crate) enum Request {
         reply: oneshot::Sender<Result<()>>,
     },
 }
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct Snapshot {
     pub rows: Vec<TransferStatus>,
     pub ready: BTreeMap<String, u64>,
@@ -104,9 +105,9 @@ struct Row {
     finish_sent: bool,
     late_receipt: Option<(ContentResult, Option<WireError>)>,
     retired_stage: Option<TransferStage>,
-    /// Latest `(done, total)` bytes from the worker, applied to `status` on the next tick.
-    progress: Option<(u64, u64)>,
 }
+/// Byte progress is a sample: a worker reports it at most this often within one stage.
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 pub(super) struct Context {
     pub key: Key,
     pub generation: u64,
@@ -115,6 +116,8 @@ pub(super) struct Context {
     pub cancel: Arc<AtomicBool>,
     pub timeout: Duration,
     pub updates: mpsc::Sender<WorkerEvent>,
+    /// The last progress actually reported by this worker.
+    reported: std::sync::Mutex<Option<(TransferStage, tokio::time::Instant)>>,
 }
 impl Context {
     pub fn is_cancelled(&self) -> bool {
@@ -133,14 +136,25 @@ impl Context {
             },
         }
     }
+    /// Report a stage change or the final byte at once; otherwise sample byte progress.
     pub fn progress(&self, stage: TransferStage, done: u64, total: u64) {
-        let _ = self.updates.try_send(WorkerEvent::Progress {
+        let now = tokio::time::Instant::now();
+        let mut reported = self.reported.lock().unwrap();
+        if done < total
+            && reported.is_some_and(|(last, at)| last == stage && now - at < PROGRESS_INTERVAL)
+        {
+            return;
+        }
+        let sent = self.updates.try_send(WorkerEvent::Progress {
             key: self.key.clone(),
             generation: self.generation,
             stage,
             done,
             total,
         });
+        if sent.is_ok() {
+            *reported = Some((stage, now));
+        }
     }
     pub fn finished(
         &self,
@@ -256,7 +270,7 @@ impl Runtime {
     }
     pub async fn run(mut self) -> Result<()> {
         let mut jobs = JoinSet::new();
-        // Checks deadlines and flushes coalesced byte progress to observers.
+        // Checks transfer deadlines.
         let mut tick = tokio::time::interval(Duration::from_millis(100));
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let result = async {
@@ -283,6 +297,8 @@ impl Runtime {
                     },
                     _ = tick.tick() => self.tick(),
                 }
+                self.retire_finished();
+                self.publish();
             }
             Ok(())
         }.await;
@@ -308,6 +324,8 @@ impl Runtime {
                     _ => {},
                 }
             }
+            self.retire_finished();
+            self.publish();
         }
         for row in self.rows.values_mut() {
             if !row.status.stage.is_terminal() {
@@ -324,6 +342,7 @@ impl Runtime {
                 row.status.error = Some(ErrorKind::Stopped);
             }
         }
+        self.retire_finished();
         self.publish();
         result
     }
@@ -379,9 +398,7 @@ mod tests {
         let (runtime, handle) = Runtime::new(&Options::default(), rx, inbox, stop).unwrap();
         (runtime, handle.status)
     }
-    #[test]
-    fn observers_wake_only_for_visible_changes_and_byte_progress_waits_for_the_tick() {
-        let (mut runtime, mut status) = observed();
+    fn sending(runtime: &mut Runtime) -> Key {
         runtime
             .link(LinkEvent::Connected {
                 peer: "peer".into(),
@@ -389,11 +406,6 @@ mod tests {
                 outbox: Outbox::new(),
             })
             .unwrap();
-        status.borrow_and_update();
-        runtime.publish();
-        runtime.tick();
-        assert!(!status.has_changed().unwrap(), "maintenance woke observers");
-
         let key = Key {
             peer: "peer".into(),
             id: TransferId {
@@ -410,42 +422,61 @@ mod tests {
             false,
         );
         runtime.rows.insert(key.clone(), row);
+        key
+    }
+    #[test]
+    fn observers_wake_only_when_the_published_state_changes() {
+        let (mut runtime, mut status) = observed();
+        let key = sending(&mut runtime);
         runtime.publish();
-        assert!(status.has_changed().unwrap());
         status.borrow_and_update();
-
-        let progress = |stage, done| WorkerEvent::Progress {
-            key: key.clone(),
+        // Periodic maintenance and unrelated events leave the view unchanged.
+        runtime.tick();
+        runtime.publish();
+        assert!(!status.has_changed().unwrap(), "maintenance woke observers");
+        runtime.update(WorkerEvent::Progress {
+            key,
             generation: 1,
-            stage,
-            done,
+            stage: TransferStage::Sending,
+            done: 4,
             total: 8,
-        };
-        runtime.update(progress(TransferStage::Sending, 4));
-        assert!(
-            !status.has_changed().unwrap(),
-            "byte progress bypassed the tick"
-        );
-        // An unrelated publication, such as a chunk acknowledgement, must not leak it.
+        });
+        runtime.publish();
+        assert!(status.has_changed().unwrap(), "progress was not published");
+        assert_eq!(status.borrow_and_update().rows[0].completed_bytes, 4);
         runtime.publish();
         assert!(
             !status.has_changed().unwrap(),
-            "byte progress leaked through another publication"
+            "unchanged state republished"
         );
-        runtime.tick();
-        assert!(status.has_changed().unwrap(), "tick did not flush progress");
-        assert_eq!(status.borrow_and_update().rows[0].completed_bytes, 4);
-        runtime.tick();
-        assert!(!status.has_changed().unwrap());
-
-        runtime.update(progress(TransferStage::AwaitingReceipt, 8));
-        assert!(
-            status.has_changed().unwrap(),
-            "stage change waited for the tick"
+    }
+    #[tokio::test(start_paused = true)]
+    async fn workers_sample_byte_progress_but_report_stage_changes_and_the_last_byte_at_once() {
+        let mut runtime = runtime();
+        let key = sending(&mut runtime);
+        let context = runtime.context(&key);
+        let mut reported = || {
+            let mut events = vec![];
+            while let Ok(WorkerEvent::Progress { stage, done, .. }) = runtime.incoming.try_recv() {
+                events.push((stage, done));
+            }
+            events
+        };
+        context.progress(TransferStage::Sending, 1, 8);
+        context.progress(TransferStage::Sending, 2, 8);
+        assert_eq!(reported(), [(TransferStage::Sending, 1)]);
+        tokio::time::advance(PROGRESS_INTERVAL).await;
+        context.progress(TransferStage::Sending, 3, 8);
+        context.progress(TransferStage::Sending, 8, 8);
+        context.progress(TransferStage::AwaitingReceipt, 8, 8);
+        assert_eq!(
+            reported(),
+            [
+                (TransferStage::Sending, 3),
+                (TransferStage::Sending, 8),
+                (TransferStage::AwaitingReceipt, 8),
+            ]
         );
-        let current = status.borrow_and_update();
-        assert_eq!(current.rows[0].stage, TransferStage::AwaitingReceipt);
-        assert_eq!(current.rows[0].completed_bytes, 8);
     }
     #[test]
     fn a_closed_or_superseded_connection_event_never_stops_the_service() {
@@ -558,7 +589,7 @@ mod tests {
             row.inbox_id = Some(IncomingId(token));
             runtime.inbox_keys.insert(IncomingId(token), key.clone());
             runtime.rows.insert(key, row);
-            runtime.publish();
+            runtime.retire_finished();
         };
         let delayed = key("a", 1);
         insert(
@@ -589,7 +620,7 @@ mod tests {
             );
         }
         runtime.finish_row(&delayed, TransferStage::Applied, None);
-        runtime.publish();
+        runtime.retire_finished();
         assert!(
             runtime.rows.contains_key(&delayed),
             "newest completion was immediately evicted"
@@ -607,7 +638,7 @@ mod tests {
         // A late authoritative result becomes recent again.
         let late = key("z", 63);
         runtime.finish_row(&late, TransferStage::Applied, None);
-        runtime.publish();
+        runtime.retire_finished();
         insert(&mut runtime, key("a", 2), TransferStage::Saved, false, 4);
         assert_eq!(runtime.rows[&late].status.stage, TransferStage::Applied);
         assert!(!runtime.rows.contains_key(&key("z", 62)));

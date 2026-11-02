@@ -9,6 +9,7 @@ use crate::{
         PublicIdentity, TrustedPeer,
         certificate::{fingerprint, noob_id},
     },
+    publish::Publish,
     random::new_session_id,
 };
 use std::{collections::BTreeMap, net::SocketAddr};
@@ -95,7 +96,7 @@ impl Runtime {
     }
     fn publish(&self) {
         self.status
-            .send_replace(self.sessions.values().cloned().collect());
+            .publish(self.sessions.values().cloned().collect());
     }
     async fn retire(&mut self, id: &PairingId, error: Option<ErrorKind>) -> bool {
         let Some(control) = self.controls.remove(id) else {

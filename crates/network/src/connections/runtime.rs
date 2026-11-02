@@ -13,6 +13,7 @@ use crate::{
     options::Options,
     pairing::PairingId,
     peers::TrustedPeer,
+    publish::Publish,
     transfer::protocol::{Message, MessageId},
 };
 use std::{
@@ -204,7 +205,7 @@ impl Runtime {
         ))
     }
     fn publish(&self) {
-        self.status.send_replace(
+        self.status.publish(
             self.peers
                 .iter()
                 .map(|(id, peer)| ConnectionStatus {

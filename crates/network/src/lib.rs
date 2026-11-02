@@ -9,6 +9,7 @@ mod local;
 mod options;
 mod pairing;
 mod peers;
+mod publish;
 mod random;
 mod runtime;
 mod transfer;

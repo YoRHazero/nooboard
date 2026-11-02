@@ -101,7 +101,7 @@ async fn idle_linked_services_do_not_republish_unchanged_status() {
 }
 
 #[tokio::test]
-async fn bulk_transfer_progress_notifications_are_bounded_by_the_tick() {
+async fn bulk_transfer_progress_notifications_are_sampled() {
     let (a_service, a, _a_events) = start("sender").await;
     let (b_service, b, mut b_events) = start("receiver").await;
     link(&a, &b).await;
@@ -163,7 +163,7 @@ async fn bulk_transfer_progress_notifications_are_bounded_by_the_tick() {
     .await
     .expect("bulk transfer timed out");
     let elapsed = started.elapsed().as_secs_f64();
-    // At most one flush per 100 ms tick, plus a handful of stage transitions.
+    // At most one byte-progress sample per 100 ms, plus a handful of stage transitions.
     let bound = (elapsed * 10.0).ceil() as u32 + 20;
     assert!(
         notifications <= bound,
