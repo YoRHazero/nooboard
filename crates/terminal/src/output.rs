@@ -101,9 +101,11 @@ impl TerminalOutputStream {
             {
                 let state = self.buffer.state.lock().unwrap();
                 if self.cursor < state.offset {
-                    self.done = true;
+                    // Report the dropped range once, then resume at the oldest retained byte.
+                    let expected_offset = self.cursor;
+                    self.cursor = state.offset;
                     return Err(TerminalOutputError::Lagged {
-                        expected_offset: self.cursor,
+                        expected_offset,
                         available_offset: state.offset,
                     });
                 }
@@ -240,7 +242,7 @@ mod tests {
         }
     }
     #[tokio::test]
-    async fn replay_handoff_offsets_lag_and_eof_are_explicit() {
+    async fn replay_handoff_offsets_lag_recovery_and_eof_are_explicit() {
         let buffer = OutputBuffer::new(5);
         buffer.push(b"abcdef");
         let mut first = buffer.subscribe();
@@ -257,7 +259,23 @@ mod tests {
                 available_offset: 9
             }
         );
-        assert!(first.stream.next().await.unwrap().is_none());
+        // The gap is reported once; the stream then resumes at the oldest retained byte.
+        let chunk = first.stream.next().await.unwrap().unwrap();
+        assert_eq!((chunk.offset, chunk.data), (9, b"23456".to_vec()));
+        buffer.push(b"7");
+        let chunk = first.stream.next().await.unwrap().unwrap();
+        assert_eq!((chunk.offset, chunk.data), (14, b"7".to_vec()));
+        // Falling behind again reports the new gap instead of ending the stream.
+        buffer.push(b"89abcdef");
+        assert_eq!(
+            first.stream.next().await.unwrap_err(),
+            TerminalOutputError::Lagged {
+                expected_offset: 15,
+                available_offset: 18
+            }
+        );
+        let chunk = first.stream.next().await.unwrap().unwrap();
+        assert_eq!((chunk.offset, chunk.data), (18, b"bcdef".to_vec()));
         let mut second = buffer.subscribe();
         buffer.push(b"!");
         buffer.close();
