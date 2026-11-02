@@ -150,7 +150,10 @@ impl Runtime {
         Ok(())
     }
     fn fault(&self, e: &Error) {
-        self.state.send_modify(|s| s.fault = Some(e.to_string()));
+        let message = Some(e.to_string());
+        // A recurring failure, e.g. on every periodic tick, is not a new state.
+        self.state
+            .send_if_modified(|s| replace_if_changed(&mut s.fault, message));
     }
     fn selected(&self, id: &str) -> Result<PairingId> {
         self.network
@@ -199,9 +202,9 @@ impl Runtime {
             .enable_discovery(config.settings.discoverable)
             .await?;
         self.applied_revision = Some(config.revision);
-        self.state.send_modify(|s| {
-            s.effective_revision = config.revision;
-            s.fault = None;
+        self.state.send_if_modified(|s| {
+            replace_if_changed(&mut s.effective_revision, config.revision)
+                | replace_if_changed(&mut s.fault, None)
         });
         Ok(())
     }
@@ -238,16 +241,19 @@ impl Runtime {
     async fn refresh_addresses(&self) {
         let status = self.network.status();
         let result = self.network.local_addresses().await;
-        self.state.send_modify(|s| {
-            s.local.sync_port = status.listen_address.port();
-            s.local.pairing_port = status.pairing_address.port();
+        // Runs every few seconds; addresses rarely change, so compare before notifying.
+        self.state.send_if_modified(|s| {
+            let mut local = s.local.clone();
+            local.sync_port = status.listen_address.port();
+            local.pairing_port = status.pairing_address.port();
             match result {
                 Ok(addresses) => {
-                    s.local.addresses = addresses;
-                    s.local.error = None;
+                    local.addresses = addresses;
+                    local.error = None;
                 }
-                Err(e) => s.local.error = Some(e.to_string()),
+                Err(e) => local.error = Some(e.to_string()),
             }
+            replace_if_changed(&mut s.local, local)
         });
     }
     fn publish(&mut self) {
@@ -289,10 +295,15 @@ impl Runtime {
                                 })
                         }),
                 });
-        self.state.send_modify(|s| {
-            s.onboarding.nearby = net.nearby;
-            s.onboarding.pairing_address = net.pairing_address.to_string();
-            s.onboarding.session = session;
+        // Called after every network notification, request and tick. Unchanged
+        // onboarding state must not wake the snapshot assembler and the WebView.
+        // `|` rather than `||`: every field must be assigned, not just the first change.
+        let pairing_address = net.pairing_address.to_string();
+        self.state.send_if_modified(|s| {
+            let onboarding = &mut s.onboarding;
+            replace_if_changed(&mut onboarding.nearby, net.nearby)
+                | replace_if_changed(&mut onboarding.pairing_address, pairing_address)
+                | replace_if_changed(&mut onboarding.session, session)
         });
     }
     async fn event(&mut self, event: NetworkEvent) -> Result<()> {
@@ -456,5 +467,66 @@ impl Runtime {
                 let _ = reply.send(result);
             }
         }
+    }
+}
+
+fn replace_if_changed<T: PartialEq>(slot: &mut T, value: T) -> bool {
+    if *slot == value {
+        return false;
+    }
+    *slot = value;
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Settings;
+    use crate::configuration::{
+        application::runtime as configuration, domain::model::Configuration,
+    };
+    use nooboard_network::Options;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn periodic_and_network_driven_refreshes_do_not_republish_unchanged_state() {
+        let (owner, network, _events) = crate::tests::start_network(Options {
+            listen: "127.0.0.1:0".parse().unwrap(),
+            pairing_listen: "127.0.0.1:0".parse().unwrap(),
+            discovery: false,
+            ..Default::default()
+        })
+        .await;
+        let (_stop, stopped) = watch::channel(false);
+        let (config, _config_runtime) = configuration::channel(
+            Configuration::new(Settings {
+                discoverable: false,
+                ..Settings::default()
+            }),
+            stopped,
+        );
+        let (channels, mut runtime) = create(
+            crate::features::devices::adapters::network::port(network),
+            Arc::new(config),
+        );
+        let mut state = channels.state;
+        runtime.reconcile().await.unwrap();
+        runtime.refresh_addresses().await;
+        runtime.publish();
+        assert_ne!(state.borrow_and_update().local.sync_port, 0);
+
+        // The work performed by every 5 s tick and every network notification.
+        runtime.reconcile().await.unwrap();
+        runtime.refresh_addresses().await;
+        runtime.refresh_peer_names().await.unwrap();
+        runtime.publish();
+        assert!(!state.has_changed().unwrap(), "unchanged state republished");
+
+        runtime.fault(&Error::Busy);
+        assert!(state.has_changed().unwrap(), "new fault was not published");
+        state.borrow_and_update();
+        runtime.fault(&Error::Busy);
+        assert!(!state.has_changed().unwrap(), "recurring fault republished");
+        owner.shutdown().await.unwrap();
     }
 }
