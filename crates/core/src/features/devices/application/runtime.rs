@@ -51,6 +51,8 @@ pub(crate) struct Runtime {
     network: std::sync::Arc<dyn crate::features::devices::ports::network::NetworkPort>,
     config: std::sync::Arc<dyn ConfigurationPort>,
     selected: Option<PairingId>,
+    /// Whether the selected pairing had ended when the network last reported it; the
+    /// network may later drop the record, and this keeps the outcome.
     selected_terminal: bool,
     expected: Option<String>,
     failure: Option<crate::PairingFailure>,
@@ -58,6 +60,8 @@ pub(crate) struct Runtime {
     applied_revision: Option<u64>,
     applied: std::collections::BTreeMap<String, crate::contracts::network::TrustedPeer>,
     local: LocalNetwork,
+    /// Set while discovery is wanted but unavailable; see `discover`.
+    discovery_error: Option<String>,
     fault: Option<String>,
     effective_revision: u64,
 }
@@ -99,6 +103,7 @@ pub(crate) fn create(
             applied,
             applied_revision: None,
             local: LocalNetwork::default(),
+            discovery_error: None,
             fault: None,
             effective_revision: 0,
         },
@@ -138,6 +143,7 @@ impl Runtime {
                 },
                 changed = status.changed() => {
                     if changed.is_err() { return Err(Error::Stopped); }
+                    self.observe_selected();
                     if let Err(error) = self.refresh_peer_names().await { self.fault(&error); }
                     self.publish();
                 },
@@ -171,6 +177,21 @@ impl Runtime {
             .find(|p| p.id.as_str() == id)
             .map(|p| p.id)
             .ok_or(Error::NotFound)
+    }
+    /// Records how the selected pairing ended, as the network reports it.
+    fn observe_selected(&mut self) {
+        if let Some(pairing) = self.selected.as_ref().and_then(|id| {
+            self.network
+                .status()
+                .pairings
+                .into_iter()
+                .find(|p| &p.id == id)
+        }) {
+            self.selected_terminal = matches!(
+                pairing.stage,
+                PairingStage::Completed | PairingStage::Failed
+            );
+        }
     }
     fn active(&self) -> bool {
         self.selected.as_ref().is_some_and(|id| {
@@ -206,12 +227,30 @@ impl Runtime {
                 self.applied.insert(id.clone(), trusted);
             }
         }
-        self.network
-            .enable_discovery(config.settings.discoverable)
-            .await?;
+        self.discover(config.settings.discoverable, false).await?;
         self.applied_revision = Some(config.revision);
         self.effective_revision = config.revision;
         self.fault = None;
+        Ok(())
+    }
+    /// Applies the discoverable setting and, for a search, looks for nearby devices again.
+    /// Discovery is optional: devices can still be added by address. While it is wanted
+    /// but unavailable, that is onboarding state rather than an error, and a later search
+    /// retries starting it. Turning it off must still succeed.
+    async fn discover(&mut self, discoverable: bool, search: bool) -> Result<()> {
+        let result = async {
+            self.network.enable_discovery(discoverable).await?;
+            if search {
+                self.network.refresh_discovery().await?;
+            }
+            Ok(())
+        }
+        .await;
+        if !discoverable {
+            self.discovery_error = None;
+            return result;
+        }
+        self.discovery_error = result.err().map(|error| error.to_string());
         Ok(())
     }
     async fn refresh_peer_names(&mut self) -> Result<()> {
@@ -257,18 +296,9 @@ impl Runtime {
             Err(e) => self.local.error = Some(e.to_string()),
         }
     }
-    fn publish(&mut self) {
+    /// The only projection of this runtime's state to observers.
+    fn publish(&self) {
         let net = self.network.status();
-        if let Some(pairing) = self
-            .selected
-            .as_ref()
-            .and_then(|id| net.pairings.iter().find(|p| &p.id == id))
-        {
-            self.selected_terminal = matches!(
-                pairing.stage,
-                PairingStage::Completed | PairingStage::Failed
-            );
-        }
         let session =
             self.selected
                 .as_ref()
@@ -300,7 +330,7 @@ impl Runtime {
             onboarding: OnboardingSnapshot {
                 nearby: net.nearby,
                 pairing_address: net.pairing_address.to_string(),
-                discovery_error: None,
+                discovery_error: self.discovery_error.clone(),
                 session,
             },
             local: self.local.clone(),
@@ -351,7 +381,8 @@ impl Runtime {
     async fn command(&mut self, request: Request) {
         match request {
             Request::Refresh { reply } => {
-                let result = self.network.refresh_discovery().await;
+                let discoverable = self.config.current().settings.discoverable;
+                let result = self.discover(discoverable, true).await;
                 self.refresh_addresses().await;
                 self.respond(reply, result);
             }
@@ -482,8 +513,214 @@ mod tests {
     use crate::configuration::{
         application::runtime as configuration, domain::model::Configuration,
     };
+    use crate::contracts::{
+        PortFuture,
+        network::{LocalAddress, NetworkStatus, TrustedPeer},
+    };
+    use crate::features::devices::ports::network::NetworkPort;
     use nooboard_network::Options;
-    use std::sync::Arc;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    use tokio::sync::oneshot;
+
+    /// A real network whose reported status and discovery outcome the test controls.
+    struct ScriptedNetwork {
+        inner: Arc<dyn NetworkPort>,
+        status: watch::Sender<NetworkStatus>,
+        discovery_fails: AtomicBool,
+    }
+    impl ScriptedNetwork {
+        fn discovery(&self) -> PortFuture<'_, ()> {
+            let fails = self.discovery_fails.load(Ordering::SeqCst);
+            Box::pin(async move { if fails { Err(Error::Internal) } else { Ok(()) } })
+        }
+    }
+    impl NetworkPort for ScriptedNetwork {
+        fn status(&self) -> NetworkStatus {
+            self.status.borrow().clone()
+        }
+        fn subscribe(&self) -> watch::Receiver<NetworkStatus> {
+            self.status.subscribe()
+        }
+        fn refresh_discovery(&self) -> PortFuture<'_, ()> {
+            self.discovery()
+        }
+        fn enable_discovery(&self, _enabled: bool) -> PortFuture<'_, ()> {
+            self.discovery()
+        }
+        fn local_addresses(&self) -> PortFuture<'_, Vec<LocalAddress>> {
+            self.inner.local_addresses()
+        }
+        fn trust_peer(&self, peer: TrustedPeer) -> PortFuture<'_, ()> {
+            self.inner.trust_peer(peer)
+        }
+        fn revoke_peer(&self, peer: String) -> PortFuture<'_, ()> {
+            self.inner.revoke_peer(peer)
+        }
+        fn start_pairing(&self, addresses: Vec<std::net::SocketAddr>) -> PortFuture<'_, PairingId> {
+            self.inner.start_pairing(addresses)
+        }
+        fn accept_pairing(&self, id: PairingId) -> PortFuture<'_, ()> {
+            self.inner.accept_pairing(id)
+        }
+        fn cancel_pairing(&self, id: PairingId) -> PortFuture<'_, ()> {
+            self.inner.cancel_pairing(id)
+        }
+        fn submit_pairing_code(&self, id: PairingId, code: String) -> PortFuture<'_, ()> {
+            self.inner.submit_pairing_code(id, code)
+        }
+        fn complete_pairing(&self, id: PairingId, saved: bool) -> PortFuture<'_, ()> {
+            self.inner.complete_pairing(id, saved)
+        }
+        fn resolve<'a>(&'a self, address: &'a str) -> PortFuture<'a, Vec<std::net::SocketAddr>> {
+            self.inner.resolve(address)
+        }
+    }
+    fn options() -> Options {
+        Options {
+            listen: "127.0.0.1:0".parse().unwrap(),
+            pairing_listen: "127.0.0.1:0".parse().unwrap(),
+            discovery: false,
+            ..Default::default()
+        }
+    }
+    async fn scripted(
+        settings: Settings,
+    ) -> (
+        crate::tests::TestNetworkService,
+        nooboard_network::Network,
+        Arc<ScriptedNetwork>,
+        Channels,
+        Runtime,
+    ) {
+        let (owner, network, _events) = crate::tests::start_network(options()).await;
+        let scripted = Arc::new(ScriptedNetwork {
+            inner: crate::features::devices::adapters::network::port(network.clone()),
+            status: watch::channel(network.status()).0,
+            discovery_fails: AtomicBool::new(false),
+        });
+        let (_stop, stopped) = watch::channel(false);
+        let (config, _config_runtime) =
+            configuration::channel(Configuration::new(settings), stopped);
+        let (channels, runtime) = create(scripted.clone(), Arc::new(config));
+        (owner, network, scripted, channels, runtime)
+    }
+    async fn refresh(runtime: &mut Runtime) -> Result<()> {
+        let (reply, result) = oneshot::channel();
+        runtime.command(Request::Refresh { reply }).await;
+        result.await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn unavailable_discovery_is_onboarding_state_that_a_search_retries() {
+        let (owner, _network, scripted, channels, mut runtime) = scripted(Settings {
+            discoverable: true,
+            ..Settings::default()
+        })
+        .await;
+        let mut state = channels.state;
+        scripted.discovery_fails.store(true, Ordering::SeqCst);
+        // Pairing by address still works, so applying the settings is not blocked.
+        runtime.reconcile().await.unwrap();
+        assert_eq!(
+            runtime.applied_revision,
+            Some(runtime.config.current().revision)
+        );
+        runtime.publish();
+        {
+            let current = state.borrow_and_update();
+            assert!(current.onboarding.discovery_error.is_some());
+            assert!(current.fault.is_none(), "discovery failure became a fault");
+        }
+        // A search answers normally and keeps showing why nothing is found.
+        refresh(&mut runtime).await.unwrap();
+        assert!(
+            state
+                .borrow_and_update()
+                .onboarding
+                .discovery_error
+                .is_some()
+        );
+        // Once discovery can start, the next search clears the state.
+        scripted.discovery_fails.store(false, Ordering::SeqCst);
+        refresh(&mut runtime).await.unwrap();
+        assert!(
+            state
+                .borrow_and_update()
+                .onboarding
+                .discovery_error
+                .is_none()
+        );
+        owner.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn turning_discovery_off_clears_its_state_and_reports_failures() {
+        let (owner, _network, scripted, channels, mut runtime) = scripted(Settings {
+            discoverable: true,
+            ..Settings::default()
+        })
+        .await;
+        scripted.discovery_fails.store(true, Ordering::SeqCst);
+        runtime.discover(true, false).await.unwrap();
+        assert!(runtime.discovery_error.is_some());
+        assert!(runtime.discover(false, false).await.is_err());
+        assert!(runtime.discovery_error.is_none());
+        runtime.publish();
+        assert!(channels.state.borrow().onboarding.discovery_error.is_none());
+        owner.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_ended_pairing_stays_ended_after_the_network_drops_its_record() {
+        let (owner, network, scripted, _channels, mut runtime) = scripted(Settings {
+            discoverable: false,
+            ..Settings::default()
+        })
+        .await;
+        let (reply, result) = oneshot::channel();
+        runtime
+            .command(Request::Begin {
+                address: "127.0.0.1:1".into(),
+                expected: None,
+                reply,
+            })
+            .await;
+        result.await.unwrap().unwrap();
+        // Selected but not yet reported by the network: the pairing is in progress.
+        assert!(runtime.active());
+        let id = runtime.selected.clone().unwrap();
+        let ended = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+            let mut status = network.subscribe();
+            loop {
+                let current = status.borrow_and_update().clone();
+                if current
+                    .pairings
+                    .iter()
+                    .any(|p| p.id == id && p.stage == PairingStage::Failed)
+                {
+                    return current;
+                }
+                status.changed().await.unwrap();
+            }
+        })
+        .await
+        .expect("pairing with a closed port did not fail");
+        scripted.status.send_replace(ended.clone());
+        runtime.observe_selected();
+        assert!(!runtime.active());
+        // The network later evicts finished records; the outcome is kept.
+        let mut forgotten = ended;
+        forgotten.pairings.clear();
+        scripted.status.send_replace(forgotten);
+        assert!(
+            !runtime.active(),
+            "a forgotten ended pairing blocked new ones"
+        );
+        owner.shutdown().await.unwrap();
+    }
 
     #[tokio::test]
     async fn periodic_and_network_driven_refreshes_do_not_republish_unchanged_state() {
