@@ -4,6 +4,7 @@ mod connections;
 mod discovery;
 mod error;
 mod event;
+mod listener;
 mod local;
 mod options;
 mod pairing;
