@@ -1,4 +1,5 @@
 use super::command_builder;
+use crate::backend::Program;
 use std::{io::Read, os::unix::fs::PermissionsExt};
 
 #[test]
@@ -19,7 +20,7 @@ fn fixed_commands_find_profile_installed_programs_from_a_gui_environment() {
     )
     .unwrap();
 
-    let mut command = command_builder(Some(
+    let mut command = command_builder(&Program::Command(
         "nooboard-profile-probe 'argument with spaces' \"quote's value\"".into(),
     ));
     // Only this child gets the stripped GUI environment; no process-global mutation.

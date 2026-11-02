@@ -695,8 +695,7 @@ async fn temporary_terminals_lease_only_their_real_dependencies() {
     assert!(terminal.snapshot().is_empty());
 }
 
-/// Starts the user's default shell, as a terminal tab runs it.
-async fn local_shell(stop_grace_timeout: Duration) -> (TerminalService, Terminal, TerminalRunId) {
+fn service_with_grace(stop_grace_timeout: Duration) -> (TerminalService, Terminal) {
     let mut options = TerminalServiceOptions::default();
     options.stop.stop_grace_timeout = stop_grace_timeout;
     let service = TerminalService::start(
@@ -707,6 +706,11 @@ async fn local_shell(stop_grace_timeout: Duration) -> (TerminalService, Terminal
     )
     .unwrap();
     let terminal = service.handle();
+    (service, terminal)
+}
+/// Starts the user's default shell, as a terminal tab runs it.
+async fn local_shell(stop_grace_timeout: Duration) -> (TerminalService, Terminal, TerminalRunId) {
+    let (service, terminal) = service_with_grace(stop_grace_timeout);
     let id = terminal
         .start_terminal(StartTerminalRequest {
             config_id: None,
@@ -726,8 +730,7 @@ async fn local_shell(stop_grace_timeout: Duration) -> (TerminalService, Terminal
 }
 /// Types `line` into a local shell and waits until `ready` appears in the output.
 /// `ready` must not occur in `line`, because the terminal echoes what is typed.
-async fn run_in_shell(terminal: &Terminal, id: TerminalRunId, line: &str, ready: &str) {
-    let target = TerminalIoTarget::Terminal(id);
+async fn run_in_shell(terminal: &Terminal, target: TerminalIoTarget, line: &str, ready: &str) {
     let mut output = terminal.subscribe_output(target).await.unwrap();
     terminal
         .write_input(target, format!("{line}\r").into_bytes())
@@ -761,7 +764,13 @@ async fn stopping_an_idle_local_shell_ends_it_without_waiting_for_force() {
     let (mut service, terminal, id) = local_shell(Duration::from_secs(30)).await;
     // A shell that has run a command has installed its signal dispositions.
     // Interactive shells ignore SIGTERM.
-    run_in_shell(&terminal, id, "printf 'shell-%s\\n' ready", "shell-ready").await;
+    run_in_shell(
+        &terminal,
+        TerminalIoTarget::Terminal(id),
+        "printf 'shell-%s\\n' ready",
+        "shell-ready",
+    )
+    .await;
     let run = tokio::time::timeout(Duration::from_secs(6), stop_and_end(&terminal, id))
         .await
         .expect("the shell was only stopped by the force timeout");
@@ -808,7 +817,13 @@ async fn stopping_a_local_shell_lets_hangup_handlers_finish() {
         marker.display(),
         helper.display()
     );
-    run_in_shell(&terminal, id, &line, "hangup-helper-ready").await;
+    run_in_shell(
+        &terminal,
+        TerminalIoTarget::Terminal(id),
+        &line,
+        "hangup-helper-ready",
+    )
+    .await;
     let run = stop_and_end(&terminal, id).await;
     assert_eq!(std::fs::read_to_string(&marker).unwrap(), "saved");
     assert_eq!(run.stop_method, Some(StopMethod::Graceful));
@@ -822,12 +837,76 @@ async fn stopping_a_local_shell_terminates_jobs_that_ignore_the_hangup() {
     // A background job that ignores SIGHUP, as nohup makes it. It reports only once it does.
     run_in_shell(
         &terminal,
-        id,
+        TerminalIoTarget::Terminal(id),
         "sh -c 'trap \"\" HUP; printf \"job-%s\\n\" ready; exec sleep 300' &",
         "job-ready",
     )
     .await;
     let run = stop_and_end(&terminal, id).await;
     assert_eq!(run.stop_method, Some(StopMethod::Graceful));
+    service.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stopping_a_command_that_runs_an_interactive_shell_ends_it_without_force() {
+    // The shell ignores SIGTERM; the hang-up after 2 s ends it before the stop is forced at 4 s.
+    let (mut service, terminal) = service_with_grace(Duration::from_secs(4));
+    // `exec` makes the shell the session leader, as a /bin/sh that is bash does for a lone command.
+    let id = terminal
+        .start_command(
+            StartCommandRequest {
+                command: command("exec bash"),
+                reuse_policy: CommandReusePolicy::Shared,
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    state(&terminal, |s| {
+        s.command_runs
+            .iter()
+            .any(|r| r.id == id && r.state == CommandRunState::Running)
+    })
+    .await;
+    run_in_shell(
+        &terminal,
+        TerminalIoTarget::Command(id),
+        "printf 'shell-%s\\n' ready",
+        "shell-ready",
+    )
+    .await;
+    let mut events = terminal.subscribe().events;
+    terminal.stop_command(id).await.unwrap();
+    let run = command_end(&mut events, id).await;
+    assert_eq!(run.stop_method, Some(StopMethod::Graceful));
+    service.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stopping_a_command_that_ignores_every_request_kills_it_when_forced() {
+    // The runtime forces the stop after the grace period; the driver keeps no deadline of its own.
+    let (mut service, terminal) = service_with_grace(Duration::from_millis(500));
+    let id = terminal
+        .start_command(
+            StartCommandRequest {
+                command: command(
+                    "trap '' HUP TERM; printf '::nooboard:v1:ready::\\n'; while :; do sleep 1; done",
+                ),
+                reuse_policy: CommandReusePolicy::Shared,
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    state(&terminal, |s| {
+        s.command_runs
+            .iter()
+            .any(|r| r.id == id && r.ready_marker_received)
+    })
+    .await;
+    let mut events = terminal.subscribe().events;
+    terminal.stop_command(id).await.unwrap();
+    let run = command_end(&mut events, id).await;
+    assert_eq!(run.stop_method, Some(StopMethod::Forced));
     service.shutdown().await.unwrap();
 }

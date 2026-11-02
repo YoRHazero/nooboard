@@ -6,7 +6,7 @@ mod schedule;
 mod tests;
 use crate::*;
 use crate::{
-    backend::{self, DriverEvent, DriverSpec, Input, OutputSink, Reply},
+    backend::{self, DriverEvent, DriverSpec, Input, OutputSink, Program, Reply},
     output::OutputBuffer,
     subscription::Shared,
 };

@@ -17,13 +17,20 @@ pub(crate) enum Input {
     Write(Vec<u8>, Reply<()>),
     Resize(TerminalSize, Reply<()>),
 }
+/// What a local or SSH driver runs in its PTY.
+pub(crate) enum Program {
+    /// The user's interactive login shell, as a terminal tab runs it.
+    Shell,
+    /// A command line, run through a shell.
+    Command(String),
+}
 pub(crate) enum DriverSpec {
     Local {
-        command: Option<String>,
+        program: Program,
     },
     Ssh {
         target: SshStartTarget,
-        command: Option<String>,
+        program: Program,
     },
     Tunnel {
         target: SshStartTarget,
@@ -154,8 +161,8 @@ pub(crate) async fn run(spec: DriverSpec, context: Context) -> Result<()> {
     let output = context.output.clone();
     let transport = context.transport.clone();
     let result = match spec {
-        DriverSpec::Local { command } => local::run(command, context).await,
-        DriverSpec::Ssh { target, command } => ssh::run(target, command, context).await,
+        DriverSpec::Local { program } => local::run(program, context).await,
+        DriverSpec::Ssh { target, program } => ssh::run(target, program, context).await,
         DriverSpec::Tunnel { target, forward } => tunnel::run(target, forward, context).await,
     };
     let transport = transport.lock().unwrap().clone();

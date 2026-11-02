@@ -46,7 +46,7 @@ async fn unconfirmed_stop_keeps_occupancy_and_fails_existing_and_new_shared_wait
             auto_input_error: None,
         },
         DriverSpec::Local {
-            command: Some(command.command.clone()),
+            program: Program::Command(command.command.clone()),
         },
         vec![],
     );

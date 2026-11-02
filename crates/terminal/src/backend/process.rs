@@ -2,29 +2,24 @@
 use crate::{Result, TerminalError, TerminalErrorKind};
 use portable_pty::Child;
 
-/// What a graceful (non-forced) stop asks of the processes in a session on Unix.
-/// On Windows the local driver writes console input instead.
+/// A graceful request for every process in a session to end.
+/// Unix delivers it as a signal; Windows has none, so the local driver writes console input.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum GracefulStop {
-    /// A command: ask every process to terminate.
-    Terminate,
-    /// An interactive terminal: hang up, as closing a terminal window does.
-    /// Interactive shells ignore SIGTERM but exit, saving their history, on SIGHUP.
-    /// Members still running later, such as nohup jobs, get SIGTERM from
-    /// `terminate_survivors`. Sending it at once would abort hang-up handlers that are
-    /// still cleaning up, such as an editor's emergency save.
+pub(crate) enum StopRequest {
+    /// SIGHUP, as closing a terminal window sends.
     HangUp,
+    /// SIGTERM, as process managers send.
+    Terminate,
 }
 
 #[cfg(unix)]
 pub(crate) struct ProcessScope {
     session: libc::pid_t,
-    graceful: GracefulStop,
     armed: std::sync::atomic::AtomicBool,
 }
 #[cfg(unix)]
 impl ProcessScope {
-    pub(crate) fn new(child: &dyn Child, graceful: GracefulStop) -> Result<Self> {
+    pub(crate) fn new(child: &dyn Child) -> Result<Self> {
         let pid = child.process_id().ok_or_else(|| {
             TerminalError::new(
                 TerminalErrorKind::ProcessFailed,
@@ -43,7 +38,6 @@ impl ProcessScope {
         }
         Ok(Self {
             session,
-            graceful,
             armed: std::sync::atomic::AtomicBool::new(true),
         })
     }
@@ -65,20 +59,15 @@ impl ProcessScope {
         }
         Ok(empty)
     }
-    pub(crate) fn signal(&self, force: bool) -> Result<()> {
-        self.send(match (force, self.graceful) {
-            (true, _) => libc::SIGKILL,
-            (false, GracefulStop::Terminate) => libc::SIGTERM,
-            (false, GracefulStop::HangUp) => libc::SIGHUP,
+    /// Members that may not be signalled, such as setuid programs, are skipped.
+    pub(crate) fn request(&self, request: StopRequest) -> Result<()> {
+        self.send(match request {
+            StopRequest::HangUp => libc::SIGHUP,
+            StopRequest::Terminate => libc::SIGTERM,
         })
     }
-    /// Second graceful step after a hang-up, for members that outlived it.
-    /// Commands were already sent SIGTERM, so this does nothing for them.
-    pub(crate) fn terminate_survivors(&self) -> Result<()> {
-        match self.graceful {
-            GracefulStop::HangUp => self.send(libc::SIGTERM),
-            GracefulStop::Terminate => Ok(()),
-        }
+    pub(crate) fn kill(&self) -> Result<()> {
+        self.send(libc::SIGKILL)
     }
     fn send(&self, signal: libc::c_int) -> Result<()> {
         if !self.armed.load(std::sync::atomic::Ordering::Acquire) {
@@ -107,7 +96,7 @@ impl ProcessScope {
 #[cfg(unix)]
 impl Drop for ProcessScope {
     fn drop(&mut self) {
-        let _ = self.signal(true);
+        let _ = self.kill();
     }
 }
 #[cfg(target_os = "linux")]
@@ -167,8 +156,7 @@ mod windows {
         job: OwnedHandle,
     }
     impl ProcessScope {
-        /// Graceful console input is written by the local driver, so `GracefulStop` is unused here.
-        pub(crate) fn new(child: &dyn Child, _: GracefulStop) -> Result<Self> {
+        pub(crate) fn new(child: &dyn Child) -> Result<Self> {
             // SAFETY: no security attributes or name; the returned handle is uniquely owned.
             let raw = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
             if raw.is_null() {
@@ -202,19 +190,15 @@ mod windows {
             }
             Ok(Self { job })
         }
-        pub(crate) fn signal(&self, force: bool) -> Result<()> {
-            // Graceful console input is sent through the PTY by the local driver.
-            if !force {
-                return Ok(());
-            }
+        /// Windows has no signals: the local driver writes console input instead.
+        pub(crate) fn request(&self, _: StopRequest) -> Result<()> {
+            Ok(())
+        }
+        pub(crate) fn kill(&self) -> Result<()> {
             // SAFETY: this job contains only the command spawned for this Run and its descendants.
             if unsafe { TerminateJobObject(self.job.as_raw_handle(), 1) } == 0 {
                 return Err(std::io::Error::last_os_error().into());
             }
-            Ok(())
-        }
-        /// Windows has no hang-up step, so nothing follows the console input.
-        pub(crate) fn terminate_survivors(&self) -> Result<()> {
             Ok(())
         }
         pub(crate) fn is_empty(&self) -> Result<bool> {
