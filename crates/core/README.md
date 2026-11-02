@@ -135,7 +135,7 @@ let (_run, _output) = terminal.start_command_with_output(
 
 - **配置与启动**：一次启动冻结主配置及全部依赖；编辑只作用于后续执行。Shared 复用旧实例时显示旧实例的真实参数。配置被其他配置、活动 Run 或待处理启动引用时拒绝删除。
 - **自动输入**：`CommandInput.auto_inputs` 提交有序规则，值用 `AutoInputValue::Keep` 保留或 `Set(SecretInput)` 覆盖，省略的键删除。现有键保持位置，新键追加。Core 通过 Identity 加密全部值并绑定命令 ID 与提示键；复制命令重新加密。持久化使用 `IndexMap` 的有序键值对数组，旧配置默认空映射。快照只返回提示键，不包含值或密文。启动计划冻结规则，解密后交给 Terminal；Shared 复用不重复发送。命令回显按原样展示，加密保证针对配置存储。
-- **可靠占用**：Core 串行登记启动预留，Terminal 管理器在登记真实 Run 时取得 `RunLease`，直到确认结束才释放。Shared 等待保留预留，独立存活的命令保留自己的 lease，不依赖可落后的 UI 结束事件。
+- **可靠占用**：Core 串行登记启动预留，Terminal 管理器在登记真实 Run 时取得 `RunLease`，直到确认结束才释放。Shared 等待保留预留，独立存活的命令保留自己的 lease，不依赖可落后的 UI 结束事件。释放先于回复：启动回复前已撤销预留（成功时 Run 已持有 lease），`stop_*` 成功返回前该 Run 的 lease 已释放，因此停止后可立即删除其配置，快照可能稍后才移除该 Run。被停止连带释放的 Dependent 命令仍按自身结束释放 lease。
 - **设备地址**：依赖放行后读取 Network 当前发现或活动连接地址，使用配置的 SSH 端口。无需配对；无可用地址直接失败，不使用历史地址兜底。
 - **主机信任**：按 SshTargetConfigId 保存公钥。未知密钥产生 HostTrust 提示，变化则失败并记录旧/新密钥。更换信任需要提交预期旧值，避免并发覆盖。复制配置不复制信任。
 - **认证**：主机确认后才产生 Password 提示。`SshAuthInput::Password` 选择密码方式或清除已保存密码，实际输入通过 `answer_password` 提交；只有认证成功且用户勾选保存，才加密持久化。旧认证回报不会覆盖后来修改的认证或目标参数。保存失败报告 `CredentialNotSaved`，已成功连接仍可使用。

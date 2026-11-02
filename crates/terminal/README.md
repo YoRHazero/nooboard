@@ -39,7 +39,7 @@ cargo run -p nooboard-terminal --example command -- 'echo hello'
 
 `subscribe()` 在同一个临界区取得初始快照并注册后续流。快照只保留活动资源，结束结果通过事件发送。事件或输出订阅者落后时明确返回 `Lagged`，不能用于必须可靠执行的业务副作用。调用方应在启动前订阅结束事件；短命令的输出使用 `*_with_output`，避免先启动后订阅之间的空隙。输出包含字节偏移，前端自行增量解码和处理终端控制序列。
 
-Core 使用 `TerminalService::start_with_leases` 注入 `RunLeaseProvider`。管理器同步登记每个 Run 的配置引用并持有返回的 guard，包含主配置、SSH 目标及尚未执行的依赖；只有实际 Run 移除才释放。Shared 复用不会替换已有 guard。提供者必须快速返回、不能阻塞或 panic；持久化不在该钩子内执行。独立调用方可以继续使用无钩子的 `start`。
+Core 使用 `TerminalService::start_with_leases` 注入 `RunLeaseProvider`。管理器同步登记每个 Run 的配置引用并持有返回的 guard，包含主配置、SSH 目标及尚未执行的依赖；只有实际 Run 移除才释放。移除在 stop 成功回复之前完成，guard 此时已经释放，调用方收到成功后即可删除对应配置；活动快照在回复之后才发布，不能据此推断占用。停止失败或超时保留 guard。Shared 复用不会替换已有 guard。提供者必须快速返回、不能阻塞或 panic；持久化不在该钩子内执行。独立调用方可以继续使用无钩子的 `start`。
 
 ## 依赖与停止
 

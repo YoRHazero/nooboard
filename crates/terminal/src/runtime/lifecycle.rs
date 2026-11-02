@@ -399,7 +399,11 @@ impl Manager {
                 }
             }
         }
-        for waiter in entry.waiters {
+        // Removal is complete before the stop is confirmed: dropping the entry releases its
+        // configuration lease, so a caller may delete that configuration once `stop` returns.
+        let waiters = std::mem::take(&mut entry.waiters);
+        drop(entry);
+        for waiter in waiters {
             let _ = waiter.send(Ok(()));
         }
         self.pending_changed();
