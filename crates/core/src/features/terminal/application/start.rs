@@ -42,8 +42,10 @@ impl Runtime {
         };
         let engine = self.engine.clone();
         self.tasks.spawn(async move {
-            let _reservation = reservation;
             let result = engine.start(plan, cancellation, output).await;
+            // A started run already holds its own lease. Release the pending reservation
+            // before replying, so a failed start no longer occupies its configuration.
+            drop(reservation);
             if let Err(Ok((run, _))) = reply.send(result) {
                 // A lost root start reply must not leave an unreachable terminal or tunnel.
                 // Shared commands may already have other dependents and remain managed.
