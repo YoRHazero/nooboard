@@ -76,7 +76,7 @@ it.each(['Files', 'Image'] as ContentKind[])(
     expect(play).not.toHaveBeenCalled();
     expect(inbox.getState().latest?.state).toBe('pending');
     frame.contentTransfers[0].completedBytes = 100;
-    frame.contentTransfers[0].stage = 'Verifying';
+    frame.contentTransfers[0].stage = 'Applying';
     publish();
     expect(play).not.toHaveBeenCalled();
     frame.contentTransfers[0].stage = 'Completed';

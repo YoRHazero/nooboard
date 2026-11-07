@@ -6,8 +6,6 @@ core_enum!(ContentStage {
     Waiting,
     Sending,
     Receiving,
-    Verifying,
-    Saving,
     Applying,
     Cancelling,
     Completed,

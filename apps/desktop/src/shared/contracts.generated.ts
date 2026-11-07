@@ -58,8 +58,6 @@ export type ContentStage =
   | 'Waiting'
   | 'Sending'
   | 'Receiving'
-  | 'Verifying'
-  | 'Saving'
   | 'Applying'
   | 'Cancelling'
   | 'Completed'
@@ -340,7 +338,7 @@ export type TerminalForward = {
 };
 export type TerminalForwardKind = 'local' | 'remote' | 'dynamic';
 export type TerminalGate =
-  'pending' | 'waitingForInstance' | 'waitingForRelease' | 'released' | 'failed' | 'cancelled';
+  'pending' | 'waitingForInstance' | 'waitingForRelease' | 'released' | 'failed';
 export type TerminalHostKey = { algorithm: string; bytes: Array<number> };
 export type TerminalIssueView = {
   kind: string;

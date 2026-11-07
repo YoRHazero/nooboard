@@ -107,7 +107,7 @@ it('does not convert byte completion into a successful file receipt or mutate ma
   const activity = store.getSnapshot().activities[0];
   frame.revision = '2';
   frame.contentTransfers[0].completedBytes = 100;
-  frame.contentTransfers[0].stage = 'Verifying';
+  frame.contentTransfers[0].stage = 'Applying';
   store.apply(frame, host);
   expect(store.getSnapshot().activities[0]).toBe(activity);
   expect(activity.state).toBe('pending');

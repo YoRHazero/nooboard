@@ -4,7 +4,7 @@ import { t } from '../../shared/i18n/index';
 import { contentPending } from '../../shared/types';
 export { contentPending, contentActivityState } from '../../shared/types';
 export const contentCancellable = (stage: ContentStage) =>
-  contentPending(stage) && !['Saving', 'Applying', 'Cancelling'].includes(stage);
+  contentPending(stage) && !['Applying', 'Cancelling'].includes(stage);
 export const contentStageLabel = (stage: ContentStage) => t(`transfers:stage${stage}`);
 export const contentErrorLabel = (task: ContentTransfer) =>
   task.error ? t(`transfers:error${task.error}`) : '';

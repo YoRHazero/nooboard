@@ -367,8 +367,6 @@
         "Waiting",
         "Sending",
         "Receiving",
-        "Verifying",
-        "Saving",
         "Applying",
         "Cancelling",
         "Completed",
@@ -3424,8 +3422,7 @@
         "waitingForInstance",
         "waitingForRelease",
         "released",
-        "failed",
-        "cancelled"
+        "failed"
       ]
     },
     "TerminalHostKey": {

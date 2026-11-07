@@ -27,8 +27,7 @@ value_enum!(TerminalGate {
     WaitingForInstance,
     WaitingForRelease,
     Released,
-    Failed,
-    Cancelled
+    Failed
 });
 value_enum!(TerminalAddressKind { Host, Device });
 value_enum!(TerminalAuthKind {

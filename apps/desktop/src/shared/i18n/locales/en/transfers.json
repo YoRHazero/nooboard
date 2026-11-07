@@ -32,8 +32,6 @@
   "stageWaiting": "Waiting for receiver",
   "stageSending": "Sending",
   "stageReceiving": "Receiving",
-  "stageVerifying": "Verifying",
-  "stageSaving": "Saving",
   "stageApplying": "Updating clipboard",
   "stageCancelling": "Cancelling…",
   "stageCompleted": "Completed",

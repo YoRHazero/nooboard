@@ -563,7 +563,6 @@ enum DependencyGateState {
     WaitingForRelease,
     Released { reason: DependencyReleaseReason },
     Failed { error: TerminalError },
-    Cancelled,
 }
 ```
 
@@ -574,7 +573,8 @@ enum DependencyGateState {
 | WaitingForRelease | 已绑定实例，等待成功退出、就绪标识或手动放行 |
 | Released | 已按记录的原因放行，不能再次放行或更换原因 |
 | Failed | 本依赖失败，所属主 Run 进入失败清理 |
-| Cancelled | 所属执行已停止，不再申请或等待放行 |
+
+依赖不设单独的取消状态，随所属主 Run 结束一起从活动快照移除。尚未取得实例的依赖（Pending、WaitingForInstance）只存在于主 Run 启动前，此时停止主 Run 会在同一次状态转换中结束它并移除依赖；已绑定实例的依赖在主 Run 停止期间保持原状态，继续构成有效依赖，直到终端、转发和文件操作关闭后才释放前置命令。
 
 CommandRun 成功退出后可以从活动快照移除；所属主 Run 仍通过 Released(SuccessfulExit) 知道该步骤已完成。这时 command_run_id 仅标识本次使用过的实例，不保证还能在活动命令列表中查到它，也不构成有效存活依赖。
 
@@ -1021,7 +1021,7 @@ stop 返回成功表示该 Run 自身资源已停止，并已释放它持有的�
 
 对 Stopping 实例重复 stop 加入同一次清理，不并行重复停止。停止超时返回错误，保留跟踪，不能为了重试启动而移除占位。因为已结束记录不保留，对不存在的 RunId 调用 stop 返回成功，表示“当前没有该活动资源”；它不区分已结束与从未存在。其他操作找不到目标时返回 NotFound。
 
-continue_dependency 只对 WaitingForRelease 放行；Released 重复调用成功但不改变原因。Pending、WaitingForInstance、Failed、Cancelled 拒绝手动继续。生命周期切换只允许尚未停止的 CommandRun。
+continue_dependency 只对 WaitingForRelease 放行；Released 重复调用成功但不改变原因。Pending、WaitingForInstance、Failed 拒绝手动继续。生命周期切换只允许尚未停止的 CommandRun。
 
 ### 字节流与文件
 

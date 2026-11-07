@@ -128,7 +128,6 @@ pub enum DependencyGateState {
     WaitingForRelease,
     Released { reason: DependencyReleaseReason },
     Failed { error: TerminalError },
-    Cancelled,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

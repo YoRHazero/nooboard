@@ -44,8 +44,6 @@ pub enum ContentStage {
     Waiting,
     Sending,
     Receiving,
-    Verifying,
-    Saving,
     Applying,
     Cancelling,
     Completed,
@@ -63,14 +61,12 @@ impl ContentStage {
                 | Self::Waiting
                 | Self::Sending
                 | Self::Receiving
-                | Self::Verifying
-                | Self::Saving
                 | Self::Applying
                 | Self::Cancelling
         )
     }
     pub fn cancellable(self) -> bool {
-        self.pending() && !matches!(self, Self::Saving | Self::Applying | Self::Cancelling)
+        self.pending() && !matches!(self, Self::Applying | Self::Cancelling)
     }
 }
 #[derive(Clone, Debug, Serialize)]

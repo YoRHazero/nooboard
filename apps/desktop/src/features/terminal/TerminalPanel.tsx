@@ -129,7 +129,7 @@ export function TerminalPanel() {
                       {t('terminal:viewOutput')}
                     </Button>
                   )}
-                  {dep.gate !== 'released' && dep.gate !== 'failed' && dep.gate !== 'cancelled' && (
+                  {dep.gate !== 'released' && dep.gate !== 'failed' && (
                     <Button
                       disabled={!dep.runId}
                       onClick={() => execute(() => continueMutation.mutateAsync({ id: dep.id }))}

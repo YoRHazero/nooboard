@@ -231,7 +231,6 @@ pub fn workspace(value: core::TerminalWorkspaceSnapshot) -> TerminalWorkspaceVie
                 core::DependencyGateState::Failed { error } => {
                     (TerminalGate::Failed, Some(error.to_string()))
                 }
-                core::DependencyGateState::Cancelled => (TerminalGate::Cancelled, None),
             };
             TerminalDependencyView {
                 id: d.id.to_string(),

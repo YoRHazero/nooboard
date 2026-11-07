@@ -5,8 +5,8 @@ use crate::{
     features::devices::application::state::DeviceState,
     features::history::application::state::HistoryState, *,
 };
-use nooboard_network::{NetworkStatus, TransferStage};
-fn delivery(stage: TransferStage) -> DeliveryState {
+use nooboard_network::{ErrorKind, NetworkStatus, TransferStage};
+fn delivery(stage: TransferStage, error: Option<ErrorKind>) -> DeliveryState {
     match stage {
         TransferStage::Preparing | TransferStage::Queued | TransferStage::WaitingForAcceptance => {
             DeliveryState::Queued
@@ -20,6 +20,8 @@ fn delivery(stage: TransferStage) -> DeliveryState {
         TransferStage::Rejected => DeliveryState::Rejected,
         TransferStage::Cancelled => DeliveryState::Cancelled,
         TransferStage::Superseded => DeliveryState::Superseded,
+        // A full per-peer text queue is reported as Busy; other failures mean no usable route.
+        TransferStage::Failed if error == Some(ErrorKind::Busy) => DeliveryState::QueueFull,
         TransferStage::Failed => DeliveryState::Offline,
     }
 }
@@ -64,7 +66,7 @@ pub(crate) fn assemble(
                 .map(|r| Delivery {
                     noob_id: r.peer.clone(),
                     device_name: name(&r.peer),
-                    state: delivery(r.stage),
+                    state: delivery(r.stage, r.error),
                 })
                 .collect::<Vec<_>>();
             (!targets.is_empty()).then(|| Transfer {
@@ -243,6 +245,21 @@ mod peer_state_tests {
         assert_eq!(
             peer_connection_state(false, false, true, false),
             PeerConnectionState::Unconnected
+        );
+    }
+    #[test]
+    fn a_full_text_queue_is_not_reported_as_an_unavailable_device() {
+        assert_eq!(
+            delivery(TransferStage::Failed, Some(ErrorKind::Busy)),
+            DeliveryState::QueueFull
+        );
+        assert_eq!(
+            delivery(TransferStage::Failed, Some(ErrorKind::Unavailable)),
+            DeliveryState::Offline
+        );
+        assert_eq!(
+            delivery(TransferStage::Failed, None),
+            DeliveryState::Offline
         );
     }
 }
